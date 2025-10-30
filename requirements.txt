@@ -1,0 +1,26 @@
+# Core dependencies (required)
+requests>=2.31.0
+urllib3>=2.0.0
+tabulate>=0.9.0      # For clean table output (draft UI)
+termcolor>=2.3.0     # For color-coded grades
+numpy>=1.24.0        # For statistical calculations (required by scipy)
+
+# Text-to-Speech Engines (primary: Kokoro, fallback: BarkTTS)
+# The advisor will try Kokoro first (fast, high-quality), then Bark if Kokoro fails
+kokoro-onnx>=0.1.0  # Primary TTS - fast, high-quality ONNX-based TTS
+scipy>=1.11.0       # Required for Kokoro audio processing
+transformers>=4.30.0  # Required for BarkTTS (fallback)
+torch>=2.0.0        # Required for BarkTTS (fallback)
+
+# RAG System (optional - for enhanced AI advice with rule knowledge)
+# These are large packages, install only if you want RAG features
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+torch>=2.0.0
+
+# Platform-specific dependencies
+# On Windows, you also need:
+#   windows-curses>=2.3.0  (for TUI mode)
+#   pywin32>=306  (for pyttsx3 on Windows)
+# On Linux, you may need system packages:
+#   sudo apt-get install espeak espeak-ng libespeak1  (for pyttsx3)
