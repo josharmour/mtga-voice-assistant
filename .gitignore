@@ -29,3 +29,19 @@ pyghidra_mcp_projects/
 .DS_Store
 *.swo
 *.swp
+
+# Ignore all markdown files
+*.md
+
+# Except for README.md
+!README.md
+
+# Local documentation
+local-docs/
+
+# AI assistant directories
+.claude/
+.gemini/
+
+# Ignore large data files
+data/*.csv
