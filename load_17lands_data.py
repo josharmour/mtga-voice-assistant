@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import List, Dict
 import logging
 from datetime import datetime
+import argparse
 
 from rag_advisor import CardStatsDB
 
@@ -498,7 +499,7 @@ def export_to_csv(cards: List[Dict], output_path: str = "data/card_stats.csv"):
     logger.info(f"Exported {len(cards)} cards to {output_path}")
 
 
-def main():
+def main(db_path: str):
     """Main function to load card data into the database."""
     logging.basicConfig(
         level=logging.INFO,
@@ -508,7 +509,7 @@ def main():
     logger.info("Starting 17lands data loader...")
 
     # Initialize database
-    db = CardStatsDB()
+    db = CardStatsDB(db_path=db_path)
 
     # Load sample data
     logger.info("Loading sample card data...")
@@ -544,4 +545,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Load 17lands data into a SQLite database.")
+    parser.add_argument(
+        "--db-path",
+        default="data/card_stats.db",
+        help="Path to the SQLite database file."
+    )
+    args = parser.parse_args()
+    main(args.db_path)
