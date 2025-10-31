@@ -29,16 +29,25 @@ pip install -r requirements.txt
 
 ### Running the Application
 
-The main entry point is the `main()` function within the `CLIVoiceAdvisor` script. To run the advisor:
+The main entry point is `advisor.py`. To run the advisor:
 
 ```bash
-python <your_main_script>.py
+python advisor.py
 ```
 
 The application will automatically attempt to locate the `Player.log` file and will start monitoring it. When a game begins and you have a decision to make, the advisor will automatically provide spoken advice.
 
 ## Data
 
-The application uses data from [17lands.com](https://www.17lands.com/) to provide card analysis. Due to the size of the data files, they are not included in this repository. You will need to download the data files yourself and place them in the `data/` directory.
+The application uses data from [17lands.com](https://www.17lands.com/) and [Scryfall](https://scryfall.com/) to provide card analysis and information. To download and manage this data, use the `manage_data.py` script:
 
-You can find the data files at [https://www.17lands.com/public_datasets](https://www.17lands.com/public_datasets).
+```bash
+# To update 17lands data for all standard sets
+python manage_data.py --update-17lands
+
+# To update Scryfall card data
+python manage_data.py --update-scryfall
+
+# To see all options
+python manage_data.py --help
+```
