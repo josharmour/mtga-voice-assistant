@@ -57,9 +57,11 @@ def test_card_stats_db():
     logger.info("="*70)
 
     try:
-        from rag_advisor import CardStatsDB
+        from rag_advisor import CardStatsDB, load_sample_17lands_data
 
         db = CardStatsDB()
+        # Load sample data to ensure the test is self-contained
+        load_sample_17lands_data(db)
 
         # Test retrieving card stats
         test_cards = [
@@ -232,7 +234,8 @@ What is the optimal tactical play right now?
 
         # Verify enhancement
         assert len(enhanced_prompt) > len(base_prompt), "Prompt should be enhanced"
-        assert base_prompt in enhanced_prompt, "Enhanced prompt should contain base prompt"
+        assert "expert Magic: The Gathering strategist" in enhanced_prompt, "Persona not injected"
+        assert "optimal attack" in enhanced_prompt, "Goal-oriented prompt not injected"
 
         logger.info(f"✓ Base prompt length: {len(base_prompt)} chars")
         logger.info(f"✓ Enhanced prompt length: {len(enhanced_prompt)} chars")

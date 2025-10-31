@@ -171,7 +171,7 @@ def test_grade_calculation():
     print("-" * 40)
 
     for score in test_scores:
-        grade = draft_advisor._score_to_grade(score)
+        grade = DraftAdvisor(card_db=None)._score_to_grade(score)
         print(f"  {score:5.1f}% → {grade}")
 
     print("\n✓ Grade calculation test completed!\n")
