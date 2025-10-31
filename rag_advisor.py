@@ -47,8 +47,9 @@ class RulesParser:
 
     def parse(self) -> List[Dict[str, str]]:
         """
-        Parse rules file into chunks.
-        Each rule (e.g., "100.1", "100.1a") becomes a separate chunk.
+        Parse rules file into chunks with hierarchical context.
+        Sub-rules (e.g., "100.1a") are combined with their parent rule ("100.1")
+        to provide better context for semantic search.
 
         Returns:
             List of dicts with 'id', 'text', 'section' keys
@@ -60,49 +61,57 @@ class RulesParser:
         with open(self.rules_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
-        # Pattern for rules like "100.1." or "100.1a."
         rule_pattern = re.compile(r'^(\d+\.\d+[a-z]*)\.\s+(.+)$')
-
-        # Pattern for section headers like "100. General"
         section_pattern = re.compile(r'^(\d+)\.\s+(.+)$')
 
         sections = {}
         rules = []
         current_section = "Unknown"
+        parent_rule_text_cache = {}  # Cache for parent rule text
 
         for line in lines:
             line = line.strip()
             if not line:
                 continue
 
-            # Check for section header (3-digit number like "100. ")
             section_match = section_pattern.match(line)
             if section_match:
                 section_num = section_match.group(1)
                 section_name = section_match.group(2).strip()
-                if len(section_num) == 3:  # Main sections only
+                if len(section_num) == 3:
                     sections[section_num] = section_name
                     current_section = section_name
                 continue
 
-            # Check for rule line
             rule_match = rule_pattern.match(line)
             if rule_match:
                 rule_id = rule_match.group(1)
                 rule_text = rule_match.group(2).strip()
 
-                # Determine section from rule_id
                 section_num = rule_id.split('.')[0]
                 if section_num in sections:
                     current_section = sections[section_num]
 
+                # Hierarchical chunking
+                parent_id = rule_id.rstrip('a-z')
+                is_sub_rule = parent_id != rule_id and parent_id in parent_rule_text_cache
+                
+                final_text = rule_text
+                if is_sub_rule:
+                    parent_text = parent_rule_text_cache[parent_id]
+                    final_text = f"{parent_text} // {rule_text}"
+
+                # Cache parent rule text (rules without a letter suffix)
+                if not re.search('[a-z]$', rule_id):
+                    parent_rule_text_cache[rule_id] = rule_text
+
                 rules.append({
                     'id': rule_id,
-                    'text': rule_text,
+                    'text': final_text,
                     'section': current_section
                 })
 
-        logger.info(f"Parsed {len(rules)} rules from {self.rules_path}")
+        logger.info(f"Parsed {len(rules)} rules from {self.rules_path} with hierarchical context")
         self.rules = rules
         return rules
 
@@ -623,7 +632,8 @@ class RAGSystem:
 
     def enhance_prompt(self, board_state: Dict[str, any], base_prompt: str) -> str:
         """
-        Enhance AI prompt with relevant rules and card statistics.
+        Enhance AI prompt with an expert persona, structured context, and goal-oriented queries.
+        Uses concurrency to fetch data efficiently.
 
         Args:
             board_state: Current game state dictionary
@@ -632,35 +642,73 @@ class RAGSystem:
         Returns:
             Enhanced prompt with RAG context
         """
-        enhanced = base_prompt
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # Detect game phase/situation and query relevant rules
-        situation_queries = self._detect_situation(board_state)
+        # 1. Define Expert Persona and Objectives
+        persona = (
+            "You are an expert Magic: The Gathering strategist providing tactical advice during a live match. "
+            "Your goal is to help the player win. Your advice must be clear, direct, and actionable. "
+            "Justify your recommendations by referencing the provided rules and card data. Explain the 'why'."
+        )
 
-        if situation_queries and self.rules_initialized:
-            enhanced += "\n\n## Relevant MTG Rules:\n"
+        # 2. Goal-Oriented Prompting based on Game Phase
+        phase = board_state.get('phase', 'main')
+        if phase in ['combat', 'declare_attackers']:
+            goal_prompt = "It is the declare attackers step. What is the optimal attack? Analyze potential blocks, combat tricks, and risks. How does this attack advance our plan to win?"
+        elif phase == 'declare_blockers':
+            goal_prompt = "The opponent has attacked. What is the optimal blocking strategy to minimize damage and preserve our board state? Should we take any damage to save a key creature?"
+        else: # Main phase, etc.
+            goal_prompt = base_prompt # Fallback to the original prompt
 
-            for query in situation_queries[:2]:  # Limit to 2 queries for latency
-                rules = self.query_rules(query, top_k=2)
-                for rule in rules:
-                    enhanced += f"\n- {rule['text']}\n"
+        # --- RAG Data Fetching (Concurrent) ---
+        tasks = []
+        rules_results = []
+        stats_results = {}
 
-        # Add card statistics for cards in play
-        cards_with_stats = self._get_board_card_stats(board_state)
+        with ThreadPoolExecutor() as executor:
+            situation_queries = self._detect_situation(board_state)
+            if situation_queries and self.rules_initialized:
+                for query in situation_queries[:2]:
+                    tasks.append(executor.submit(self.query_rules, query, top_k=2))
 
-        if cards_with_stats:
-            enhanced += "\n\n## Card Performance Data (17lands):\n"
-            for card_name, stats in cards_with_stats.items():
-                if stats['games_played'] > 100:  # Only include cards with significant data
-                    enhanced += (
-                        f"\n- {card_name}: "
-                        f"WR: {stats['win_rate']:.1%}, "
-                        f"GIH WR: {stats['gih_win_rate']:.1%}, "
-                        f"IWD: {stats['iwd']:+.1%} "
-                        f"({stats['games_played']} games)"
+            card_names_to_query = self._get_card_names_from_board(board_state)
+            for card_name in card_names_to_query:
+                tasks.append(executor.submit(self.get_card_stats, card_name))
+
+            for future in as_completed(tasks):
+                try:
+                    result = future.result()
+                    if not result: continue
+                    if isinstance(result, list) and all(isinstance(i, dict) and 'text' in i for i in result):
+                        rules_results.extend(result)
+                    elif isinstance(result, dict) and 'card_name' in result:
+                        stats_results[result['card_name']] = result
+                except Exception as e:
+                    logger.error(f"A RAG task failed: {e}")
+
+        # 3. Assemble Prompt with Structured, Annotated Context
+        enhanced_prompt = f"{persona}\n\n## Current Goal\n{goal_prompt}\n"
+
+        if rules_results:
+            enhanced_prompt += "\n## Relevant MTG Rules\n"
+            for rule in rules_results:
+                enhanced_prompt += f"- **Rule {rule.get('id', '')}**: {rule.get('text', '')}\n"
+
+        if stats_results:
+            enhanced_prompt += "\n## Tactical Analysis of Key Cards\n"
+            for card_name, stats in stats_results.items():
+                if stats and (stats.get('games_played') or 0) > 100:
+                    # Tactical Annotation
+                    win_rate = stats.get('gih_win_rate') or 0.0
+                    tactical_note = "A key performer; prioritize it." if win_rate > 0.58 else "A solid role-player." if win_rate > 0.53 else "Below average performer."
+                    
+                    enhanced_prompt += (
+                        f"- **{card_name}**: "
+                        f"GIH Win Rate: {win_rate:.1%} ({stats.get('games_played', 0)} games). "
+                        f"*Tactical Note: {tactical_note}*\n"
                     )
-
-        return enhanced
+        
+        return enhanced_prompt
 
     def _detect_situation(self, board_state: Dict[str, any]) -> List[str]:
         """
@@ -726,6 +774,26 @@ class RAGSystem:
 
         return stats_dict
 
+    def _get_card_names_from_board(self, board_state: Dict[str, any]) -> List[str]:
+        """
+        Get unique card names from the battlefield.
+
+        Args:
+            board_state: Current game state
+
+        Returns:
+            A list of unique card names.
+        """
+        card_names = set()
+        battlefield = board_state.get('battlefield', {})
+
+        for zone in ['player', 'opponent']:
+            if zone in battlefield:
+                for card in battlefield[zone]:
+                    if name := card.get('name'):
+                        card_names.add(name)
+        return list(card_names)
+
     def close(self):
         """Clean up resources."""
         self.card_stats.close()
@@ -771,6 +839,105 @@ def load_sample_17lands_data(db: CardStatsDB):
             'iwd': 0.09,
             'last_updated': '2025-01-15'
         },
+        {
+            'card_name': 'Jace, the Mind Sculptor',
+            'set_code': 'A25',
+            'color': 'U',
+            'rarity': 'mythic',
+            'games_played': 12000,
+            'win_rate': 0.65,
+            'gih_win_rate': 0.70,
+            'iwd': 0.05,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Sheoldred, the Apocalypse',
+            'set_code': 'DMU',
+            'color': 'B',
+            'rarity': 'mythic',
+            'games_played': 80000,
+            'win_rate': 0.68,
+            'gih_win_rate': 0.72,
+            'iwd': 0.04,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Grizzly Bears',
+            'set_code': '10E',
+            'color': 'G',
+            'rarity': 'common',
+            'games_played': 200,
+            'win_rate': 0.50,
+            'gih_win_rate': 0.51,
+            'iwd': 0.01,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Jace, the Mind Sculptor',
+            'set_code': 'A25',
+            'color': 'U',
+            'rarity': 'mythic',
+            'games_played': 12000,
+            'win_rate': 0.65,
+            'gih_win_rate': 0.70,
+            'iwd': 0.05,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Sheoldred, the Apocalypse',
+            'set_code': 'DMU',
+            'color': 'B',
+            'rarity': 'mythic',
+            'games_played': 80000,
+            'win_rate': 0.68,
+            'gih_win_rate': 0.72,
+            'iwd': 0.04,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Grizzly Bears',
+            'set_code': '10E',
+            'color': 'G',
+            'rarity': 'common',
+            'games_played': 200,
+            'win_rate': 0.50,
+            'gih_win_rate': 0.51,
+            'iwd': 0.01,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Jace, the Mind Sculptor',
+            'set_code': 'A25',
+            'color': 'U',
+            'rarity': 'mythic',
+            'games_played': 12000,
+            'win_rate': 0.65,
+            'gih_win_rate': 0.70,
+            'iwd': 0.05,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Sheoldred, the Apocalypse',
+            'set_code': 'DMU',
+            'color': 'B',
+            'rarity': 'mythic',
+            'games_played': 80000,
+            'win_rate': 0.68,
+            'gih_win_rate': 0.72,
+            'iwd': 0.04,
+            'last_updated': '2025-01-15'
+        },
+        {
+            'card_name': 'Grizzly Bears',
+            'set_code': '10E',
+            'color': 'G',
+            'rarity': 'common',
+            'games_played': 200,
+            'win_rate': 0.50,
+            'gih_win_rate': 0.51,
+            'iwd': 0.01,
+            'last_updated': '2025-01-15'
+        }
     ]
 
     db.insert_card_stats(sample_data)
