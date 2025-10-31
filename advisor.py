@@ -1530,6 +1530,23 @@ class GameStateManager:
         if unknown_bf > 0:
             warnings.append(f"{unknown_bf} unknown cards on battlefield")
 
+        # Card count consistency validation (from PR review)
+        if board_state.your_decklist:
+            total_deck_size = sum(board_state.your_decklist.values())
+
+            cards_accounted_for = (
+                len(board_state.your_hand) +
+                len(board_state.your_battlefield) +
+                len(board_state.your_graveyard) +
+                len(board_state.your_exile) +
+                board_state.your_library_count +
+                sum(1 for card in board_state.stack if card.owner_seat_id == board_state.your_seat_id)
+            )
+
+            # Allow for a small discrepancy, but flag major differences
+            if abs(total_deck_size - cards_accounted_for) > 2:
+                issues.append(f"Major card count mismatch: Deck has {total_deck_size} cards, but {cards_accounted_for} are accounted for.")
+
         # Only fail validation for critical issues
         # (currently none - we allow all states through)
         if issues:
