@@ -233,7 +233,7 @@ class LogFollower:
                     callback(stripped_line)
                 if line_count > 0:
                     print(f"[DEBUG] Processed {line_count} lines")
-                time.sleep(0.1)
+                time.sleep(0.05)
             except FileNotFoundError:
                 logging.warning(f"Log file not found at {self.log_path}. Waiting...")
                 time.sleep(5)
@@ -810,208 +810,106 @@ class MatchScanner:
 
         return state_changed
 
+try:
+    from scryfall_db import ScryfallDB
+    SCRYFALL_DB_AVAILABLE = True
+except ImportError:
+    SCRYFALL_DB_AVAILABLE = False
+    logging.warning("ScryfallDB not available. JSON cache will be used as a fallback.")
+
 # ----------------------------------------------------------------------------------
 # Part 4: Card ID Resolution (grpId to Card Name)
 # ----------------------------------------------------------------------------------
 
 class ArenaCardDatabase:
     """
-    Fast card lookup using Arena's local SQLite database.
-    Falls back to Scryfall API if database not found.
+    A unified card database that uses ScryfallDB for caching and lookups.
     """
-
-    def __init__(self, db_path: str = None, cache_file: str = "card_cache.json"):
-        self.db_path = db_path or detect_card_database_path()
-        self.cache_file = cache_file
+    def __init__(self, db_path: str = "data/scryfall_cache.db"):
+        if SCRYFALL_DB_AVAILABLE:
+            self.db = ScryfallDB(db_path)
+            logging.info(f"✓ Using ScryfallDB for card data at {db_path}")
+        else:
+            self.db = None
+            logging.warning("✗ ScryfallDB not found. Card lookups will be slower.")
         self.cache: Dict[int, dict] = {}
-        self.conn = None
-
-        # Try to connect to Arena database
-        if self.db_path and os.path.exists(self.db_path):
-            try:
-                import sqlite3
-                self.conn = sqlite3.connect(self.db_path)
-                logging.info(f"✓ Connected to Arena card database: {self.db_path}")
-                self._load_all_cards_into_cache()
-            except Exception as e:
-                logging.warning(f"Failed to open Arena database: {e}")
-                self.conn = None
-
-        # Fallback: Load from cache file
-        if not self.conn:
-            logging.warning("Arena database not available - using cache/Scryfall fallback")
-            self.load_cache()
-
-    def _load_all_cards_into_cache(self):
-        """
-        Pre-load ALL cards from Arena database into memory cache.
-        This is FAST - 21k cards load in ~100ms with 10MB RAM.
-        """
-        if not self.conn:
-            return
-
-        try:
-            cursor = self.conn.cursor()
-            # Use LEFT JOIN to include cards even without formatted localization
-            # Try formatted names first, fall back to any localization
-            cursor.execute("""
-                SELECT
-                    c.GrpId,
-                    COALESCE(l_fmt.Loc, l_any.Loc, 'Unknown') as Name,
-                    c.ExpansionCode,
-                    c.Rarity,
-                    c.Types,
-                    c.Subtypes,
-                    c.Power,
-                    c.Toughness
-                FROM Cards c
-                LEFT JOIN Localizations_enUS l_fmt ON c.TitleId = l_fmt.LocId AND l_fmt.Formatted = 1
-                LEFT JOIN Localizations_enUS l_any ON c.TitleId = l_any.LocId
-                WHERE c.IsToken = 0
-            """)
-
-            for row in cursor.fetchall():
-                grp_id = row[0]
-                self.cache[grp_id] = {
-                    "name": clean_card_name(row[1]),
-                    "set": row[2],
-                    "rarity": row[3],
-                    "types": row[4],
-                    "subtypes": row[5],
-                    "power": row[6],
-                    "toughness": row[7]
-                }
-
-            logging.info(f"✓ Loaded {len(self.cache)} cards from Arena database")
-
-            # Save to cache file for fast startup next time
-            self._save_cache()
-
-        except Exception as e:
-            logging.error(f"Error loading cards from database: {e}")
-
-    def load_cache(self):
-        """Load cards from cache file (fallback if DB not available)"""
-        if os.path.exists(self.cache_file):
-            try:
-                with open(self.cache_file, 'r', encoding='utf-8') as f:
-                    self.cache = {int(k): v for k, v in json.load(f).items()}
-                logging.info(f"Loaded {len(self.cache)} cards from cache file")
-            except Exception as e:
-                logging.warning(f"Could not load cache file: {e}")
 
     def get_card_name(self, grp_id: int) -> str:
-        """Get card name from grpId - instant lookup"""
-        if not grp_id:
-            return "Unknown Card"
-
-        if grp_id in self.cache:
-            return self.cache[grp_id].get("name", f"Unknown({grp_id})")
-
-        # Fallback to Scryfall API only if not in Arena DB
-        logging.warning(f"Card {grp_id} not in Arena database - fetching from Scryfall")
-        return self._fetch_from_scryfall(grp_id)
+        """Get card name from grpId."""
+        card_data = self.get_card_data(grp_id)
+        return card_data.get("name", f"Unknown({grp_id})") if card_data else f"Unknown({grp_id})"
 
     def get_card_data(self, grp_id: int) -> Optional[dict]:
-        """Get full card data including types, P/T, etc."""
+        """Get full card data from cache or database."""
+        if not grp_id:
+            return None
+
+        # Check in-memory cache first
         if grp_id in self.cache:
             return self.cache[grp_id]
-        return None
+
+        # If using ScryfallDB, check the database
+        if self.db:
+            card_data = self.db.get_card_by_grpId(grp_id)
+            if card_data:
+                self.cache[grp_id] = card_data
+                return card_data
+
+        # Fallback for when ScryfallDB is not available or fails
+        logging.warning(f"Card {grp_id} not in DB, fetching from Scryfall API.")
+        return self._fetch_from_scryfall_api(grp_id)
 
     def get_oracle_text(self, grp_id: int) -> str:
-        """Get oracle text for a card, fetching from Scryfall if needed."""
-        if not grp_id:
-            return ""
+        """Get oracle text for a card."""
+        card_data = self.get_card_data(grp_id)
+        return card_data.get("oracle_text", "") if card_data else ""
 
-        # Check if we already have oracle text
-        if grp_id in self.cache:
-            card_data = self.cache[grp_id]
-            if "oracle_text" in card_data and card_data["oracle_text"]:
-                return card_data["oracle_text"]
-
-            # Card is in cache but has no oracle text - fetch from Scryfall
-            card_name = card_data.get("name", "")
-            if card_name and not card_name.startswith("Unknown"):
-                logging.debug(f"Fetching oracle text for {card_name} (grpId {grp_id})")
-                self._enrich_with_scryfall(grp_id)
-                # Return newly fetched oracle text
-                return self.cache[grp_id].get("oracle_text", "")
-
-        return ""
-
-    def _enrich_with_scryfall(self, grp_id: int) -> bool:
-        """Enrich existing card data with Scryfall info (oracle text, etc.)"""
+    def _fetch_from_scryfall_api(self, grp_id: int) -> Optional[dict]:
+        """Directly fetch from Scryfall API as a last resort."""
         try:
             response = requests.get(f"https://api.scryfall.com/cards/arena/{grp_id}", timeout=5)
             if response.status_code == 200:
                 card_data = response.json()
-                # Update existing cache entry with new fields
-                if grp_id in self.cache:
-                    self.cache[grp_id]["oracle_text"] = card_data.get("oracle_text", "")
-                    self.cache[grp_id]["type_line"] = card_data.get("type_line", "")
-                    self.cache[grp_id]["mana_cost"] = card_data.get("mana_cost", "")
-                    self._save_cache()
-                    return True
-        except Exception as e:
-            logging.debug(f"Failed to enrich card {grp_id} from Scryfall: {e}")
-        return False
+                # Manually structure the data to match our DB schema
+                power = card_data.get('power')
+                toughness = card_data.get('toughness')
+                
+                try:
+                    power = int(power) if power else None
+                except (ValueError, TypeError):
+                    power = None
+                
+                try:
+                    toughness = int(toughness) if toughness else None
+                except (ValueError, TypeError):
+                    toughness = None
 
-    def _fetch_from_scryfall(self, grp_id: int) -> str:
-        """Fallback to Scryfall API (original implementation)"""
-        try:
-            response = requests.get(f"https://api.scryfall.com/cards/arena/{grp_id}", timeout=5)
-            if response.status_code == 200:
-                card_data = response.json()
-                self.cache[grp_id] = {
+                structured_data = {
+                    "grpId": grp_id,
                     "name": clean_card_name(card_data.get("name", f"Unknown({grp_id})")),
-                    "set": card_data.get("set", ""),
-                    "rarity": card_data.get("rarity", ""),
+                    "set_code": card_data.get("set"),
+                    "rarity": card_data.get("rarity"),
+                    "types": ", ".join(card_data.get("type_line", "").split(" — ")[0].split()),
+                    "subtypes": ", ".join(card_data.get("type_line", "").split(" — ")[1].split()) if " — " in card_data.get("type_line", "") else "",
+                    "power": power,
+                    "toughness": toughness,
                     "oracle_text": card_data.get("oracle_text", ""),
                     "type_line": card_data.get("type_line", ""),
                     "mana_cost": card_data.get("mana_cost", ""),
                 }
-                self._save_cache()
-                return self.cache[grp_id]["name"]
-            else:
-                # Cache the failed lookup to avoid repeated API calls
-                logging.warning(f"Card {grp_id} not found in Scryfall (status {response.status_code})")
-                self.cache[grp_id] = {
-                    "name": f"Unknown({grp_id})",
-                    "set": "",
-                    "rarity": "",
-                    "oracle_text": "",
-                    "type_line": "",
-                    "mana_cost": "",
-                }
-                self._save_cache()
-                return self.cache[grp_id]["name"]
-        except Exception as e:
+                self.cache[grp_id] = structured_data
+                return structured_data
+        except requests.exceptions.RequestException as e:
             logging.error(f"Scryfall API error for grpId {grp_id}: {e}")
-            # Cache the error to avoid repeated failed requests
-            self.cache[grp_id] = {
-                "name": f"Unknown({grp_id})",
-                "set": "",
-                "rarity": "",
-                "oracle_text": "",
-                "type_line": "",
-                "mana_cost": "",
-            }
-            self._save_cache()
-
-        return f"Unknown({grp_id})"
-
-    def _save_cache(self):
-        """Save cache to disk"""
-        try:
-            with open(self.cache_file, 'w', encoding='utf-8') as f:
-                json.dump(self.cache, f)
-        except Exception as e:
-            logging.error(f"Failed to save cache: {e}")
+        
+        # Cache failure to prevent repeated API calls
+        self.cache[grp_id] = {"name": f"Unknown({grp_id})"}
+        return self.cache[grp_id]
 
     def close(self):
-        """Clean up database connection"""
-        if self.conn:
-            self.conn.close()
+        """Close the database connection."""
+        if self.db:
+            self.db.close()
 
 # ----------------------------------------------------------------------------------
 # Part 5: Building Board State for AI
@@ -1021,7 +919,7 @@ class GameStateManager:
     def __init__(self, card_lookup: ArenaCardDatabase):
         self.scanner = MatchScanner()
         self.card_lookup = card_lookup
-        self._line_buffer: List[str] = []
+        self._json_buffer: str = ""
         self._json_depth: int = 0
 
         # Draft event detection
@@ -1287,52 +1185,36 @@ class GameStateManager:
 
             return False  # Draft events don't change game state
 
-        # Phase 3: Check for deck submission (comes before match starts)
-        if "deckMessage" in line or "GREMessageType_ConnectResp" in line or "Event_Join" in line or "DeckSubmitList" in line:
-            self._line_buffer = []
-            self._json_depth = 0
-            logging.debug("Detected deck submission message. Resetting buffer.")
+        # If we are not building a JSON object, look for the start
+        if self._json_depth == 0:
+            json_start_index = line.find('{')
+            if json_start_index == -1:
+                return False  # Not in an object and no new one starts, so skip.
+            
+            # Start of a new JSON object
+            line_content = line[json_start_index:]
+            self._json_buffer = line_content
+            self._json_depth = line_content.count('{') - line_content.count('}')
+        else:
+            # We are in the middle of a JSON object, append the new line
+            self._json_buffer += line
+            self._json_depth += line.count('{') - line.count('}')
 
-        # Phase 3: Check for UX events (scry, surveil, etc.)
-        if "UIMessage" in line or "UXEventData" in line or "ScryResultData" in line:
-            self._line_buffer = []
-            self._json_depth = 0
-            logging.debug("Detected UX event message. Resetting buffer.")
-
-        # If a line contains "GreToClientEvent", it's the start of a new event.
-        # Clear the buffer and reset depth, then process this line.
-        if "GreToClientEvent" in line:
-            self._line_buffer = []
-            self._json_depth = 0
-            logging.debug("Detected 'GreToClientEvent' in line. Resetting buffer.")
-
-        # Append the current line to the buffer
-        self._line_buffer.append(line)
-
-        # Update JSON depth
-        self._json_depth += line.count('{')
-        self._json_depth -= line.count('}')
-
-        # If depth goes negative, we joined mid-stream - silently reset
+        # Check for malformed JSON (more closing than opening braces)
         if self._json_depth < 0:
-            logging.debug(f"JSON depth negative ({self._json_depth}), likely joined mid-stream. Resetting buffer.")
-            self._line_buffer = []
+            logging.warning(f"JSON depth is negative ({self._json_depth}). Buffer corrupted, resetting.")
+            self._json_buffer = ""
             self._json_depth = 0
             return False
 
-        # If depth is 0 and buffer is not empty, we might have a complete JSON object
-        if self._json_depth == 0 and self._line_buffer:
-            full_json_str = "".join(self._line_buffer)
-            self._line_buffer = [] # Clear buffer after attempting to process
-
-            # Find the start of the JSON object
-            json_start = full_json_str.find("{")
-            if json_start == -1:
-                logging.debug("No JSON object start found in buffered lines.")
-                return False
-
+        # If we have a complete object, parse it
+        if self._json_depth == 0 and self._json_buffer:
+            # Make a copy to parse and clear the instance buffer immediately
+            json_to_parse = self._json_buffer
+            self._json_buffer = ""
+            
             try:
-                parsed_data = json.loads(full_json_str[json_start:])
+                parsed_data = json.loads(json_to_parse)
 
                 # Parse deck submission (but don't return - let GRE event processing continue)
                 # This is important because GRE event processing sets local_player_seat_id
@@ -1351,7 +1233,8 @@ class GameStateManager:
                     logging.debug("Parsed JSON but 'greToClientEvent' not found within the object.")
                     return False
             except json.JSONDecodeError as e:
-                logging.debug(f"JSON parsing failed for buffered lines. Error: {e}. Content: {full_json_str[:200]}...")
+                logging.debug(f"JSON parsing failed for buffered content. Error: {e}. Content: {json_to_parse[:200]}...")
+                # Buffer is already cleared, so we are ready for the next object.
                 return False
 
         return False
@@ -1530,8 +1413,24 @@ class GameStateManager:
         if unknown_bf > 0:
             warnings.append(f"{unknown_bf} unknown cards on battlefield")
 
+        # Card count consistency validation (from PR review)
+        if board_state.your_decklist:
+            total_deck_size = sum(board_state.your_decklist.values())
+
+            cards_accounted_for = (
+                len(board_state.your_hand) +
+                len(board_state.your_battlefield) +
+                len(board_state.your_graveyard) +
+                len(board_state.your_exile) +
+                board_state.your_library_count +
+                sum(1 for card in board_state.stack if card.owner_seat_id == board_state.your_seat_id)
+            )
+
+            # Allow for a small discrepancy, but flag major differences
+            if abs(total_deck_size - cards_accounted_for) > 2:
+                issues.append(f"Major card count mismatch: Deck has {total_deck_size} cards, but {cards_accounted_for} are accounted for.")
+
         # Only fail validation for critical issues
-        # (currently none - we allow all states through)
         if issues:
             logging.warning(f"Board state validation FAILED: {', '.join(issues)}")
             return False
@@ -4834,53 +4733,55 @@ Provide a concise answer (1-2 sentences) based on the board state.
             self._output(f"🔴 Alert: {final_text}", "red")
 
     def _generate_mulligan_advice(self, board_state: BoardState):
-        """Generate and speak advice for mulligan decision"""
+        """Generate and speak advice for mulligan decision, enhanced with 17lands data."""
         self._output("\n🎴 MULLIGAN DECISION", "cyan")
-        self._output("Analyzing your opening hand...\n", "cyan")
+        self._output("Analyzing your opening hand with 17lands data...\n", "cyan")
 
-        # Build mulligan-specific prompt
         if not board_state.your_hand:
             self._output("⚠ No hand visible yet - waiting for cards...", "yellow")
             return
 
-        hand_cards = [card.name for card in board_state.your_hand]
+        hand_cards_with_stats = []
+        total_oh_wr = 0
+        cards_with_stats_count = 0
+
+        for card in board_state.your_hand:
+            stats = self.ai_advisor.rag_system.card_stats.get_card_stats(card.name) if self.ai_advisor.rag_system else None
+            oh_wr = stats.get('opening_hand_win_rate', 0.0) if stats else 0.0
+            if oh_wr > 0:
+                total_oh_wr += oh_wr
+                cards_with_stats_count += 1
+            hand_cards_with_stats.append(f"{card.name} (OH WR: {oh_wr:.1%})")
+        
+        avg_oh_wr = total_oh_wr / cards_with_stats_count if cards_with_stats_count > 0 else 0.0
+
         deck_strategy = ""
-
-        # Analyze deck composition to understand strategy
         if board_state.your_decklist:
-            # Count land distribution
-            total_lands = sum(count for name, count in board_state.your_decklist.items() if "Land" in name or "Forest" in name or "Plains" in name or "Island" in name or "Mountain" in name or "Swamp" in name)
-            total_spells = sum(count for name, count in board_state.your_decklist.items()) - total_lands
+            total_lands = sum(count for name, count in board_state.your_decklist.items() if "Land" in name or any(lt in name for lt in ["Forest", "Plains", "Island", "Mountain", "Swamp"]))
+            total_spells = sum(board_state.your_decklist.values()) - total_lands
+            key_cards = [f"{name} (x{count})" for name, count in list(board_state.your_decklist.items())[:5] if "Land" not in name]
+            deck_strategy = f"Your deck has {total_lands} lands and {total_spells} spells. Key cards: {', '.join(key_cards)}."
 
-            # Find key cards in deck
-            key_cards = []
-            for name, count in list(board_state.your_decklist.items())[:5]:  # First 5 unique cards
-                if "Land" not in name:
-                    key_cards.append(f"{name} (x{count})")
+        mulligan_prompt = f"""You are analyzing an opening hand in Magic: The Gathering.
 
-            deck_strategy = f"Your deck has {total_lands} lands and {total_spells} spells. Key cards include: {', '.join(key_cards)}."
+OPENING HAND ({len(board_state.your_hand)} cards):
+{', '.join(hand_cards_with_stats)}
 
-        mulligan_prompt = f"""You are analyzing an opening hand in Magic: The Gathering for a mulligan decision.
-
-OPENING HAND ({len(hand_cards)} cards):
-{', '.join(hand_cards)}
+HAND ANALYSIS:
+- Average Opening Hand Win Rate (OH WR): {avg_oh_wr:.1%} (based on 17lands data)
+- A good hand is typically >55% OH WR. A hand below 50% is often a mulligan.
 
 DECK INFORMATION:
-{deck_strategy if deck_strategy else "Deck information not available."}
+{deck_strategy or "Deck information not available."}
 
 MULLIGAN DECISION CRITERIA:
-1. Land count: Typically need 2-4 lands in a 7-card hand
-2. Curve: Can you play spells on turns 1-3?
-3. Synergy: Do cards work together?
-4. Threats/Answers: Do you have ways to win or respond to opponent?
+1. Land count: Is it between 2-4 for a 7-card hand?
+2. Data-driven advice: Is the average OH WR acceptable?
+3. Curve & Synergy: Can you make plays in the early turns?
 
-IMPORTANT: Be decisive and clear. Provide a YES/NO recommendation.
-
-Should the player mulligan this hand? Respond with:
-- KEEP if this is a reasonable hand
-- MULLIGAN if this hand is too weak
-
-Then explain briefly why (2-3 sentences)."""
+Based on all this information, should the player mulligan? Respond with:
+- KEEP: [Explain why in 1-2 sentences]
+- MULLIGAN: [Explain why in 1-2 sentences]"""
 
         try:
             advice = self.ai_advisor.client.generate(mulligan_prompt)

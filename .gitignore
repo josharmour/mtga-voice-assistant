@@ -16,8 +16,6 @@ logs/
 data/chromadb/
 data/card_stats.db
 data/card_metadata.db
-card_cache.json
-card_cache.json.backup
 
 # Bug reports
 bug_reports/
