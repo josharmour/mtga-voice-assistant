@@ -157,6 +157,13 @@ def test_grade_calculation():
 
     from draft_advisor import DraftAdvisor
 
+    # Mock card_db since it's required by the constructor
+    class MockCardDB:
+        def get_card_name(self, grp_id):
+            return "Mock Card"
+
+    draft_advisor = DraftAdvisor(MockCardDB())
+
     # Test score to grade mapping
     test_scores = [99.5, 95.5, 90.5, 85.5, 76.5, 68.5, 57.5, 45.5, 36.5, 27.5, 17.5, 5.5, 2.0]
 
