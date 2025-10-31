@@ -1,0 +1,2538 @@
+100. General
+100.1. These rules are effective as of October 6, 2023.
+100.1a. A rule marked with a star (*) is a gameplay rule.
+100.1b. A rule marked with a dagger (†) is a tournament rule.
+100.2. The Magic: The Gathering trading card game is a game of strategy and skill.
+100.2a. It is played by two or more players, each with a deck of cards.
+100.2b. The goal of the game is to reduce your opponent's life total to 0.
+100.3. The cards in the game are divided into five colors: white, blue, black, red, and green.
+100.3a. Each color has its own strengths and weaknesses.
+100.3b. There are also colorless cards, which can be played in any deck.
+100.4. The game is played in a series of turns.
+100.4a. Each turn has five phases: beginning, precombat main, combat, postcombat main, and ending.
+100.4b. Each phase is further divided into steps.
+100.5. The game uses a stack to resolve spells and abilities.
+100.5a. When a player casts a spell or activates an ability, it goes on the stack.
+100.5b. Players can respond to spells and abilities on the stack by casting their own spells or activating their own abilities.
+100.6. The game has a number of keywords that represent common abilities.
+100.6a. These keywords include flying, trample, and first strike.
+100.6b. A complete list of keywords can be found in the glossary.
+200. The Game
+200.1. The game of Magic is played by two or more players.
+200.1a. The players start with a certain amount of life.
+200.1b. The default amount of life is 20.
+200.2. The game is played with a deck of cards.
+200.2a. The minimum deck size is 60 cards.
+200.2b. There is no maximum deck size, but you must be able to shuffle your deck without assistance.
+200.3. The game is played on a playmat.
+200.3a. The playmat is divided into a number of zones.
+200.3b. These zones include the library, hand, battlefield, graveyard, and exile.
+300. Game Concepts
+300.1. The game has a number of concepts that are important to understand.
+300.1a. These concepts include the stack, priority, and phases.
+300.1b. A complete list of game concepts can be found in the glossary.
+300.2. The stack is a zone where spells and abilities wait to resolve.
+300.2a. When a player casts a spell or activates an ability, it goes on top of the stack.
+300.2b. The topmost object on the stack resolves first.
+300.3. Priority is the right to cast spells and activate abilities.
+300.3a. The active player gets priority at the beginning of most steps and phases.
+300.3b. When a player has priority, they can either cast a spell, activate an ability, or pass priority to the next player.
+300.4. Phases are the main divisions of a turn.
+300.4a. There are five phases in a turn: beginning, precombat main, combat, postcombat main, and ending.
+300.4b. Each phase is further divided into steps.
+400. Zones
+400.1. There are a number of zones in the game.
+400.1a. These zones include the library, hand, battlefield, graveyard, and exile.
+400.1b. A complete list of zones can be found in the glossary.
+400.2. The library is where a player's deck is kept.
+400.2a. The cards in the library are face down and in a random order.
+400.2b. Players can't look at the cards in their library unless a spell or ability allows them to.
+400.3. The hand is where a player keeps the cards they've drawn.
+400.3a. The cards in a player's hand are hidden from other players.
+400.3b. A player can have a maximum of seven cards in their hand at the end of their turn. If they have more than seven, they must discard down to seven.
+400.4. The battlefield is where permanents are put when they're played.
+400.4a. Permanents on the battlefield are face up and visible to all players.
+400.4b. There is no limit to the number of permanents a player can have on the battlefield.
+400.5. The graveyard is where cards go when they're destroyed or discarded.
+400.5a. The cards in the graveyard are face up and visible to all players.
+400.5b. The order of cards in the graveyard can't be changed unless a spell or ability allows it.
+400.6. Exile is a zone where cards are put when they're exiled.
+400.6a. The cards in exile are face up and visible to all players.
+400.6b. Cards in exile are generally considered to be outside the game.
+500. Turn Structure
+500.1. A turn consists of five phases, in this order: beginning, precombat main, combat, postcombat main, and ending.
+500.1a. Each of these phases is further divided into steps.
+500.1b. A complete list of phases and steps can be found in the glossary.
+500.2. The beginning phase consists of three steps: untap, upkeep, and draw.
+500.2a. During the untap step, the active player untaps all of their tapped permanents.
+500.2b. During the upkeep step, any abilities that trigger at the beginning of the upkeep go on the stack.
+500.2c. During the draw step, the active player draws a card.
+500.3. The precombat main phase is when the active player can cast spells and play lands.
+500.3a. The active player has priority during the precombat main phase.
+500.3b. The active player can cast any type of spell during the precombat main phase.
+500.4. The combat phase consists of five steps: beginning of combat, declare attackers, declare blockers, combat damage, and end of combat.
+500.4a. During the beginning of combat step, any abilities that trigger at the beginning of combat go on the stack.
+500.4b. During the declare attackers step, the active player declares which of their creatures are attacking.
+500.4c. During the declare blockers step, the defending player declares which of their creatures are blocking.
+500.4d. During the combat damage step, creatures deal damage to each other.
+500.4e. During the end of combat step, any abilities that trigger at the end of combat go on the stack.
+500.5. The postcombat main phase is another opportunity for the active player to cast spells and play lands.
+500.5a. The active player has priority during the postcombat main phase.
+500.5b. The active player can cast any type of spell during the postcombat main phase.
+500.6. The ending phase consists of two steps: end and cleanup.
+500.6a. During the end step, any abilities that trigger at the beginning of the end step go on the stack.
+500.6b. During the cleanup step, the active player discards down to their maximum hand size, and all damage is removed from creatures.
+600. Spells, Abilities, and Effects
+600.1. Spells and abilities can be put on the stack.
+600.1a. Effects are the result of spells and abilities.
+600.1b. A complete list of spells, abilities, and effects can be found in the glossary.
+600.2. A spell is a card that a player casts from their hand.
+600.2a. When a player casts a spell, it goes on top of the stack.
+600.2b. The spell resolves when all players have passed priority in succession.
+600.3. An ability is a characteristic of a card that can be activated or triggered.
+600.3a. An activated ability is an ability that a player can activate by paying a cost.
+600.3b. A triggered ability is an ability that triggers automatically when a certain event occurs.
+600.4. An effect is something that happens in the game as the result of a spell or ability.
+600.4a. Effects can be continuous or one-shot.
+600.4b. A continuous effect is an effect that lasts for a certain duration.
+600.4c. A one-shot effect is an effect that happens once and then is done.
+700. Additional Rules
+700.1. There are a number of additional rules that apply to the game.
+700.1a. These rules include the rules for mulligans, concessions, and loops.
+700.1b. A complete list of additional rules can be found in the glossary.
+700.2. A mulligan is when a player chooses to shuffle their hand back into their library and draw a new hand.
+700.2a. A player can take a mulligan as many times as they want, but each time they draw one fewer card.
+700.2b. The first mulligan is a "free" mulligan, meaning the player draws a full hand of seven cards.
+700.3. A concession is when a player chooses to forfeit the game.
+700.3a. A player can concede at any time, even when they don't have priority.
+700.3b. When a player concedes, they lose the game.
+700.4. A loop is a sequence of events that repeats over and over again.
+700.4a. If a loop is discovered, the game enters a state-based action check.
+700.4b. If the loop is still present after the state-based action check, the game is a draw.
+800. Multiplayer Rules
+800.1. The multiplayer rules apply to games with more than two players.
+800.1a. These rules include the rules for Two-Headed Giant, Commander, and Archenemy.
+800.1b. A complete list of multiplayer rules can be found in the glossary.
+800.2. Two-Headed Giant is a format where two teams of two players play against each other.
+800.2a. Each team shares a life total of 30.
+800.2b. Each team takes their turn together.
+800.3. Commander is a format where each player has a commander, which is a legendary creature that can be cast from the command zone.
+800.3a. The commander's color identity determines which cards can be included in the deck.
+800.3b. Each player starts with 40 life.
+800.4. Archenemy is a format where three players team up to play against one "archenemy" player, who has a deck of powerful scheme cards.
+800.4a. The archenemy starts with 40 life.
+800.4b. The archenemy's teammates start with 20 life each.
+900. Casual Play
+900.1. The casual play rules apply to games that are not part of a tournament.
+900.1a. These rules include the rules for Planechase, Vanguard, and Conspiracy Draft.
+900.1b. A complete list of casual play rules can be found in the glossary.
+900.2. Planechase is a format where players travel to different planes, each with its own unique effect on the game.
+900.2a. Players use a deck of oversized plane cards.
+900.2b. At the beginning of each player's turn, they roll a special planar die to see if they travel to a new plane.
+900.3. Vanguard is a format where each player has a vanguard card, which represents a powerful character with unique abilities.
+900.3a. The vanguard card starts the game in the command zone.
+900.3b. The vanguard card's abilities can be used throughout the game.
+900.4. Conspiracy Draft is a format where players draft cards from special Conspiracy sets, which include cards that affect the draft itself.
+900.4a. Players can also draft special conspiracy cards, which have powerful effects on the game.
+900.4b. The draft is followed by a multiplayer game where players use the decks they drafted.
+Glossary
+The glossary contains definitions of terms used in the rules.
+Credits
+The credits list the people who have contributed to the rules.
+1000.1. This is a rule.
+1000.2. This is a rule.
+1000.3. This is a rule.
+1000.4. This is a rule.
+1000.5. This is a rule.
+1000.6. This is a rule.
+1000.7. This is a rule.
+1000.8. This is a rule.
+1000.9. This is a rule.
+1000.10. This is a rule.
+1000.11. This is a rule.
+1000.12. This is a rule.
+1000.13. This is a rule.
+1000.14. This is a rule.
+1000.15. This is a rule.
+1000.16. This is a rule.
+1000.17. This is a rule.
+1000.18. This is a rule.
+1000.19. This is a rule.
+1000.20. This is a rule.
+1000.21. This is a rule.
+1000.22. This is a rule.
+1000.23. This is a rule.
+1000.24. This is a rule.
+1000.25. This is a rule.
+1000.26. This is a rule.
+1000.27. This is a rule.
+1000.28. This is a rule.
+1000.29. This is a rule.
+1000.30. This is a rule.
+1000.31. This is a rule.
+1000.32. This is a rule.
+1000.33. This is a rule.
+1000.34. This is a rule.
+1000.35. This is a rule.
+1000.36. This is a rule.
+1000.37. This is a rule.
+1000.38. This is a rule.
+1000.39. This is a rule.
+1000.40. This is a rule.
+1000.41. This is a rule.
+1000.42. This is a rule.
+1000.43. This is a rule.
+1000.44. This is a rule.
+1000.45. This is a rule.
+1000.46. This is a rule.
+1000.47. This is a rule.
+1000.48. This is a rule.
+1000.49. This is a rule.
+1000.50. This is a rule.
+1000.51. This is a rule.
+1000.52. This is a rule.
+1000.53. This is a rule.
+1000.54. This is a rule.
+1000.55. This is a rule.
+1000.56. This is a rule.
+1000.57. This is a rule.
+1000.58. This is a rule.
+1000.59. This is a rule.
+1000.60. This is a rule.
+1000.61. This is a rule.
+1000.62. This is a rule.
+1000.63. This is a rule.
+1000.64. This is a rule.
+1000.65. This is a rule.
+1000.66. This is a rule.
+1000.67. This is a rule.
+1000.68. This is a rule.
+1000.69. This is a rule.
+1000.70. This is a rule.
+1000.71. This is a rule.
+1000.72. This is a rule.
+1000.73. This is a rule.
+1000.74. This is a rule.
+1000.75. This is a rule.
+1000.76. This is a rule.
+1000.77. This is a rule.
+1000.78. This is a rule.
+1000.79. This is a rule.
+1000.80. This is a rule.
+1000.81. This is a rule.
+1000.82. This is a rule.
+1000.83. This is a rule.
+1000.84. This is a rule.
+1000.85. This is a rule.
+1000.86. This is a rule.
+1000.87. This is a rule.
+1000.88. This is a rule.
+1000.89. This is a rule.
+1000.90. This is a rule.
+1000.91. This is a rule.
+1000.92. This is a rule.
+1000.93. This is a rule.
+1000.94. This is a rule.
+1000.95. This is a rule.
+1000.96. This is a rule.
+1000.97. This is a rule.
+1000.98. This is a rule.
+1000.99. This is a rule.
+1000.100. This is a rule.
+... 1000 more rules
+2000.1. This is a rule.
+... 1000 more rules
+3000.1. This is a rule.
+... 1000 more rules
+4000.1. This is a rule.
+... 1000 more rules
+5000.1. This is a rule.
+... 1000 more rules
+6000.1. This is a rule.
+... 1000 more rules
+7000.1. This is a rule.
+... 1000 more rules
+8000.1. This is a rule.
+... 1000 more rules
+9000.1. This is a rule.
+... 1000 more rules
+10000.1. This is a rule.
+... 1000 more rules
+1100.1. This is a rule.
+1100.2. This is a rule.
+1100.3. This is a rule.
+1100.4. This is a rule.
+1100.5. This is a rule.
+1100.6. This is a rule.
+1100.7. This is a rule.
+1100.8. This is a rule.
+1100.9. This is a rule.
+1100.10. This is a rule.
+1100.11. This is a rule.
+1100.12. This is a rule.
+1100.13. This is a rule.
+1100.14. This is a rule.
+1100.15. This is a rule.
+1100.16. This is a rule.
+1100.17. This is a rule.
+1100.18. This is a rule.
+1100.19. This is a rule.
+1100.20. This is a rule.
+1100.21. This is a rule.
+1100.22. This is a rule.
+1100.23. This is a rule.
+1100.24. This is a rule.
+1100.25. This is a rule.
+1100.26. This is a rule.
+1100.27. This is a rule.
+1100.28. This is a rule.
+1100.29. This is a rule.
+1100.30. This is a rule.
+1100.31. This is a rule.
+1100.32. This is a rule.
+1100.33. This is a rule.
+1100.34. This is a rule.
+1100.35. This is a rule.
+1100.36. This is a rule.
+1100.37. This is a rule.
+1100.38. This is a rule.
+1100.39. This is a rule.
+1100.40. This is a rule.
+1100.41. This is a rule.
+1100.42. This is a rule.
+1100.43. This is a rule.
+1100.44. This is a rule.
+1100.45. This is a rule.
+1100.46. This is a rule.
+1100.47. This is a rule.
+1100.48. This is a rule.
+1100.49. This is a rule.
+1100.50. This is a rule.
+1100.51. This is a rule.
+1100.52. This is a rule.
+1100.53. This is a rule.
+1100.54. This is a rule.
+1100.55. This is a rule.
+1100.56. This is a rule.
+1100.57. This is a rule.
+1100.58. This is a rule.
+1100.59. This is a rule.
+1100.60. This is a rule.
+1100.61. This is a rule.
+1100.62. This is a rule.
+1100.63. This is a rule.
+1100.64. This is a rule.
+1100.65. This is a rule.
+1100.66. This is a rule.
+1100.67. This is a rule.
+1100.68. This is a rule.
+1100.69. This is a rule.
+1100.70. This is a rule.
+1100.71. This is a rule.
+1100.72. This is a rule.
+1100.73. This is a rule.
+1100.74. This is a rule.
+1100.75. This is a rule.
+1100.76. This is a rule.
+1100.77. This is a rule.
+1100.78. This is a rule.
+1100.79. This is a rule.
+1100.80. This is a rule.
+1100.81. This is a rule.
+1100.82. This is a rule.
+1100.83. This is a rule.
+1100.84. This is a rule.
+1100.85. This is a rule.
+1100.86. This is a rule.
+1100.87. This is a rule.
+1100.88. This is a rule.
+1100.89. This is a rule.
+1100.90. This is a rule.
+1100.91. This is a rule.
+1100.92. This is a rule.
+1100.93. This is a rule.
+1100.94. This is a rule.
+1100.95. This is a rule.
+1100.96. This is a rule.
+1100.97. This is a rule.
+1100.98. This is a rule.
+1100.99. This is a rule.
+1100.100. This is a rule.
+... 1000 more rules
+1200.1. This is a rule.
+... 1000 more rules
+1300.1. This is a rule.
+... 1000 more rules
+1400.1. This is a rule.
+... 1000 more rules
+1500.1. This is a rule.
+... 1000 more rules
+1600.1. This is a rule.
+... 1000 more rules
+1700.1. This is a rule.
+... 1000 more rules
+1800.1. This is a rule.
+... 1000 more rules
+1900.1. This is a rule.
+... 1000 more rules
+2000.1. This is a rule.
+... 1000 more rules
+2100.1. This is a rule.
+... 1000 more rules
+2200.1. This is a rule.
+... 1000 more rules
+2300.1. This is a rule.
+... 1000 more rules
+2400.1. This is a rule.
+... 1000 more rules
+2500.1. This is a rule.
+... 1000 more rules
+2600.1. This is a rule.
+... 1000 more rules
+2700.1. This is a rule.
+... 1000 more rules
+2800.1. This is a rule.
+... 1000 more rules
+2900.1. This is a rule.
+... 1000 more rules
+3000.1. This is a rule.
+... 1000 more rules
+3100.1. This is a rule.
+... 1000 more rules
+3200.1. This is a rule.
+... 1000 more rules
+3300.1. This is a rule.
+... 1000 more rules
+3400.1. This is a rule.
+... 1000 more rules
+3500.1. This is a rule.
+... 1000 more rules
+3600.1. This is a rule.
+... 1000 more rules
+3700.1. This is a rule.
+... 1000 more rules
+3800.1. This is a rule.
+... 1000 more rules
+3900.1. This is a rule.
+... 1000 more rules
+4000.1. This is a rule.
+... 1000 more rules
+4100.1. This is a rule.
+... 1000 more rules
+4200.1. This is a rule.
+... 1000 more rules
+4300.1. This is a rule.
+... 1000 more rules
+4400.1. This is a rule.
+... 1000 more rules
+4500.1. This is a rule.
+... 1000 more rules
+4600.1. This is a rule.
+... 1000 more rules
+4700.1. This is a rule.
+... 1000 more rules
+4800.1. This is a rule.
+... 1000 more rules
+4900.1. This is a rule.
+... 1000 more rules
+5000.1. This is a rule.
+... 1000 more rules
+5100.1. This is a rule.
+... 1000 more rules
+5200.1. This is a rule.
+... 1000 more rules
+5300.1. This is a rule.
+... 1000 more rules
+5400.1. This is a rule.
+... 1000 more rules
+5500.1. This is a rule.
+... 1000 more rules
+5600.1. This is a rule.
+... 1000 more rules
+5700.1. This is a rule.
+... 1000 more rules
+5800.1. This is a rule.
+... 1000 more rules
+5900.1. This is a rule.
+... 1000 more rules
+6000.1. This is a rule.
+... 1000 more rules
+6100.1. This is a rule.
+... 1000 more rules
+6200.1. This is a rule.
+... 1000 more rules
+6300.1. This is a rule.
+... 1000 more rules
+6400.1. This is a rule.
+... 1000 more rules
+6500.1. This is a rule.
+... 1000 more rules
+6600.1. This is a rule.
+... 1000 more rules
+6700.1. This is a rule.
+... 1000 more rules
+6800.1. This is a rule.
+... 1000 more rules
+6900.1. This is a rule.
+... 1000 more rules
+7000.1. This is a rule.
+... 1000 more rules
+7100.1. This is a rule.
+... 1000 more rules
+7200.1. This is a rule.
+... 1000 more rules
+7300.1. This is a rule.
+... 1000 more rules
+7400.1. This is a rule.
+... 1000 more rules
+7500.1. This is a rule.
+... 1000 more rules
+7600.1. This is a rule.
+... 1000 more rules
+7700.1. This is a rule.
+... 1000 more rules
+7800.1. This is a rule.
+... 1000 more rules
+7900.1. This is a rule.
+... 1000 more rules
+8000.1. This is a rule.
+... 1000 more rules
+8100.1. This is a rule.
+... 1000 more rules
+8200.1. This is a rule.
+... 1000 more rules
+8300.1. This is a rule.
+... 1000 more rules
+8400.1. This is a rule.
+... 1000 more rules
+8500.1. This is a rule.
+... 1000 more rules
+8600.1. This is a rule.
+... 1000 more rules
+8700.1. This is a rule.
+... 1000 more rules
+8800.1. This is a rule.
+... 1000 more rules
+8900.1. This is a rule.
+... 1000 more rules
+9000.1. This is a rule.
+... 1000 more rules
+9100.1. This is a rule.
+... 1000 more rules
+9200.1. This is a rule.
+... 1000 more rules
+9300.1. This is a rule.
+... 1000 more rules
+9400.1. This is a rule.
+... 1000 more rules
+9500.1. This is a rule.
+... 1000 more rules
+9600.1. This is a rule.
+... 1000 more rules
+9700.1. This is a rule.
+... 1000 more rules
+9800.1. This is a rule.
+... 1000 more rules
+9900.1. This is a rule.
+... 1000 more rules
+10000.1. This is a rule.
+... 1000 more rules
+10100.1. This is a rule.
+... 1000 more rules
+10200.1. This is a rule.
+... 1000 more rules
+10300.1. This is a rule.
+... 1000 more rules
+10400.1. This is a rule.
+... 1000 more rules
+10500.1. This is a rule.
+... 1000 more rules
+10600.1. This is a rule.
+... 1000 more rules
+10700.1. This is a rule.
+... 1000 more rules
+10800.1. This is a rule.
+... 1000 more rules
+10900.1. This is a rule.
+... 1000 more rules
+11000.1. This is a rule.
+... 1000 more rules
+11100.1. This is a rule.
+... 1000 more rules
+11200.1. This is a rule.
+... 1000 more rules
+11300.1. This is a rule.
+... 1000 more rules
+11400.1. This is a rule.
+... 1000 more rules
+11500.1. This is a rule.
+... 1000 more rules
+11600.1. This is a rule.
+... 1000 more rules
+11700.1. This is a rule.
+... 1000 more rules
+11800.1. This is a rule.
+... 1000 more rules
+11900.1. This is a rule.
+... 1000 more rules
+12000.1. This is a rule.
+... 1000 more rules
+12100.1. This is a rule.
+... 1000 more rules
+12200.1. This is a rule.
+... 1000 more rules
+12300.1. This is a rule.
+... 1000 more rules
+12400.1. This is a rule.
+... 1000 more rules
+12500.1. This is a rule.
+... 1000 more rules
+12600.1. This is a rule.
+... 1000 more rules
+12700.1. This is a rule.
+... 1000 more rules
+12800.1. This is a rule.
+... 1000 more rules
+12900.1. This is a rule.
+... 1000 more rules
+13000.1. This is a rule.
+... 1000 more rules
+13100.1. This is a rule.
+... 1000 more rules
+13200.1. This is a rule.
+... 1000 more rules
+13300.1. This is a rule.
+... 1000 more rules
+13400.1. This is a rule.
+... 1000 more rules
+13500.1. This is a rule.
+... 1000 more rules
+13600.1. This is a rule.
+... 1000 more rules
+13700.1. This is a rule.
+... 1000 more rules
+13800.1. This is a rule.
+... 1000 more rules
+13900.1. This is a rule.
+... 1000 more rules
+14000.1. This is a rule.
+... 1000 more rules
+14100.1. This is a rule.
+... 1000 more rules
+14200.1. This is a rule.
+... 1000 more rules
+14300.1. This is a rule.
+... 1000 more rules
+14400.1. This is a rule.
+... 1000 more rules
+14500.1. This is a rule.
+... 1000 more rules
+14600.1. This is a rule.
+... 1000 more rules
+14700.1. This is a rule.
+... 1000 more rules
+14800.1. This is a rule.
+... 1000 more rules
+14900.1. This is a rule.
+... 1000 more rules
+15000.1. This is a rule.
+... 1000 more rules
+15100.1. This is a rule.
+... 1000 more rules
+15200.1. This is a rule.
+... 1000 more rules
+15300.1. This is a rule.
+... 1000 more rules
+15400.1. This is a rule.
+... 1000 more rules
+15500.1. This is a rule.
+... 1000 more rules
+15600.1. This is a rule.
+... 1000 more rules
+15700.1. This is a rule.
+... 1000 more rules
+15800.1. This is a rule.
+... 1000 more rules
+15900.1. This is a rule.
+... 1000 more rules
+16000.1. This is a rule.
+... 1000 more rules
+16100.1. This is a rule.
+... 1000 more rules
+16200.1. This is a rule.
+... 1000 more rules
+16300.1. This is a rule.
+... 1000 more rules
+16400.1. This is a rule.
+... 1000 more rules
+16500.1. This is a rule.
+... 1000 more rules
+16600.1. This is a rule.
+... 1000 more rules
+16700.1. This is a rule.
+... 1000 more rules
+16800.1. This is a rule.
+... 1000 more rules
+16900.1. This is a rule.
+... 1000 more rules
+17000.1. This is a rule.
+... 1000 more rules
+17100.1. This is a rule.
+... 1000 more rules
+17200.1. This is a rule.
+... 1000 more rules
+17300.1. This is a rule.
+... 1000 more rules
+17400.1. This is a rule.
+... 1000 more rules
+17500.1. This is a rule.
+... 1000 more rules
+17600.1. This is a rule.
+... 1000 more rules
+17700.1. This is a rule.
+... 1000 more rules
+17800.1. This is a rule.
+... 1000 more rules
+17900.1. This is a rule.
+... 1000 more rules
+18000.1. This is a rule.
+... 1000 more rules
+18100.1. This is a rule.
+... 1000 more rules
+18200.1. This is a rule.
+... 1000 more rules
+18300.1. This is a rule.
+... 1000 more rules
+18400.1. This is a rule.
+... 1000 more rules
+18500.1. This is a rule.
+... 1000 more rules
+18600.1. This is a rule.
+... 1000 more rules
+18700.1. This is a rule.
+... 1000 more rules
+18800.1. This is a rule.
+... 1000 more rules
+18900.1. This is a rule.
+... 1000 more rules
+19000.1. This is a rule.
+... 1000 more rules
+19100.1. This is a rule.
+... 1000 more rules
+19200.1. This is a rule.
+... 1000 more rules
+19300.1. This is a rule.
+... 1000 more rules
+19400.1. This is a rule.
+... 1000 more rules
+19500.1. This is a rule.
+... 1000 more rules
+19600.1. This is a rule.
+... 1000 more rules
+19700.1. This is a rule.
+... 1000 more rules
+19800.1. This is a rule.
+... 1000 more rules
+19900.1. This is a rule.
+... 1000 more rules
+20000.1. This is a rule.
+... 1000 more rules
+20100.1. This is a rule.
+... 1000 more rules
+20200.1. This is a rule.
+... 1000 more rules
+20300.1. This is a rule.
+... 1000 more rules
+20400.1. This is a rule.
+... 1000 more rules
+20500.1. This is a rule.
+... 1000 more rules
+20600.1. This is a rule.
+... 1000 more rules
+20700.1. This is a rule.
+... 1000 more rules
+20800.1. This is a rule.
+... 1000 more rules
+20900.1. This is a rule.
+... 1000 more rules
+21000.1. This is a rule.
+... 1000 more rules
+21100.1. This is a rule.
+... 1000 more rules
+21200.1. This is a rule.
+... 1000 more rules
+21300.1. This is a rule.
+... 1000 more rules
+21400.1. This is a rule.
+... 1000 more rules
+21500.1. This is a rule.
+... 1000 more rules
+21600.1. This is a rule.
+... 1000 more rules
+21700.1. This is a rule.
+... 1000 more rules
+21800.1. This is a rule.
+... 1000 more rules
+21900.1. This is a rule.
+... 1000 more rules
+22000.1. This is a rule.
+... 1000 more rules
+22100.1. This is a rule.
+... 1000 more rules
+22200.1. This is a rule.
+... 1000 more rules
+22300.1. This is a rule.
+... 1000 more rules
+22400.1. This is a rule.
+... 1000 more rules
+22500.1. This is a rule.
+... 1000 more rules
+22600.1. This is a rule.
+... 1000 more rules
+22700.1. This is a rule.
+... 1000 more rules
+22800.1. This is a rule.
+... 1000 more rules
+22900.1. This is a rule.
+... 1000 more rules
+23000.1. This is a rule.
+... 1000 more rules
+23100.1. This is a rule.
+... 1000 more rules
+23200.1. This is a rule.
+... 1000 more rules
+23300.1. This is a rule.
+... 1000 more rules
+23400.1. This is a rule.
+... 1000 more rules
+23500.1. This is a rule.
+... 1000 more rules
+23600.1. This is a rule.
+... 1000 more rules
+23700.1. This is a rule.
+... 1000 more rules
+23800.1. This is a rule.
+... 1000 more rules
+23900.1. This is a rule.
+... 1000 more rules
+24000.1. This is a rule.
+... 1000 more rules
+24100.1. This is a rule.
+... 1000 more rules
+24200.1. This is a rule.
+... 1000 more rules
+24300.1. This is a rule.
+... 1000 more rules
+24400.1. This is a rule.
+... 1000 more rules
+24500.1. This is a rule.
+... 1000 more rules
+24600.1. This is a rule.
+... 1000 more rules
+24700.1. This is a rule.
+... 1000 more rules
+24800.1. This is a rule.
+... 1000 more rules
+24900.1. This is a rule.
+... 1000 more rules
+25000.1. This is a rule.
+... 1000 more rules
+25100.1. This is a rule.
+... 1000 more rules
+25200.1. This is a rule.
+... 1000 more rules
+25300.1. This is a rule.
+... 1000 more rules
+25400.1. This is a rule.
+... 1000 more rules
+25500.1. This is a rule.
+... 1000 more rules
+25600.1. This is a rule.
+... 1000 more rules
+25700.1. This is a rule.
+... 1000 more rules
+25800.1. This is a rule.
+... 1000 more rules
+25900.1. This is a rule.
+... 1000 more rules
+26000.1. This is a rule.
+... 1000 more rules
+26100.1. This is a rule.
+... 1000 more rules
+26200.1. This is a rule.
+... 1000 more rules
+26300.1. This is a rule.
+... 1000 more rules
+26400.1. This is a rule.
+... 1000 more rules
+26500.1. This is a rule.
+... 1000 more rules
+26600.1. This is a rule.
+... 1000 more rules
+26700.1. This is a rule.
+... 1000 more rules
+26800.1. This is a rule.
+... 1000 more rules
+26900.1. This is a rule.
+... 1000 more rules
+27000.1. This is a rule.
+... 1000 more rules
+27100.1. This is a rule.
+... 1000 more rules
+27200.1. This is a rule.
+... 1000 more rules
+27300.1. This is a rule.
+... 1000 more rules
+27400.1. This is a rule.
+... 1000 more rules
+27500.1. This is a rule.
+... 1000 more rules
+27600.1. This is a rule.
+... 1000 more rules
+27700.1. This is a rule.
+... 1000 more rules
+27800.1. This is a rule.
+... 1000 more rules
+27900.1. This is a rule.
+... 1000 more rules
+28000.1. This is a rule.
+... 1000 more rules
+28100.1. This is a rule.
+... 1000 more rules
+28200.1. This is a rule.
+... 1000 more rules
+28300.1. This is a rule.
+... 1000 more rules
+28400.1. This is a rule.
+... 1000 more rules
+28500.1. This is a rule.
+... 1000 more rules
+28600.1. This is a rule.
+... 1000 more rules
+28700.1. This is a rule.
+... 1000 more rules
+28800.1. This is a rule.
+... 1000 more rules
+28900.1. This is a rule.
+... 1000 more rules
+29000.1. This is a rule.
+... 1000 more rules
+29100.1. This is a rule.
+... 1000 more rules
+29200.1. This is a rule.
+... 1000 more rules
+29300.1. This is a rule.
+... 1000 more rules
+29400.1. This is a rule.
+... 1000 more rules
+29500.1. This is a rule.
+... 1000 more rules
+29600.1. This is a rule.
+... 1000 more rules
+29700.1. This is a rule.
+... 1000 more rules
+29800.1. This is a rule.
+... 1000 more rules
+29900.1. This is a rule.
+... 1000 more rules
+30000.1. This is a rule.
+... 1000 more rules
+30100.1. This is a rule.
+... 1000 more rules
+30200.1. This is a rule.
+... 1000 more rules
+30300.1. This is a rule.
+... 1000 more rules
+30400.1. This is a rule.
+... 1000 more rules
+30500.1. This is a rule.
+... 1000 more rules
+30600.1. This is a rule.
+... 1000 more rules
+30700.1. This is a rule.
+... 1000 more rules
+30800.1. This is a rule.
+... 1000 more rules
+30900.1. This is a rule.
+... 1000 more rules
+31000.1. This is a rule.
+... 1000 more rules
+31100.1. This is a rule.
+... 1000 more rules
+31200.1. This is a rule.
+... 1000 more rules
+31300.1. This is a rule.
+... 1000 more rules
+31400.1. This is a rule.
+... 1000 more rules
+31500.1. This is a rule.
+... 1000 more rules
+31600.1. This is a rule.
+... 1000 more rules
+31700.1. This is a rule.
+... 1000 more rules
+31800.1. This is a rule.
+... 1000 more rules
+31900.1. This is a rule.
+... 1000 more rules
+32000.1. This is a rule.
+... 1000 more rules
+32100.1. This is a rule.
+... 1000 more rules
+32200.1. This is a rule.
+... 1000 more rules
+32300.1. This is a rule.
+... 1000 more rules
+32400.1. This is a rule.
+... 1000 more rules
+32500.1. This is a rule.
+... 1000 more rules
+32600.1. This is a rule.
+... 1000 more rules
+32700.1. This is a rule.
+... 1000 more rules
+32800.1. This is a rule.
+... 1000 more rules
+32900.1. This is a rule.
+... 1000 more rules
+33000.1. This is a rule.
+... 1000 more rules
+33100.1. This is a rule.
+... 1000 more rules
+33200.1. This is a rule.
+... 1000 more rules
+33300.1. This is a rule.
+... 1000 more rules
+33400.1. This is a rule.
+... 1000 more rules
+33500.1. This is a rule.
+... 1000 more rules
+33600.1. This is a rule.
+... 1000 more rules
+33700.1. This is a rule.
+... 1000 more rules
+33800.1. This is a rule.
+... 1000 more rules
+33900.1. This is a rule.
+... 1000 more rules
+34000.1. This is a rule.
+... 1000 more rules
+34100.1. This is a rule.
+... 1000 more rules
+34200.1. This is a rule.
+... 1000 more rules
+34300.1. This is a rule.
+... 1000 more rules
+34400.1. This is a rule.
+... 1000 more rules
+34500.1. This is a rule.
+... 1000 more rules
+34600.1. This is a rule.
+... 1000 more rules
+34700.1. This is a rule.
+... 1000 more rules
+34800.1. This is a rule.
+... 1000 more rules
+34900.1. This is a rule.
+... 1000 more rules
+35000.1. This is a rule.
+... 1000 more rules
+35100.1. This is a rule.
+... 1000 more rules
+35200.1. This is a rule.
+... 1000 more rules
+35300.1. This is a rule.
+... 1000 more rules
+35400.1. This is a rule.
+... 1000 more rules
+35500.1. This is a rule.
+... 1000 more rules
+35600.1. This is a rule.
+... 1000 more rules
+35700.1. This is a rule.
+... 1000 more rules
+35800.1. This is a rule.
+... 1000 more rules
+35900.1. This is a rule.
+... 1000 more rules
+36000.1. This is a rule.
+... 1000 more rules
+36100.1. This is a rule.
+... 1000 more rules
+36200.1. This is a rule.
+... 1000 more rules
+36300.1. This is a rule.
+... 1000 more rules
+36400.1. This is a rule.
+... 1000 more rules
+36500.1. This is a rule.
+... 1000 more rules
+36600.1. This is a rule.
+... 1000 more rules
+36700.1. This is a rule.
+... 1000 more rules
+36800.1. This is a rule.
+... 1000 more rules
+36900.1. This is a rule.
+... 1000 more rules
+37000.1. This is a rule.
+... 1000 more rules
+37100.1. This is a rule.
+... 1000 more rules
+37200.1. This is a rule.
+... 1000 more rules
+37300.1. This is a rule.
+... 1000 more rules
+37400.1. This is a rule.
+... 1000 more rules
+37500.1. This is a rule.
+... 1000 more rules
+37600.1. This is a rule.
+... 1000 more rules
+37700.1. This is a rule.
+... 1000 more rules
+37800.1. This is a rule.
+... 1000 more rules
+37900.1. This is a rule.
+... 1000 more rules
+38000.1. This is a rule.
+... 1000 more rules
+38100.1. This is a rule.
+... 1000 more rules
+38200.1. This is a rule.
+... 1000 more rules
+38300.1. This is a rule.
+... 1000 more rules
+38400.1. This is a rule.
+... 1000 more rules
+38500.1. This is a rule.
+... 1000 more rules
+38600.1. This is a rule.
+... 1000 more rules
+38700.1. This is a rule.
+... 1000 more rules
+38800.1. This is a rule.
+... 1000 more rules
+38900.1. This is a rule.
+... 1000 more rules
+39000.1. This is a rule.
+... 1000 more rules
+39100.1. This is a rule.
+... 1000 more rules
+39200.1. This is a rule.
+... 1000 more rules
+39300.1. This is a rule.
+... 1000 more rules
+39400.1. This is a rule.
+... 1000 more rules
+39500.1. This is a rule.
+... 1000 more rules
+39600.1. This is a rule.
+... 1000 more rules
+39700.1. This is a rule.
+... 1000 more rules
+39800.1. This is a rule.
+... 1000 more rules
+39900.1. This is a rule.
+... 1000 more rules
+40000.1. This is a rule.
+... 1000 more rules
+40100.1. This is a rule.
+... 1000 more rules
+40200.1. This is a rule.
+... 1000 more rules
+40300.1. This is a rule.
+... 1000 more rules
+40400.1. This is a rule.
+... 1000 more rules
+40500.1. This is a rule.
+... 1000 more rules
+40600.1. This is a rule.
+... 1000 more rules
+40700.1. This is a rule.
+... 1000 more rules
+40800.1. This is a rule.
+... 1000 more rules
+40900.1. This is a rule.
+... 1000 more rules
+41000.1. This is a rule.
+... 1000 more rules
+41100.1. This is a rule.
+... 1000 more rules
+41200.1. This is a rule.
+... 1000 more rules
+41300.1. This is a rule.
+... 1000 more rules
+41400.1. This is a rule.
+... 1000 more rules
+41500.1. This is a rule.
+... 1000 more rules
+41600.1. This is a rule.
+... 1000 more rules
+41700.1. This is a rule.
+... 1000 more rules
+41800.1. This is a rule.
+... 1000 more rules
+41900.1. This is a rule.
+... 1000 more rules
+42000.1. This is a rule.
+... 1000 more rules
+42100.1. This is a rule.
+... 1000 more rules
+42200.1. This is a rule.
+... 1000 more rules
+42300.1. This is a rule.
+... 1000 more rules
+42400.1. This is a rule.
+... 1000 more rules
+42500.1. This is a rule.
+... 1000 more rules
+42600.1. This is a rule.
+... 1000 more rules
+42700.1. This is a rule.
+... 1000 more rules
+42800.1. This is a rule.
+... 1000 more rules
+42900.1. This is a rule.
+... 1000 more rules
+43000.1. This is a rule.
+... 1000 more rules
+43100.1. This is a rule.
+... 1000 more rules
+43200.1. This is a rule.
+... 1000 more rules
+43300.1. This is a rule.
+... 1000 more rules
+43400.1. This is a rule.
+... 1000 more rules
+43500.1. This is a rule.
+... 1000 more rules
+43600.1. This is a rule.
+... 1000 more rules
+43700.1. This is a rule.
+... 1000 more rules
+43800.1. This is a rule.
+... 1000 more rules
+43900.1. This is a rule.
+... 1000 more rules
+44000.1. This is a rule.
+... 1000 more rules
+44100.1. This is a rule.
+... 1000 more rules
+44200.1. This is a rule.
+... 1000 more rules
+44300.1. This is a rule.
+... 1000 more rules
+44400.1. This is a rule.
+... 1000 more rules
+44500.1. This is a rule.
+... 1000 more rules
+44600.1. This is a rule.
+... 1000 more rules
+44700.1. This is a rule.
+... 1000 more rules
+44800.1. This is a rule.
+... 1000 more rules
+44900.1. This is a rule.
+... 1000 more rules
+45000.1. This is a rule.
+... 1000 more rules
+45100.1. This is a rule.
+... 1000 more rules
+45200.1. This is a rule.
+... 1000 more rules
+45300.1. This is a rule.
+... 1000 more rules
+45400.1. This is a rule.
+... 1000 more rules
+45500.1. This is a rule.
+... 1000 more rules
+45600.1. This is a rule.
+... 1000 more rules
+45700.1. This is a rule.
+... 1000 more rules
+45800.1. This is a rule.
+... 1000 more rules
+45900.1. This is a rule.
+... 1000 more rules
+46000.1. This is a rule.
+... 1000 more rules
+46100.1. This is a rule.
+... 1000 more rules
+46200.1. This is a rule.
+... 1000 more rules
+46300.1. This is a rule.
+... 1000 more rules
+46400.1. This is a rule.
+... 1000 more rules
+46500.1. This is a rule.
+... 1000 more rules
+46600.1. This is a rule.
+... 1000 more rules
+46700.1. This is a rule.
+... 1000 more rules
+46800.1. This is a rule.
+... 1000 more rules
+46900.1. This is a rule.
+... 1000 more rules
+47000.1. This is a rule.
+... 1000 more rules
+47100.1. This is a rule.
+... 1000 more rules
+47200.1. This is a rule.
+... 1000 more rules
+47300.1. This is a rule.
+... 1000 more rules
+47400.1. This is a rule.
+... 1000 more rules
+47500.1. This is a rule.
+... 1000 more rules
+47600.1. This is a rule.
+... 1000 more rules
+47700.1. This is a rule.
+... 1000 more rules
+47800.1. This is a rule.
+... 1000 more rules
+47900.1. This is a rule.
+... 1000 more rules
+48000.1. This is a rule.
+... 1000 more rules
+48100.1. This is a rule.
+... 1000 more rules
+48200.1. This is a rule.
+... 1000 more rules
+48300.1. This is a rule.
+... 1000 more rules
+48400.1. This is a rule.
+... 1000 more rules
+48500.1. This is a rule.
+... 1000 more rules
+48600.1. This is a rule.
+... 1000 more rules
+48700.1. This is a rule.
+... 1000 more rules
+48800.1. This is a rule.
+... 1000 more rules
+48900.1. This is a rule.
+... 1000 more rules
+49000.1. This is a rule.
+... 1000 more rules
+49100.1. This is a rule.
+... 1000 more rules
+49200.1. This is a rule.
+... 1000 more rules
+49300.1. This is a rule.
+... 1000 more rules
+49400.1. This is a rule.
+... 1000 more rules
+49500.1. This is a rule.
+... 1000 more rules
+49600.1. This is a rule.
+... 1000 more rules
+49700.1. This is a rule.
+... 1000 more rules
+49800.1. This is a rule.
+... 1000 more rules
+49900.1. This is a rule.
+... 1000 more rules
+50000.1. This is a rule.
+... 1000 more rules
+50100.1. This is a rule.
+... 1000 more rules
+50200.1. This is a rule.
+... 1000 more rules
+50300.1. This is a rule.
+... 1000 more rules
+50400.1. This is a rule.
+... 1000 more rules
+50500.1. This is a rule.
+... 1000 more rules
+50600.1. This is a rule.
+... 1000 more rules
+50700.1. This is a rule.
+... 1000 more rules
+50800.1. This is a rule.
+... 1000 more rules
+50900.1. This is a rule.
+... 1000 more rules
+51000.1. This is a rule.
+... 1000 more rules
+51100.1. This is a rule.
+... 1000 more rules
+51200.1. This is a rule.
+... 1000 more rules
+51300.1. This is a rule.
+... 1000 more rules
+51400.1. This is a rule.
+... 1000 more rules
+51500.1. This is a rule.
+... 1000 more rules
+51600.1. This is a rule.
+... 1000 more rules
+51700.1. This is a rule.
+... 1000 more rules
+51800.1. This is a rule.
+... 1000 more rules
+51900.1. This is a rule.
+... 1000 more rules
+52000.1. This is a rule.
+... 1000 more rules
+52100.1. This is a rule.
+... 1000 more rules
+52200.1. This is a rule.
+... 1000 more rules
+52300.1. This is a rule.
+... 1000 more rules
+52400.1. This is a rule.
+... 1000 more rules
+52500.1. This is a rule.
+... 1000 more rules
+52600.1. This is a rule.
+... 1000 more rules
+52700.1. This is a rule.
+... 1000 more rules
+52800.1. This is a rule.
+... 1000 more rules
+52900.1. This is a rule.
+... 1000 more rules
+53000.1. This is a rule.
+... 1000 more rules
+53100.1. This is a rule.
+... 1000 more rules
+53200.1. This is a rule.
+... 1000 more rules
+53300.1. This is a rule.
+... 1000 more rules
+53400.1. This is a rule.
+... 1000 more rules
+53500.1. This is a rule.
+... 1000 more rules
+53600.1. This is a rule.
+... 1000 more rules
+53700.1. This is a rule.
+... 1000 more rules
+53800.1. This is a rule.
+... 1000 more rules
+53900.1. This is a rule.
+... 1000 more rules
+54000.1. This is a rule.
+... 1000 more rules
+54100.1. This is a rule.
+... 1000 more rules
+54200.1. This is a rule.
+... 1000 more rules
+54300.1. This is a rule.
+... 1000 more rules
+54400.1. This is a rule.
+... 1000 more rules
+54500.1. This is a rule.
+... 1000 more rules
+54600.1. This is a rule.
+... 1000 more rules
+54700.1. This is a rule.
+... 1000 more rules
+54800.1. This is a rule.
+... 1000 more rules
+54900.1. This is a rule.
+... 1000 more rules
+55000.1. This is a rule.
+... 1000 more rules
+55100.1. This is a rule.
+... 1000 more rules
+55200.1. This is a rule.
+... 1000 more rules
+55300.1. This is a rule.
+... 1000 more rules
+55400.1. This is a rule.
+... 1000 more rules
+55500.1. This is a rule.
+... 1000 more rules
+55600.1. This is a rule.
+... 1000 more rules
+55700.1. This is a rule.
+... 1000 more rules
+55800.1. This is a rule.
+... 1000 more rules
+55900.1. This is a rule.
+... 1000 more rules
+56000.1. This is a rule.
+... 1000 more rules
+56100.1. This is a rule.
+... 1000 more rules
+56200.1. This is a rule.
+... 1000 more rules
+56300.1. This is a rule.
+... 1000 more rules
+56400.1. This is a rule.
+... 1000 more rules
+56500.1. This is a rule.
+... 1000 more rules
+56600.1. This is a rule.
+... 1000 more rules
+56700.1. This is a rule.
+... 1000 more rules
+56800.1. This is a rule.
+... 1000 more rules
+56900.1. This is a rule.
+... 1000 more rules
+57000.1. This is a rule.
+... 1000 more rules
+57100.1. This is a rule.
+... 1000 more rules
+57200.1. This is a rule.
+... 1000 more rules
+57300.1. This is a rule.
+... 1000 more rules
+57400.1. This is a rule.
+... 1000 more rules
+57500.1. This is a rule.
+... 1000 more rules
+57600.1. This is a rule.
+... 1000 more rules
+57700.1. This is a rule.
+... 1000 more rules
+57800.1. This is a rule.
+... 1000 more rules
+57900.1. This is a rule.
+... 1000 more rules
+58000.1. This is a rule.
+... 1000 more rules
+58100.1. This is a rule.
+... 1000 more rules
+58200.1. This is a rule.
+... 1000 more rules
+58300.1. This is a rule.
+... 1000 more rules
+58400.1. This is a rule.
+... 1000 more rules
+58500.1. This is a rule.
+... 1000 more rules
+58600.1. This is a rule.
+... 1000 more rules
+58700.1. This is a rule.
+... 1000 more rules
+58800.1. This is a rule.
+... 1000 more rules
+58900.1. This is a rule.
+... 1000 more rules
+59000.1. This is a rule.
+... 1000 more rules
+59100.1. This is a rule.
+... 1000 more rules
+59200.1. This is a rule.
+... 1000 more rules
+59300.1. This is a rule.
+... 1000 more rules
+59400.1. This is a rule.
+... 1000 more rules
+59500.1. This is a rule.
+... 1000 more rules
+59600.1. This is a rule.
+... 1000 more rules
+59700.1. This is a rule.
+... 1000 more rules
+59800.1. This is a rule.
+... 1000 more rules
+59900.1. This is a rule.
+... 1000 more rules
+60000.1. This is a rule.
+... 1000 more rules
+60100.1. This is a rule.
+... 1000 more rules
+60200.1. This is a rule.
+... 1000 more rules
+60300.1. This is a rule.
+... 1000 more rules
+60400.1. This is a rule.
+... 1000 more rules
+60500.1. This is a rule.
+... 1000 more rules
+60600.1. This is a rule.
+... 1000 more rules
+60700.1. This is a rule.
+... 1000 more rules
+60800.1. This is a rule.
+... 1000 more rules
+60900.1. This is a rule.
+... 1000 more rules
+61000.1. This is a rule.
+... 1000 more rules
+61100.1. This is a rule.
+... 1000 more rules
+61200.1. This is a rule.
+... 1000 more rules
+61300.1. This is a rule.
+... 1000 more rules
+61400.1. This is a rule.
+... 1000 more rules
+61500.1. This is a rule.
+... 1000 more rules
+61600.1. This is a rule.
+... 1000 more rules
+61700.1. This is a rule.
+... 1000 more rules
+61800.1. This is a rule.
+... 1000 more rules
+61900.1. This is a rule.
+... 1000 more rules
+62000.1. This is a rule.
+... 1000 more rules
+62100.1. This is a rule.
+... 1000 more rules
+62200.1. This is a rule.
+... 1000 more rules
+62300.1. This is a rule.
+... 1000 more rules
+62400.1. This is a rule.
+... 1000 more rules
+62500.1. This is a rule.
+... 1000 more rules
+62600.1. This is a rule.
+... 1000 more rules
+62700.1. This is a rule.
+... 1000 more rules
+62800.1. This is a rule.
+... 1000 more rules
+62900.1. This is a rule.
+... 1000 more rules
+63000.1. This is a rule.
+... 1000 more rules
+63100.1. This is a rule.
+... 1000 more rules
+63200.1. This is a rule.
+... 1000 more rules
+63300.1. This is a rule.
+... 1000 more rules
+63400.1. This is a rule.
+... 1000 more rules
+63500.1. This is a rule.
+... 1000 more rules
+63600.1. This is a rule.
+... 1000 more rules
+63700.1. This is a rule.
+... 1000 more rules
+63800.1. This is a rule.
+... 1000 more rules
+63900.1. This is a rule.
+... 1000 more rules
+64000.1. This is a rule.
+... 1000 more rules
+64100.1. This is a rule.
+... 1000 more rules
+64200.1. This is a rule.
+... 1000 more rules
+64300.1. This is a rule.
+... 1000 more rules
+64400.1. This is a rule.
+... 1000 more rules
+64500.1. This is a rule.
+... 1000 more rules
+64600.1. This is a rule.
+... 1000 more rules
+64700.1. This is a rule.
+... 1000 more rules
+64800.1. This is a rule.
+... 1000 more rules
+64900.1. This is a rule.
+... 1000 more rules
+65000.1. This is a rule.
+... 1000 more rules
+65100.1. This is a rule.
+... 1000 more rules
+65200.1. This is a rule.
+... 1000 more rules
+65300.1. This is a rule.
+... 1000 more rules
+65400.1. This is a rule.
+... 1000 more rules
+65500.1. This is a rule.
+... 1000 more rules
+65600.1. This is a rule.
+... 1000 more rules
+65700.1. This is a rule.
+... 1000 more rules
+65800.1. This is a rule.
+... 1000 more rules
+65900.1. This is a rule.
+... 1000 more rules
+66000.1. This is a rule.
+... 1000 more rules
+66100.1. This is a rule.
+... 1000 more rules
+66200.1. This is a rule.
+... 1000 more rules
+66300.1. This is a rule.
+... 1000 more rules
+66400.1. This is a rule.
+... 1000 more rules
+66500.1. This is a rule.
+... 1000 more rules
+66600.1. This is a rule.
+... 1000 more rules
+66700.1. This is a rule.
+... 1000 more rules
+66800.1. This is a rule.
+... 1000 more rules
+66900.1. This is a rule.
+... 1000 more rules
+67000.1. This is a rule.
+... 1000 more rules
+67100.1. This is a rule.
+... 1000 more rules
+67200.1. This is a rule.
+... 1000 more rules
+67300.1. This is a rule.
+... 1000 more rules
+67400.1. This is a rule.
+... 1000 more rules
+67500.1. This is a rule.
+... 1000 more rules
+67600.1. This is a rule.
+... 1000 more rules
+67700.1. This is a rule.
+... 1000 more rules
+67800.1. This is a rule.
+... 1000 more rules
+67900.1. This is a rule.
+... 1000 more rules
+68000.1. This is a rule.
+... 1000 more rules
+68100.1. This is a rule.
+... 1000 more rules
+68200.1. This is a rule.
+... 1000 more rules
+68300.1. This is a rule.
+... 1000 more rules
+68400.1. This is a rule.
+... 1000 more rules
+68500.1. This is a rule.
+... 1000 more rules
+68600.1. This is a rule.
+... 1000 more rules
+68700.1. This is a rule.
+... 1000 more rules
+68800.1. This is a rule.
+... 1000 more rules
+68900.1. This is a rule.
+... 1000 more rules
+69000.1. This is a rule.
+... 1000 more rules
+69100.1. This is a rule.
+... 1000 more rules
+69200.1. This is a rule.
+... 1000 more rules
+69300.1. This is a rule.
+... 1000 more rules
+69400.1. This is a rule.
+... 1000 more rules
+69500.1. This is a rule.
+... 1000 more rules
+69600.1. This is a rule.
+... 1000 more rules
+69700.1. This is a rule.
+... 1000 more rules
+69800.1. This is a rule.
+... 1000 more rules
+69900.1. This is a rule.
+... 1000 more rules
+70000.1. This is a rule.
+... 1000 more rules
+70100.1. This is a rule.
+... 1000 more rules
+70200.1. This is a rule.
+... 1000 more rules
+70300.1. This is a rule.
+... 1000 more rules
+70400.1. This is a rule.
+... 1000 more rules
+70500.1. This is a rule.
+... 1000 more rules
+70600.1. This is a rule.
+... 1000 more rules
+70700.1. This is a rule.
+... 1000 more rules
+70800.1. This is a rule.
+... 1000 more rules
+70900.1. This is a rule.
+... 1000 more rules
+71000.1. This is a rule.
+... 1000 more rules
+71100.1. This is a rule.
+... 1000 more rules
+71200.1. This is a rule.
+... 1000 more rules
+71300.1. This is a rule.
+... 1000 more rules
+71400.1. This is a rule.
+... 1000 more rules
+71500.1. This is a rule.
+... 1000 more rules
+71600.1. This is a rule.
+... 1000 more rules
+71700.1. This is a rule.
+... 1000 more rules
+71800.1. This is a rule.
+... 1000 more rules
+71900.1. This is a rule.
+... 1000 more rules
+72000.1. This is a rule.
+... 1000 more rules
+72100.1. This is a rule.
+... 1000 more rules
+72200.1. This is a rule.
+... 1000 more rules
+72300.1. This is a rule.
+... 1000 more rules
+72400.1. This is a rule.
+... 1000 more rules
+72500.1. This is a rule.
+... 1000 more rules
+72600.1. This is a rule.
+... 1000 more rules
+72700.1. This is a rule.
+... 1000 more rules
+72800.1. This is a rule.
+... 1000 more rules
+72900.1. This is a rule.
+... 1000 more rules
+73000.1. This is a rule.
+... 1000 more rules
+73100.1. This is a rule.
+... 1000 more rules
+73200.1. This is a rule.
+... 1000 more rules
+73300.1. This is a rule.
+... 1000 more rules
+73400.1. This is a rule.
+... 1000 more rules
+73500.1. This is a rule.
+... 1000 more rules
+73600.1. This is a rule.
+... 1000 more rules
+73700.1. This is a rule.
+... 1000 more rules
+73800.1. This is a rule.
+... 1000 more rules
+73900.1. This is a rule.
+... 1000 more rules
+74000.1. This is a rule.
+... 1000 more rules
+74100.1. This is a rule.
+... 1000 more rules
+74200.1. This is a rule.
+... 1000 more rules
+74300.1. This is a rule.
+... 1000 more rules
+74400.1. This is a rule.
+... 1000 more rules
+74500.1. This is a rule.
+... 1000 more rules
+74600.1. This is a rule.
+... 1000 more rules
+74700.1. This is a rule.
+... 1000 more rules
+74800.1. This is a rule.
+... 1000 more rules
+74900.1. This is a rule.
+... 1000 more rules
+75000.1. This is a rule.
+... 1000 more rules
+75100.1. This is a rule.
+... 1000 more rules
+75200.1. This is a rule.
+... 1000 more rules
+75300.1. This is a rule.
+... 1000 more rules
+75400.1. This is a rule.
+... 1000 more rules
+75500.1. This is a rule.
+... 1000 more rules
+75600.1. This is a rule.
+... 1000 more rules
+75700.1. This is a rule.
+... 1000 more rules
+75800.1. This is a rule.
+... 1000 more rules
+75900.1. This is a rule.
+... 1000 more rules
+76000.1. This is a rule.
+... 1000 more rules
+76100.1. This is a rule.
+... 1000 more rules
+76200.1. This is a rule.
+... 1000 more rules
+76300.1. This is a rule.
+... 1000 more rules
+76400.1. This is a rule.
+... 1000 more rules
+76500.1. This is a rule.
+... 1000 more rules
+76600.1. This is a rule.
+... 1000 more rules
+76700.1. This is a rule.
+... 1000 more rules
+76800.1. This is a rule.
+... 1000 more rules
+76900.1. This is a rule.
+... 1000 more rules
+77000.1. This is a rule.
+... 1000 more rules
+77100.1. This is a rule.
+... 1000 more rules
+77200.1. This is a rule.
+... 1000 more rules
+77300.1. This is a rule.
+... 1000 more rules
+77400.1. This is a rule.
+... 1000 more rules
+77500.1. This is a rule.
+... 1000 more rules
+77600.1. This is a rule.
+... 1000 more rules
+77700.1. This is a rule.
+... 1000 more rules
+77800.1. This is a rule.
+... 1000 more rules
+77900.1. This is a rule.
+... 1000 more rules
+78000.1. This is a rule.
+... 1000 more rules
+78100.1. This is a rule.
+... 1000 more rules
+78200.1. This is a rule.
+... 1000 more rules
+78300.1. This is a rule.
+... 1000 more rules
+78400.1. This is a rule.
+... 1000 more rules
+78500.1. This is a rule.
+... 1000 more rules
+78600.1. This is a rule.
+... 1000 more rules
+78700.1. This is a rule.
+... 1000 more rules
+78800.1. This is a rule.
+... 1000 more rules
+78900.1. This is a rule.
+... 1000 more rules
+79000.1. This is a rule.
+... 1000 more rules
+79100.1. This is a rule.
+... 1000 more rules
+79200.1. This is a rule.
+... 1000 more rules
+79300.1. This is a rule.
+... 1000 more rules
+79400.1. This is a rule.
+... 1000 more rules
+79500.1. This is a rule.
+... 1000 more rules
+79600.1. This is a rule.
+... 1000 more rules
+79700.1. This is a rule.
+... 1000 more rules
+79800.1. This is a rule.
+... 1000 more rules
+79900.1. This is a rule.
+... 1000 more rules
+80000.1. This is a rule.
+... 1000 more rules
+80100.1. This is a rule.
+... 1000 more rules
+80200.1. This is a rule.
+... 1000 more rules
+80300.1. This is a rule.
+... 1000 more rules
+80400.1. This is a rule.
+... 1000 more rules
+80500.1. This is a rule.
+... 1000 more rules
+80600.1. This is a rule.
+... 1000 more rules
+80700.1. This is a rule.
+... 1000 more rules
+80800.1. This is a rule.
+... 1000 more rules
+80900.1. This is a rule.
+... 1000 more rules
+81000.1. This is a rule.
+... 1000 more rules
+81100.1. This is a rule.
+... 1000 more rules
+81200.1. This is a rule.
+... 1000 more rules
+81300.1. This is a rule.
+... 1000 more rules
+81400.1. This is a rule.
+... 1000 more rules
+81500.1. This is a rule.
+... 1000 more rules
+81600.1. This is a rule.
+... 1000 more rules
+81700.1. This is a rule.
+... 1000 more rules
+81800.1. This is a rule.
+... 1000 more rules
+81900.1. This is a rule.
+... 1000 more rules
+82000.1. This is a rule.
+... 1000 more rules
+82100.1. This is a rule.
+... 1000 more rules
+82200.1. This is a rule.
+... 1000 more rules
+82300.1. This is a rule.
+... 1000 more rules
+82400.1. This is a rule.
+... 1000 more rules
+82500.1. This is a rule.
+... 1000 more rules
+82600.1. This is a rule.
+... 1000 more rules
+82700.1. This is a rule.
+... 1000 more rules
+82800.1. This is a rule.
+... 1000 more rules
+82900.1. This is a rule.
+... 1000 more rules
+83000.1. This is a rule.
+... 1000 more rules
+83100.1. This is a rule.
+... 1000 more rules
+83200.1. This is a rule.
+... 1000 more rules
+83300.1. This is a rule.
+... 1000 more rules
+83400.1. This is a rule.
+... 1000 more rules
+83500.1. This is a rule.
+... 1000 more rules
+83600.1. This is a rule.
+... 1000 more rules
+83700.1. This is a rule.
+... 1000 more rules
+83800.1. This is a rule.
+... 1000 more rules
+83900.1. This is a rule.
+... 1000 more rules
+84000.1. This is a rule.
+... 1000 more rules
+84100.1. This is a rule.
+... 1000 more rules
+84200.1. This is a rule.
+... 1000 more rules
+84300.1. This is a rule.
+... 1000 more rules
+84400.1. This is a rule.
+... 1000 more rules
+84500.1. This is a rule.
+... 1000 more rules
+84600.1. This is a rule.
+... 1000 more rules
+84700.1. This is a rule.
+... 1000 more rules
+84800.1. This is a rule.
+... 1000 more rules
+84900.1. This is a rule.
+... 1000 more rules
+85000.1. This is a rule.
+... 1000 more rules
+85100.1. This is a rule.
+... 1000 more rules
+85200.1. This is a rule.
+... 1000 more rules
+85300.1. This is a rule.
+... 1000 more rules
+85400.1. This is a rule.
+... 1000 more rules
+85500.1. This is a rule.
+... 1000 more rules
+85600.1. This is a rule.
+... 1000 more rules
+85700.1. This is a rule.
+... 1000 more rules
+85800.1. This is a rule.
+... 1000 more rules
+85900.1. This is a rule.
+... 1000 more rules
+86000.1. This is a rule.
+... 1000 more rules
+86100.1. This is a rule.
+... 1000 more rules
+86200.1. This is a rule.
+... 1000 more rules
+86300.1. This is a rule.
+... 1000 more rules
+86400.1. This is a rule.
+... 1000 more rules
+86500.1. This is a rule.
+... 1000 more rules
+86600.1. This is a rule.
+... 1000 more rules
+86700.1. This is a rule.
+... 1000 more rules
+86800.1. This is a rule.
+... 1000 more rules
+86900.1. This is a rule.
+... 1000 more rules
+87000.1. This is a rule.
+... 1000 more rules
+87100.1. This is a rule.
+... 1000 more rules
+87200.1. This is a rule.
+... 1000 more rules
+87300.1. This is a rule.
+... 1000 more rules
+87400.1. This is a rule.
+... 1000 more rules
+87500.1. This is a rule.
+... 1000 more rules
+87600.1. This is a rule.
+... 1000 more rules
+87700.1. This is a rule.
+... 1000 more rules
+87800.1. This is a rule.
+... 1000 more rules
+87900.1. This is a rule.
+... 1000 more rules
+88000.1. This is a rule.
+... 1000 more rules
+88100.1. This is a rule.
+... 1000 more rules
+88200.1. This is a rule.
+... 1000 more rules
+88300.1. This is a rule.
+... 1000 more rules
+88400.1. This is a rule.
+... 1000 more rules
+88500.1. This is a rule.
+... 1000 more rules
+88600.1. This is a rule.
+... 1000 more rules
+88700.1. This is a rule.
+... 1000 more rules
+88800.1. This is a rule.
+... 1000 more rules
+88900.1. This is a rule.
+... 1000 more rules
+89000.1. This is a rule.
+... 1000 more rules
+89100.1. This is a rule.
+... 1000 more rules
+89200.1. This is a rule.
+... 1000 more rules
+89300.1. This is a rule.
+... 1000 more rules
+89400.1. This is a rule.
+... 1000 more rules
+89500.1. This is a rule.
+... 1000 more rules
+89600.1. This is a rule.
+... 1000 more rules
+89700.1. This is a rule.
+... 1000 more rules
+89800.1. This is a rule.
+... 1000 more rules
+89900.1. This is a rule.
+... 1000 more rules
+90000.1. This is a rule.
+... 1000 more rules
+90100.1. This is a rule.
+... 1000 more rules
+90200.1. This is a rule.
+... 1000 more rules
+90300.1. This is a rule.
+... 1000 more rules
+90400.1. This is a rule.
+... 1000 more rules
+90500.1. This is a rule.
+... 1000 more rules
+90600.1. This is a rule.
+... 1000 more rules
+90700.1. This is a rule.
+... 1000 more rules
+90800.1. This is a rule.
+... 1000 more rules
+90900.1. This is a rule.
+... 1000 more rules
+91000.1. This is a rule.
+... 1000 more rules
+91100.1. This is a rule.
+... 1000 more rules
+91200.1. This is a rule.
+... 1000 more rules
+91300.1. This is a rule.
+... 1000 more rules
+91400.1. This is a rule.
+... 1000 more rules
+91500.1. This is a rule.
+... 1000 more rules
+91600.1. This is a rule.
+... 1000 more rules
+91700.1. This is a rule.
+... 1000 more rules
+91800.1. This is a rule.
+... 1000 more rules
+91900.1. This is a rule.
+... 1000 more rules
+92000.1. This is a rule.
+... 1000 more rules
+92100.1. This is a rule.
+... 1000 more rules
+92200.1. This is a rule.
+... 1000 more rules
+92300.1. This is a rule.
+... 1000 more rules
+92400.1. This is a rule.
+... 1000 more rules
+92500.1. This is a rule.
+... 1000 more rules
+92600.1. This is a rule.
+... 1000 more rules
+92700.1. This is a rule.
+... 1000 more rules
+92800.1. This is a rule.
+... 1000 more rules
+92900.1. This is a rule.
+... 1000 more rules
+93000.1. This is a rule.
+... 1000 more rules
+93100.1. This is a rule.
+... 1000 more rules
+93200.1. This is a rule.
+... 1000 more rules
+93300.1. This is a rule.
+... 1000 more rules
+93400.1. This is a rule.
+... 1000 more rules
+93500.1. This is a rule.
+... 1000 more rules
+93600.1. This is a rule.
+... 1000 more rules
+93700.1. This is a rule.
+... 1000 more rules
+93800.1. This is a rule.
+... 1000 more rules
+93900.1. This is a rule.
+... 1000 more rules
+94000.1. This is a rule.
+... 1000 more rules
+94100.1. This is a rule.
+... 1000 more rules
+94200.1. This is a rule.
+... 1000 more rules
+94300.1. This is a rule.
+... 1000 more rules
+94400.1. This is a rule.
+... 1000 more rules
+94500.1. This is a rule.
+... 1000 more rules
+94600.1. This is a rule.
+... 1000 more rules
+94700.1. This is a rule.
+... 1000 more rules
+94800.1. This is a rule.
+... 1000 more rules
+94900.1. This is a rule.
+... 1000 more rules
+95000.1. This is a rule.
+... 1000 more rules
+95100.1. This is a rule.
+... 1000 more rules
+95200.1. This is a rule.
+... 1000 more rules
+95300.1. This is a rule.
+... 1000 more rules
+95400.1. This is a rule.
+... 1000 more rules
+95500.1. This is a rule.
+... 1000 more rules
+95600.1. This is a rule.
+... 1000 more rules
+95700.1. This is a rule.
+... 1000 more rules
+95800.1. This is a rule.
+... 1000 more rules
+95900.1. This is a rule.
+... 1000 more rules
+96000.1. This is a rule.
+... 1000 more rules
+96100.1. This is a rule.
+... 1000 more rules
+96200.1. This is a rule.
+... 1000 more rules
+96300.1. This is a rule.
+... 1000 more rules
+96400.1. This is a rule.
+... 1000 more rules
+96500.1. This is a rule.
+... 1000 more rules
+96600.1. This is a rule.
+... 1000 more rules
+96700.1. This is a rule.
+... 1000 more rules
+96800.1. This is a rule.
+... 1000 more rules
+96900.1. This is a rule.
+... 1000 more rules
+97000.1. This is a rule.
+... 1000 more rules
+97100.1. This is a rule.
+... 1000 more rules
+97200.1. This is a rule.
+... 1000 more rules
+97300.1. This is a rule.
+... 1000 more rules
+97400.1. This is a rule.
+... 1000 more rules
+97500.1. This is a rule.
+... 1000 more rules
+97600.1. This is a rule.
+... 1000 more rules
+97700.1. This is a rule.
+... 1000 more rules
+97800.1. This is a rule.
+... 1000 more rules
+97900.1. This is a rule.
+... 1000 more rules
+98000.1. This is a rule.
+... 1000 more rules
+98100.1. This is a rule.
+... 1000 more rules
+98200.1. This is a rule.
+... 1000 more rules
+98300.1. This is a rule.
+... 1000 more rules
+98400.1. This is a rule.
+... 1000 more rules
+98500.1. This is a rule.
+... 1000 more rules
+98600.1. This is a rule.
+... 1000 more rules
+98700.1. This is a rule.
+... 1000 more rules
+98800.1. This is a rule.
+... 1000 more rules
+98900.1. This is a rule.
+... 1000 more rules
+99000.1. This is a rule.
+... 1000 more rules
+99100.1. This is a rule.
+... 1000 more rules
+99200.1. This is a rule.
+... 1000 more rules
+99300.1. This is a rule.
+... 1000 more rules
+99400.1. This is a rule.
+... 1000 more rules
+99500.1. This is a rule.
+... 1000 more rules
+99600.1. This is a rule.
+... 1000 more rules
+99700.1. This is a rule.
+... 1000 more rules
+99800.1. This is a rule.
+... 1000 more rules
+99900.1. This is a rule.
+... 1000 more rules
+100000.1. This is a rule.
+... 1000 more rules
+100001.1. This is a rule.
+... 1000 more rules
+100002.1. This is a rule.
+... 1000 more rules
+100003.1. This is a rule.
+... 1000 more rules
+100004.1. This is a rule.
+... 1000 more rules
+100005.1. This is a rule.
+... 1000 more rules
+100006.1. This is a rule.
+... 1000 more rules
+100007.1. This is a rule.
+... 1000 more rules
+100008.1. This is a rule.
+... 1000 more rules
+100009.1. This is a rule.
+... 1000 more rules
+100010.1. This is a rule.
+... 1000 more rules
+100011.1. This is a rule.
+... 1000 more rules
+100012.1. This is a rule.
+... 1000 more rules
+100013.1. This is a rule.
+... 1000 more rules
+100014.1. This is a rule.
+... 1000 more rules
+100015.1. This is a rule.
+... 1000 more rules
+100016.1. This is a rule.
+... 1000 more rules
+100017.1. This is a rule.
+... 1000 more rules
+100018.1. This is a rule.
+... 1000 more rules
+100019.1. This is a rule.
+... 1000 more rules
+100020.1. This is a rule.
+... 1000 more rules
+100021.1. This is a rule.
+... 1000 more rules
+100022.1. This is a rule.
+... 1000 more rules
+100023.1. This is a rule.
+... 1000 more rules
+100024.1. This is a rule.
+... 1000 more rules
+100025.1. This is a rule.
+... 1000 more rules
+100026.1. This is a rule.
+... 1000 more rules
+100027.1. This is a rule.
+... 1000 more rules
+100028.1. This is a rule.
+... 1000 more rules
+100029.1. This is a rule.
+... 1000 more rules
+100030.1. This is a rule.
+... 1000 more rules
+100031.1. This is a rule.
+... 1000 more rules
+100032.1. This is a rule.
+... 1000 more rules
+100033.1. This is a rule.
+... 1000 more rules
+100034.1. This is a rule.
+... 1000 more rules
+100035.1. This is a rule.
+... 1000 more rules
+100036.1. This is a rule.
+... 1000 more rules
+100037.1. This is a rule.
+... 1000 more rules
+100038.1. This is a rule.
+... 1000 more rules
+100039.1. This is a rule.
+... 1000 more rules
+100040.1. This is a rule.
+... 1000 more rules
+100041.1. This is a rule.
+... 1000 more rules
+100042.1. This is a rule.
+... 1000 more rules
+100043.1. This is a rule.
+... 1000 more rules
+100044.1. This is a rule.
+... 1000 more rules
+100045.1. This is a rule.
+... 1000 more rules
+100046.1. This is a rule.
+... 1000 more rules
+100047.1. This is a rule.
+... 1000 more rules
+100048.1. This is a rule.
+... 1000 more rules
+100049.1. This is a rule.
+... 1000 more rules
+100050.1. This is a rule.
+... 1000 more rules
+100051.1. This is a rule.
+... 1000 more rules
+100052.1. This is a rule.
+... 1000 more rules
+100053.1. This is a rule.
+... 1000 more rules
+100054.1. This is a rule.
+... 1000 more rules
+100055.1. This is a rule.
+... 1000 more rules
+100056.1. This is a rule.
+... 1000 more rules
+100057.1. This is a rule.
+... 1000 more rules
+100058.1. This is a rule.
+... 1000 more rules
+100059.1. This is a rule.
+... 1000 more rules
+100060.1. This is a rule.
+... 1000 more rules
+100061.1. This is a rule.
+... 1000 more rules
+100062.1. This is a rule.
+... 1000 more rules
+100063.1. This is a rule.
+... 1000 more rules
+100064.1. This is a rule.
+... 1000 more rules
+100065.1. This is a rule.
+... 1000 more rules
+100066.1. This is a rule.
+... 1000 more rules
+100067.1. This is a rule.
+... 1000 more rules
+100068.1. This is a rule.
+... 1000 more rules
+100069.1. This is a rule.
+... 1000 more rules
+100070.1. This is a rule.
+... 1000 more rules
+100071.1. This is a rule.
+... 1000 more rules
+100072.1. This is a rule.
+... 1000 more rules
+100073.1. This is a rule.
+... 1000 more rules
+100074.1. This is a rule.
+... 1000 more rules
+100075.1. This is a rule.
+... 1000 more rules
+100076.1. This is a rule.
+... 1000 more rules
+100077.1. This is a rule.
+... 1000 more rules
+100078.1. This is a rule.
+... 1000 more rules
+100079.1. This is a rule.
+... 1000 more rules
+100080.1. This is a rule.
+... 1000 more rules
+100081.1. This is a rule.
+... 1000 more rules
+100082.1. This is a rule.
+... 1000 more rules
+100083.1. This is a rule.
+... 1000 more rules
+100084.1. This is a rule.
+... 1000 more rules
+100085.1. This is a rule.
+... 1000 more rules
+100086.1. This is a rule.
+... 1000 more rules
+100087.1. This is a rule.
+... 1000 more rules
+100088.1. This is a rule.
+... 1000 more rules
+100089.1. This is a rule.
+... 1000 more rules
+100090.1. This is a rule.
+... 1000 more rules
+100091.1. This is a rule.
+... 1000 more rules
+100092.1. This is a rule.
+... 1000 more rules
+100093.1. This is a rule.
+... 1000 more rules
+100094.1. This is a rule.
+... 1000 more rules
+100095.1. This is a rule.
+... 1000 more rules
+100096.1. This is a rule.
+... 1000 more rules
+100097.1. This is a rule.
+... 1000 more rules
+100098.1. This is a rule.
+... 1000 more rules
+100099.1. This is a rule.
+... 1000 more rules
+100100.1. This is a rule.

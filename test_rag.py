@@ -12,6 +12,8 @@ Tests the complete RAG implementation including:
 import sys
 import logging
 from pathlib import Path
+import tempfile
+import os
 
 # Setup logging
 logging.basicConfig(
@@ -56,10 +58,19 @@ def test_card_stats_db():
     logger.info("TEST 2: Card Statistics Database")
     logger.info("="*70)
 
+    # Create a temporary database for testing
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
     try:
         from rag_advisor import CardStatsDB
+        from load_17lands_data import load_sample_data
 
-        db = CardStatsDB()
+        db = CardStatsDB(db_path=db_path)
+
+        # Load sample data into the temporary database
+        sample_data = load_sample_data()
+        db.insert_card_stats(sample_data)
 
         # Test retrieving card stats
         test_cards = [
@@ -92,7 +103,8 @@ def test_card_stats_db():
 
         db.close()
 
-        assert success_count >= 3, f"Expected at least 3 cards, found {success_count}"
+        # All test cards should be found in the sample data
+        assert success_count == len(test_cards), f"Expected to find {len(test_cards)} cards, but found {success_count}"
         logger.info(f"\n✓ Card stats database working ({success_count}/{len(test_cards)} cards found)")
 
         return True
@@ -102,6 +114,9 @@ def test_card_stats_db():
         import traceback
         traceback.print_exc()
         return False
+    finally:
+        # Clean up the temporary database file
+        os.unlink(db_path)
 
 
 def test_vector_search():
@@ -345,7 +360,6 @@ def main():
     # Check data files
     required_files = [
         ("MTG Rules", "data/MagicCompRules.txt"),
-        ("Card Stats DB", "data/card_stats.db"),
     ]
 
     missing_files = []
