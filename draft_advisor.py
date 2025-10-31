@@ -38,6 +38,7 @@ class DraftCard:
     win_rate: float = 0.0
     gih_win_rate: float = 0.0  # Games In Hand win rate
     iwd: float = 0.0  # Improvement When Drawn
+    ata: float = 0.0  # Average Taken At
     ever_drawn_game_count: int = 0
     grade: str = ""
     score: float = 0.0  # Percentile score 0-100
@@ -214,9 +215,10 @@ class DraftAdvisor:
                     card.win_rate = stats.get("win_rate", 0.0) or 0.0
                     card.gih_win_rate = stats.get("gih_win_rate", 0.0) or 0.0
                     card.iwd = stats.get("iwd", 0.0) or 0.0
+                    card.ata = stats.get("avg_taken_at", 0.0) or 0.0
                     card.ever_drawn_game_count = stats.get("ever_drawn_game_count", 0) or 0
 
-                    logger.debug(f"{card.name}: GIH WR={card.gih_win_rate:.3f}, IWD={card.iwd:.3f}")
+                    logger.debug(f"{card.name}: GIH WR={card.gih_win_rate:.3f}, ATA={card.ata:.2f}")
 
             except Exception as e:
                 logger.error(f"Error loading stats for {card.name}: {e}")
@@ -225,37 +227,37 @@ class DraftAdvisor:
 
     def _calculate_grades(self, cards: List[DraftCard]) -> List[DraftCard]:
         """
-        Calculate percentile-based grades for cards
-
-        Uses scipy normal distribution CDF to convert win rates to percentile scores,
-        then maps to letter grades (A+ through F)
+        Calculate percentile-based grades for cards, incorporating ATA.
         """
-        # Get all GIH win rates for normalization
         gih_win_rates = [c.gih_win_rate for c in cards if c.gih_win_rate > 0]
+        atas = [c.ata for c in cards if c.ata > 0]
 
-        if not gih_win_rates or len(gih_win_rates) < 3:
-            # Not enough data for statistical grading, use simple thresholds
+        if not gih_win_rates or len(gih_win_rates) < 3 or not atas:
             for card in cards:
                 if card.gih_win_rate > 0:
                     card.score = self._simple_score(card.gih_win_rate)
                     card.grade = self._score_to_grade(card.score)
             return cards
 
-        # Calculate mean and std dev
-        mean = float(np.mean(gih_win_rates))
-        std = float(np.std(gih_win_rates, ddof=1))
+        # Normalize GIH win rates
+        gih_mean = float(np.mean(gih_win_rates))
+        gih_std = float(np.std(gih_win_rates, ddof=1))
 
-        logger.debug(f"Grade calculation: mean={mean:.3f}, std={std:.3f}, n={len(gih_win_rates)}")
+        # Normalize ATA (lower is better, so we invert the percentile)
+        ata_mean = float(np.mean(atas))
+        ata_std = float(np.std(atas, ddof=1))
 
-        # Calculate percentile scores using CDF
         for card in cards:
-            if card.gih_win_rate > 0 and std > 0:
-                # Calculate percentile using cumulative distribution function
-                cdf = norm.cdf(card.gih_win_rate, loc=mean, scale=std)
-                card.score = cdf * 100  # Convert to 0-100 scale
+            if card.gih_win_rate > 0 and gih_std > 0:
+                gih_percentile = norm.cdf(card.gih_win_rate, loc=gih_mean, scale=gih_std)
+                ata_percentile = 1 - norm.cdf(card.ata, loc=ata_mean, scale=ata_std) if card.ata > 0 and ata_std > 0 else 0.5
+                
+                # Combine scores (e.g., 70% from win rate, 30% from ATA)
+                combined_score = (gih_percentile * 0.7) + (ata_percentile * 0.3)
+                card.score = combined_score * 100
                 card.grade = self._score_to_grade(card.score)
 
-                logger.debug(f"{card.name}: GIH={card.gih_win_rate:.3f} -> score={card.score:.1f} -> {card.grade}")
+                logger.debug(f"{card.name}: GIH={card.gih_win_rate:.3f}, ATA={card.ata:.2f} -> Score={card.score:.1f} -> {card.grade}")
 
         return cards
 
@@ -296,22 +298,15 @@ class DraftAdvisor:
         if not cards:
             return "No cards available"
 
-        # Get top card
         top_card = cards[0]
-
-        if not top_card.grade:
-            return f"Pick {top_card.name}"
-
-        # Build recommendation
         rec = f"Pick {top_card.name}"
 
         if top_card.grade:
             rec += f" ({top_card.grade})"
+        
+        if top_card.ata > 0:
+            rec += f" (ATA: {top_card.ata:.1f})"
 
-        if top_card.gih_win_rate > 0:
-            rec += f" - {top_card.gih_win_rate*100:.1f}% GIH WR"
-
-        # Add context for early picks
         if pick_num <= 3 and len(cards) >= 2:
             second_card = cards[1]
             if second_card.grade and second_card.grade.startswith("A"):
@@ -350,23 +345,14 @@ def display_draft_pack(
         print("No cards in pack")
         return
 
-    # Build table
     table = []
     for i, card in enumerate(cards[:show_count], 1):
-        # Format color emoji
         color_emoji = format_color_emoji(card.colors)
-
-        # Format rarity emoji
         rarity_emoji = format_rarity_emoji(card.rarity)
-
-        # Color-coded grade
         grade_str = format_grade(card.grade) if card.grade else ""
-
-        # Win rate
         win_rate_str = f"{card.gih_win_rate*100:.1f}%" if card.gih_win_rate > 0 else ""
-
-        # Types
-        types_str = " ".join(card.types[:2]) if card.types else ""  # Limit to first 2 types
+        ata_str = f"{card.ata:.1f}" if card.ata > 0 else ""
+        types_str = " ".join(card.types[:2]) if card.types else ""
 
         table.append([
             i,
@@ -375,14 +361,15 @@ def display_draft_pack(
             card.name,
             grade_str,
             win_rate_str,
+            ata_str,
             types_str
         ])
 
     print(tabulate(
         table,
-        headers=["#", "", "", "Card", "Grade", "GIH WR", "Type"],
+        headers=["#", "", "", "Card", "Grade", "GIH WR", "ATA", "Type"],
         tablefmt="simple",
-        colalign=("right", "center", "center", "left", "center", "right", "left")
+        colalign=("right", "center", "center", "left", "center", "right", "right", "left")
     ))
 
     print(f"\n💡 Recommendation: {recommendation}\n")
@@ -400,50 +387,26 @@ def format_draft_pack_for_gui(
 ) -> tuple:
     """
     Format draft pack as list of strings for GUI display
-
-    Args:
-        cards: List of DraftCard objects (sorted by grade)
-        pack_num: Pack number
-        pick_num: Pick number
-        recommendation: Recommendation text
-        show_count: Max number of cards to display
-        picked_cards: List of card names already picked (optional)
-        card_metadata_db: CardMetadataDB for looking up colors of picked cards (optional)
-        split_panes: If True, return (pack_lines, picked_lines) tuple; if False, return combined lines
-
-    Returns:
-        If split_panes=True: Tuple of (pack_lines, picked_lines)
-        If split_panes=False: List of formatted strings ready for GUI display
     """
     lines = []
     lines.append("="*80)
     lines.append(f"DRAFT: Pack {pack_num}, Pick {pick_num}")
     lines.append("="*80)
-    lines.append("")
+    lines.append(f"{'#':<3}{'C':<3}{'R':<2}{'Card Name':<30}{'Grade':<5}{'GIH WR':<8}{'ATA':<5}{'Type'}")
+    lines.append("-"*80)
 
     if not cards:
         lines.append("No cards in pack")
-        return lines
+        return (lines, []) if split_panes else lines
 
-    # Build card list
     for i, card in enumerate(cards[:show_count], 1):
-        # Format color (use letter codes for GUI)
         color_str = format_color_emoji(card.colors, for_gui=True)
-
-        # Format rarity (use letter for GUI: M/R/U/C)
         rarity_str = format_rarity_emoji(card.rarity, for_gui=True)
-
-        # Grade (no color codes in GUI)
         grade_str = card.grade if card.grade else ""
-
-        # Win rate
         win_rate_str = f"{card.gih_win_rate*100:.1f}%" if card.gih_win_rate > 0 else ""
-
-        # Types
+        ata_str = f"{card.ata:.1f}" if card.ata > 0 else ""
         types_str = " ".join(card.types[:2]) if card.types else ""
-
-        # Format line
-        line = f"{i:2}. {color_str} {rarity_str} {card.name:30} {grade_str:3} {win_rate_str:6} {types_str}"
+        line = f"{i:<3}{color_str:<3}{rarity_str:<2}{card.name:<30}{grade_str:<5}{win_rate_str:<8}{ata_str:<5}{types_str}"
         lines.append(line)
 
     lines.append("")
