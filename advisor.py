@@ -233,7 +233,7 @@ class LogFollower:
                     callback(stripped_line)
                 if line_count > 0:
                     print(f"[DEBUG] Processed {line_count} lines")
-                time.sleep(0.1)
+                time.sleep(0.05)
             except FileNotFoundError:
                 logging.warning(f"Log file not found at {self.log_path}. Waiting...")
                 time.sleep(5)
@@ -830,11 +830,14 @@ class ArenaCardDatabase:
         if self.db_path and os.path.exists(self.db_path):
             try:
                 import sqlite3
-                self.conn = sqlite3.connect(self.db_path)
+                self.conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
                 logging.info(f"✓ Connected to Arena card database: {self.db_path}")
                 self._load_all_cards_into_cache()
+            except sqlite3.Error as e:
+                logging.warning(f"Failed to open Arena database (SQLite error): {e}")
+                self.conn = None
             except Exception as e:
-                logging.warning(f"Failed to open Arena database: {e}")
+                logging.warning(f"An unexpected error occurred while opening Arena database: {e}")
                 self.conn = None
 
         # Fallback: Load from cache file
@@ -952,8 +955,8 @@ class ArenaCardDatabase:
                     self.cache[grp_id]["mana_cost"] = card_data.get("mana_cost", "")
                     self._save_cache()
                     return True
-        except Exception as e:
-            logging.debug(f"Failed to enrich card {grp_id} from Scryfall: {e}")
+        except requests.exceptions.RequestException as e:
+            logging.debug(f"Failed to enrich card {grp_id} from Scryfall (network error): {e}")
         return False
 
     def _fetch_from_scryfall(self, grp_id: int) -> str:
@@ -985,7 +988,7 @@ class ArenaCardDatabase:
                 }
                 self._save_cache()
                 return self.cache[grp_id]["name"]
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logging.error(f"Scryfall API error for grpId {grp_id}: {e}")
             # Cache the error to avoid repeated failed requests
             self.cache[grp_id] = {
@@ -1021,7 +1024,7 @@ class GameStateManager:
     def __init__(self, card_lookup: ArenaCardDatabase):
         self.scanner = MatchScanner()
         self.card_lookup = card_lookup
-        self._line_buffer: List[str] = []
+        self._json_buffer: str = ""
         self._json_depth: int = 0
 
         # Draft event detection
@@ -1287,52 +1290,36 @@ class GameStateManager:
 
             return False  # Draft events don't change game state
 
-        # Phase 3: Check for deck submission (comes before match starts)
-        if "deckMessage" in line or "GREMessageType_ConnectResp" in line or "Event_Join" in line or "DeckSubmitList" in line:
-            self._line_buffer = []
-            self._json_depth = 0
-            logging.debug("Detected deck submission message. Resetting buffer.")
+        # If we are not building a JSON object, look for the start
+        if self._json_depth == 0:
+            json_start_index = line.find('{')
+            if json_start_index == -1:
+                return False  # Not in an object and no new one starts, so skip.
+            
+            # Start of a new JSON object
+            line_content = line[json_start_index:]
+            self._json_buffer = line_content
+            self._json_depth = line_content.count('{') - line_content.count('}')
+        else:
+            # We are in the middle of a JSON object, append the new line
+            self._json_buffer += line
+            self._json_depth += line.count('{') - line.count('}')
 
-        # Phase 3: Check for UX events (scry, surveil, etc.)
-        if "UIMessage" in line or "UXEventData" in line or "ScryResultData" in line:
-            self._line_buffer = []
-            self._json_depth = 0
-            logging.debug("Detected UX event message. Resetting buffer.")
-
-        # If a line contains "GreToClientEvent", it's the start of a new event.
-        # Clear the buffer and reset depth, then process this line.
-        if "GreToClientEvent" in line:
-            self._line_buffer = []
-            self._json_depth = 0
-            logging.debug("Detected 'GreToClientEvent' in line. Resetting buffer.")
-
-        # Append the current line to the buffer
-        self._line_buffer.append(line)
-
-        # Update JSON depth
-        self._json_depth += line.count('{')
-        self._json_depth -= line.count('}')
-
-        # If depth goes negative, we joined mid-stream - silently reset
+        # Check for malformed JSON (more closing than opening braces)
         if self._json_depth < 0:
-            logging.debug(f"JSON depth negative ({self._json_depth}), likely joined mid-stream. Resetting buffer.")
-            self._line_buffer = []
+            logging.warning(f"JSON depth is negative ({self._json_depth}). Buffer corrupted, resetting.")
+            self._json_buffer = ""
             self._json_depth = 0
             return False
 
-        # If depth is 0 and buffer is not empty, we might have a complete JSON object
-        if self._json_depth == 0 and self._line_buffer:
-            full_json_str = "".join(self._line_buffer)
-            self._line_buffer = [] # Clear buffer after attempting to process
-
-            # Find the start of the JSON object
-            json_start = full_json_str.find("{")
-            if json_start == -1:
-                logging.debug("No JSON object start found in buffered lines.")
-                return False
-
+        # If we have a complete object, parse it
+        if self._json_depth == 0 and self._json_buffer:
+            # Make a copy to parse and clear the instance buffer immediately
+            json_to_parse = self._json_buffer
+            self._json_buffer = ""
+            
             try:
-                parsed_data = json.loads(full_json_str[json_start:])
+                parsed_data = json.loads(json_to_parse)
 
                 # Parse deck submission (but don't return - let GRE event processing continue)
                 # This is important because GRE event processing sets local_player_seat_id
@@ -1351,7 +1338,8 @@ class GameStateManager:
                     logging.debug("Parsed JSON but 'greToClientEvent' not found within the object.")
                     return False
             except json.JSONDecodeError as e:
-                logging.debug(f"JSON parsing failed for buffered lines. Error: {e}. Content: {full_json_str[:200]}...")
+                logging.debug(f"JSON parsing failed for buffered content. Error: {e}. Content: {json_to_parse[:200]}...")
+                # Buffer is already cleared, so we are ready for the next object.
                 return False
 
         return False
@@ -1530,8 +1518,24 @@ class GameStateManager:
         if unknown_bf > 0:
             warnings.append(f"{unknown_bf} unknown cards on battlefield")
 
+        # Phase 3: Validate card total if decklist is known
+        if board_state.your_decklist:
+            total_deck_size = sum(board_state.your_decklist.values())
+            
+            # Sum of cards in all known zones
+            cards_accounted_for = (
+                len(board_state.your_hand) +
+                len(board_state.your_battlefield) +
+                len(board_state.your_graveyard) +
+                len(board_state.your_exile) +
+                board_state.your_library_count
+            )
+
+            # Allow for a small discrepancy, but flag major differences
+            if abs(total_deck_size - cards_accounted_for) > 2:
+                issues.append(f"Major card count mismatch: Deck has {total_deck_size} cards, but {cards_accounted_for} are accounted for.")
+
         # Only fail validation for critical issues
-        # (currently none - we allow all states through)
         if issues:
             logging.warning(f"Board state validation FAILED: {', '.join(issues)}")
             return False
