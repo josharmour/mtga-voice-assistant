@@ -5,7 +5,8 @@ import logging
 from pathlib import Path
 import re
 import requests
-
+import urllib.request
+import sqlite3
 import time
 import os
 import threading
@@ -14,6 +15,14 @@ import subprocess
 import tempfile
 import curses
 from collections import deque
+
+# Import configuration manager for user preferences
+try:
+    from config_manager import UserPreferences
+    CONFIG_MANAGER_AVAILABLE = True
+except ImportError:
+    CONFIG_MANAGER_AVAILABLE = False
+    logging.warning("Config manager not available. User preferences will not persist.")
 
 # Import RAG system (optional - will gracefully degrade if not available)
 try:
@@ -495,8 +504,16 @@ class MatchScanner:
             counters = obj_data.get("counters", {})
             attached_to = obj_data.get("attachedTo")
             visibility = obj_data.get("visibility", "public")
+
+            # Extract power value (can be int or {'value': int})
             power = obj_data.get("power")
+            if isinstance(power, dict):
+                power = power.get("value")
+
+            # Extract toughness value (can be int or {'value': int})
             toughness = obj_data.get("toughness")
+            if isinstance(toughness, dict):
+                toughness = toughness.get("value")
 
             logging.debug(f"  GameObject: instanceId={instance_id}, grpId={grp_id}, zoneId={zone_id}, ownerSeatId={owner_seat_id}, tapped={is_tapped}")
 
@@ -810,111 +827,225 @@ class MatchScanner:
 
         return state_changed
 
-try:
-    from scryfall_db import ScryfallDB
-    SCRYFALL_DB_AVAILABLE = True
-except ImportError:
-    SCRYFALL_DB_AVAILABLE = False
-    logging.warning("ScryfallDB not available. JSON cache will be used as a fallback.")
+# ----------------------------------------------------------------------------------
+# Part 4: Card ID Resolution (grpId to Card Name) - UNIFIED DATABASE
+# ----------------------------------------------------------------------------------
 
-# ----------------------------------------------------------------------------------
-# Part 4: Card ID Resolution (grpId to Card Name)
-# ----------------------------------------------------------------------------------
+def check_and_update_card_database() -> bool:
+    """
+    Check if card database needs update and offer to update it.
+
+    Returns True if database is ready to use, False if update failed.
+    """
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    import sqlite3
+
+    db_path = Path("data/unified_cards.db")
+
+    # If database doesn't exist, we need to build it
+    if not db_path.exists():
+        print("\n" + "="*70)
+        print("CARD DATABASE NOT FOUND")
+        print("="*70)
+        print("The unified card database needs to be built first.")
+        print("This is a one-time setup that downloads ~492MB from Scryfall.")
+        print("Expected time: 5-10 minutes depending on your connection.")
+        print()
+
+        response = input("Build database now? (y/n): ").strip().lower()
+        if response != 'y':
+            print("Cannot proceed without card database. Exiting.")
+            return False
+
+        print("\nBuilding database...")
+        import subprocess
+        result = subprocess.run(["python3", "build_unified_card_database.py"],
+                              capture_output=False)
+
+        if result.returncode != 0:
+            print("✗ Database build failed.")
+            return False
+
+        print("✓ Database built successfully!")
+        return True
+
+    # Database exists - check if it's stale (>7 days old)
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM metadata WHERE key = 'default_cards_updated_at'")
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            logging.warning("No update timestamp in database")
+            return True  # Use database anyway
+
+        last_update_str = row[0]
+        last_update = datetime.fromisoformat(last_update_str.replace('Z', '+00:00').replace('+00:00', ''))
+        age = datetime.now() - last_update
+
+        if age.days >= 7:
+            print(f"\n⚠ Card database is {age.days} days old (updated {last_update_str[:10]})")
+            response = input("Update now? (y/n - update recommended weekly): ").strip().lower()
+
+            if response == 'y':
+                print("Updating database...")
+                import subprocess
+                result = subprocess.run(["python3", "update_card_database.py", "--quick"],
+                                      capture_output=False)
+
+                if result.returncode == 0:
+                    print("✓ Database updated successfully!")
+                else:
+                    print("⚠ Update failed, using existing database.")
+        else:
+            logging.info(f"Card database is current ({age.days} days old)")
+
+        return True
+
+    except Exception as e:
+        logging.warning(f"Could not check database age: {e}")
+        return True  # Use database anyway
+
 
 class ArenaCardDatabase:
     """
-    A unified card database that uses ScryfallDB for caching and lookups.
-    Thread-safe access to SQLite database.
+    Unified card database using unified_cards.db (17,000+ cards with reskin support).
+
+    No API fallbacks needed - all MTGA cards are in the database.
     """
-    def __init__(self, db_path: str = "data/unified_cards.db"):
-        if SCRYFALL_DB_AVAILABLE:
-            self.db = ScryfallDB(db_path)
-            logging.info(f"✓ Using ScryfallDB for card data at {db_path}")
-        else:
-            self.db = None
-            logging.warning("✗ ScryfallDB not found. Card lookups will be slower.")
+    def __init__(self, db_path: str = "data/unified_cards.db", show_reskin_names: bool = False):
+        self.db_path = Path(db_path)
+        self.conn = None
         self.cache: Dict[int, dict] = {}
-        self._db_lock = threading.Lock()  # Thread-safe database access
+        self.show_reskin_names = show_reskin_names  # Toggle for Spider-Man reskins
+
+        if not self.db_path.exists():
+            logging.error(f"✗ Card database not found at {db_path}")
+            logging.error("  Run: python build_unified_card_database.py")
+            return
+
+        try:
+            self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self.conn.row_factory = sqlite3.Row
+
+            # Get stats
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM cards")
+            total = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM cards WHERE is_reskin = 1")
+            reskins = cursor.fetchone()[0]
+
+            logging.info(f"✓ Unified card database loaded ({total:,} cards, {reskins} reskins)")
+
+        except Exception as e:
+            logging.error(f"Failed to load card database: {e}")
+            self.conn = None
 
     def get_card_name(self, grp_id: int) -> str:
-        """Get card name from grpId."""
-        card_data = self.get_card_data(grp_id)
-        return card_data.get("name", f"Unknown({grp_id})") if card_data else f"Unknown({grp_id})"
+        """Get card name from grpId. Shows reskin names if show_reskin_names is True."""
+        if not grp_id or not self.conn:
+            return f"Unknown({grp_id})" if grp_id else "Unknown"
+
+        # Check cache
+        if grp_id in self.cache:
+            card = self.cache[grp_id]
+            if self.show_reskin_names and card.get("is_reskin"):
+                # Show Spider-Man reskin name
+                return card.get("name", f"Unknown({grp_id})")
+            else:
+                # Show OmenPaths canonical name (printed name)
+                return card.get("printed_name") or card.get("name", f"Unknown({grp_id})")
+
+        # Query database
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM cards WHERE grpId = ?", (grp_id,))
+            row = cursor.fetchone()
+
+            if row:
+                card = dict(row)
+                self.cache[grp_id] = card
+
+                if self.show_reskin_names and card.get("is_reskin"):
+                    # Show Spider-Man reskin name
+                    return card.get("name", f"Unknown({grp_id})")
+                else:
+                    # Show OmenPaths canonical name (printed name)
+                    return card.get("printed_name") or card.get("name", f"Unknown({grp_id})")
+            else:
+                logging.debug(f"Card {grp_id} not in database")
+                return f"Unknown({grp_id})"
+
+        except Exception as e:
+            logging.error(f"Database error for grpId {grp_id}: {e}")
+            return f"Unknown({grp_id})"
 
     def get_card_data(self, grp_id: int) -> Optional[dict]:
-        """Get full card data from cache or database (thread-safe)."""
-        if not grp_id:
+        """Get full card data from grpId."""
+        if not grp_id or not self.conn:
             return None
 
-        # Check in-memory cache first (safe - no DB access)
+        # Check cache
         if grp_id in self.cache:
             return self.cache[grp_id]
 
-        # If using ScryfallDB, check the database (thread-safe)
-        if self.db:
-            with self._db_lock:
-                card_data = self.db.get_card_by_grpId(grp_id)
-            if card_data:
-                self.cache[grp_id] = card_data
-                return card_data
+        # Query database
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM cards WHERE grpId = ?", (grp_id,))
+            row = cursor.fetchone()
 
-        # Fallback for when ScryfallDB is not available or fails (thread-safe)
-        logging.warning(f"Card {grp_id} not in DB, fetching from Scryfall API.")
-        return self._fetch_from_scryfall_api(grp_id)
+            if row:
+                card = dict(row)
+                self.cache[grp_id] = card
+                return card
+
+            return None
+
+        except Exception as e:
+            logging.error(f"Database error for grpId {grp_id}: {e}")
+            return None
 
     def get_oracle_text(self, grp_id: int) -> str:
         """Get oracle text for a card."""
-        card_data = self.get_card_data(grp_id)
-        return card_data.get("oracle_text", "") if card_data else ""
+        card = self.get_card_data(grp_id)
+        return card.get("oracle_text", "") if card else ""
 
-    def _fetch_from_scryfall_api(self, grp_id: int) -> Optional[dict]:
-        """Directly fetch from Scryfall API as a last resort (thread-safe)."""
-        try:
-            response = requests.get(f"https://api.scryfall.com/cards/arena/{grp_id}", timeout=5)
-            if response.status_code == 200:
-                card_data = response.json()
-                # Manually structure the data to match our DB schema
-                power = card_data.get('power')
-                toughness = card_data.get('toughness')
+    def get_mana_cost(self, grp_id: int) -> str:
+        """Get mana cost for a card (e.g., '{2}{U}{U}')."""
+        card = self.get_card_data(grp_id)
+        return card.get("mana_cost", "") if card else ""
 
-                try:
-                    power = int(power) if power else None
-                except (ValueError, TypeError):
-                    power = None
+    def get_cmc(self, grp_id: int) -> Optional[float]:
+        """Get converted mana cost for a card."""
+        card = self.get_card_data(grp_id)
+        cmc = card.get("cmc") if card else None
+        return float(cmc) if cmc is not None else None
 
-                try:
-                    toughness = int(toughness) if toughness else None
-                except (ValueError, TypeError):
-                    toughness = None
+    def get_type_line(self, grp_id: int) -> str:
+        """Get card type line (e.g., 'Creature - Elf Wizard')."""
+        card = self.get_card_data(grp_id)
+        return card.get("type_line", "") if card else ""
 
-                structured_data = {
-                    "grpId": grp_id,
-                    "name": clean_card_name(card_data.get("name", f"Unknown({grp_id})")),
-                    "set_code": card_data.get("set"),
-                    "rarity": card_data.get("rarity"),
-                    "types": ", ".join(card_data.get("type_line", "").split(" — ")[0].split()),
-                    "subtypes": ", ".join(card_data.get("type_line", "").split(" — ")[1].split()) if " — " in card_data.get("type_line", "") else "",
-                    "power": power,
-                    "toughness": toughness,
-                    "oracle_text": card_data.get("oracle_text", ""),
-                    "type_line": card_data.get("type_line", ""),
-                    "mana_cost": card_data.get("mana_cost", ""),
-                }
-                with self._db_lock:
-                    self.cache[grp_id] = structured_data
-                return structured_data
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Scryfall API error for grpId {grp_id}: {e}")
-
-        # Cache failure to prevent repeated API calls (thread-safe)
-        with self._db_lock:
-            self.cache[grp_id] = {"name": f"Unknown({grp_id})"}
-            return self.cache[grp_id]
+    def get_keywords(self, grp_id: int) -> List[str]:
+        """Get ability keywords for a card (e.g., ['Flying', 'Lifelink'])."""
+        card = self.get_card_data(grp_id)
+        if not card:
+            return []
+        keywords_str = card.get("keywords", "")
+        if not keywords_str:
+            return []
+        # Parse comma-separated keywords
+        return [kw.strip() for kw in keywords_str.split(",") if kw.strip()]
 
     def close(self):
         """Close the database connection."""
-        if self.db:
-            self.db.close()
+        if self.conn:
+            self.conn.close()
 
 # ----------------------------------------------------------------------------------
 # Part 5: Building Board State for AI
@@ -1451,7 +1582,7 @@ class GameStateManager:
 # ----------------------------------------------------------------------------------
 
 class OllamaClient:
-    def __init__(self, host: str = "http://localhost:11434", model: str = "llama3.2"):
+    def __init__(self, host: str = "http://localhost:11434", model: str = "mistral:7b"):
         self.host = host
         self.model = model
 
@@ -1516,11 +1647,12 @@ FORBIDDEN ACTIONS:
 
 Give ONLY tactical advice in 1-2 short sentences. Start directly with your recommendation."""
 
-    def __init__(self, ollama_host: str = "http://localhost:11434", model: str = "llama3.2", use_rag: bool = True, card_db: Optional[ArenaCardDatabase] = None):
+    def __init__(self, ollama_host: str = "http://localhost:11434", model: str = "mistral:7b", use_rag: bool = True, card_db: Optional[ArenaCardDatabase] = None):
         self.client = OllamaClient(host=ollama_host, model=model)
         self.use_rag = use_rag and RAG_AVAILABLE
         self.rag_system = None
         self.card_db = card_db  # Store card database for oracle text lookups
+        self.last_rag_references = None  # Track most recent RAG references used
 
         # Initialize RAG system if enabled
         if self.use_rag:
@@ -1550,10 +1682,18 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
             try:
                 # Convert BoardState to dict format for RAG system
                 board_dict = self._board_state_to_dict(board_state)
-                prompt = self.rag_system.enhance_prompt(board_dict, prompt)
-                logging.debug("Prompt enhanced with RAG context")
+
+                # Use the enhanced method that returns references
+                if hasattr(self.rag_system, 'enhance_prompt_with_references'):
+                    prompt, self.last_rag_references = self.rag_system.enhance_prompt_with_references(board_dict, prompt)
+                    logging.debug(f"Prompt enhanced with RAG context. References: {self.last_rag_references}")
+                else:
+                    # Fallback to old method if the new method isn't available
+                    prompt = self.rag_system.enhance_prompt(board_dict, prompt)
+                    logging.debug("Prompt enhanced with RAG context (references not tracked)")
             except Exception as e:
                 logging.warning(f"Failed to enhance prompt with RAG: {e}")
+                self.last_rag_references = None
 
         advice = self.client.generate(f"{self.SYSTEM_PROMPT}\n\n{prompt}")
         if advice:
@@ -1561,6 +1701,10 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
         else:
             logging.debug("AI did not generate any advice.")
         return advice
+
+    def get_last_rag_references(self) -> Optional[Dict]:
+        """Get the RAG references from the last tactical advice generation."""
+        return self.last_rag_references
 
     def check_important_updates(self, board_state: BoardState, previous_board_state: Optional[BoardState]) -> Optional[str]:
         """
@@ -1702,16 +1846,31 @@ Your response:"""
                     lines.append(f"Creatures died: {', '.join(history.died_this_turn)}")
                 lines.append("")
 
-        # Hand - with oracle text
+        # Hand - with mana cost, type, and oracle text
         if board_state.your_hand:
             lines.append(f"== YOUR HAND ({len(board_state.your_hand)}) ==")
             for card in board_state.your_hand:
                 card_info = f"• {card.name}"
-                # Add oracle text if available
+
+                # Add card details if available
                 if self.card_db and card.grp_id:
+                    mana_cost = self.card_db.get_mana_cost(card.grp_id)
+                    type_line = self.card_db.get_type_line(card.grp_id)
                     oracle_text = self.card_db.get_oracle_text(card.grp_id)
+
+                    # Format: Name {COST} (Type)
+                    if mana_cost or type_line:
+                        details = []
+                        if mana_cost:
+                            details.append(mana_cost)
+                        if type_line:
+                            details.append(f"({type_line})")
+                        card_info += f" {' '.join(details)}"
+
+                    # Add oracle text on separate line
                     if oracle_text:
-                        card_info += f"\n  ({oracle_text})"
+                        card_info += f"\n  Rules: {oracle_text}"
+
                 lines.append(card_info)
             lines.append("")
         else:
@@ -1809,16 +1968,26 @@ Your response:"""
 
         # Count floating mana in pool
         floating_mana = sum(board_state.your_mana_pool.values()) if board_state.your_mana_pool else 0
-        total_available_mana = len(your_lands) + floating_mana
+        total_available_mana = floating_mana  # For use in prompt text
 
-        lines.append(f"== MANA AVAILABLE ==")
-        lines.append(f"{total_available_mana} total mana: {len(your_lands)} untapped lands + {floating_mana} floating")
+        # Build detailed mana breakdown
+        lines.append(f"== AVAILABLE MANA ==")
+
+        # Show floating mana first (this is what's actually available RIGHT NOW)
         if board_state.your_mana_pool and any(v > 0 for v in board_state.your_mana_pool.values()):
-            # Show breakdown of colored mana
-            mana_str = ", ".join([f"{count}{color}" for color, count in board_state.your_mana_pool.items() if count > 0])
-            lines.append(f"Floating mana: {mana_str}")
+            mana_str = ", ".join([f"{count}{color}" for color, count in sorted(board_state.your_mana_pool.items()) if count > 0])
+            lines.append(f"In pool (castable NOW): {mana_str} ({floating_mana} total)")
+        else:
+            lines.append(f"In pool (castable NOW): None (0 total)")
+
+        # Show potential mana from untapped lands
+        if your_lands:
+            lines.append(f"Untapped lands: {len(your_lands)} (can tap for mana)")
+
+        # Show energy if present
         if board_state.your_energy > 0:
             lines.append(f"Energy: {board_state.your_energy}")
+
         lines.append("")
 
         # Combat state (if in combat)
@@ -2610,9 +2779,26 @@ class AdvisorGUI:
         self.root = root
         self.advisor = advisor_ref
 
+        # Load user preferences for GUI settings persistence
+        self.prefs = None
+        if CONFIG_MANAGER_AVAILABLE:
+            self.prefs = UserPreferences.load()
+            logging.debug("User preferences loaded for GUI mode")
+
         # Configure root window
         self.root.title("MTGA Voice Advisor")
-        self.root.geometry("900x700")
+
+        # Apply window geometry from prefs (or use default)
+        if self.prefs:
+            geometry = self.prefs.window_geometry
+        else:
+            geometry = "900x700"
+        self.root.geometry(geometry)
+
+        # Apply always_on_top setting (default True)
+        always_on_top = self.prefs.always_on_top if self.prefs else True
+        self.root.attributes('-topmost', always_on_top)
+
         self.root.configure(bg='#2b2b2b')
 
         # Color scheme
@@ -2627,9 +2813,13 @@ class AdvisorGUI:
         # Message queue for thread-safe updates
         self.message_queue = deque(maxlen=100)
         self.board_state_lines = []
+        self.rag_panel_expanded = False  # Track RAG panel expansion state
 
         # Bind F12 for bug reports
         self.root.bind('<F12>', lambda e: self._capture_bug_report())
+
+        # Bind window close handler
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # Start update loop
         self.running = True
@@ -2733,11 +2923,12 @@ class AdvisorGUI:
         self.volume_label = tk.Label(volume_frame, text="100%", bg=self.bg_color, fg=self.fg_color, width=5)
         self.volume_label.pack(side=tk.RIGHT)
 
-        # Continuous monitoring checkbox
-        self.continuous_var = tk.BooleanVar(value=True)
+        # Opponent Turn Alerts checkbox (renamed from "Continuous Monitoring")
+        opponent_alerts_default = self.prefs.opponent_turn_alerts if self.prefs else True
+        self.continuous_var = tk.BooleanVar(value=opponent_alerts_default)
         tk.Checkbutton(
             settings_frame,
-            text="Continuous Monitoring",
+            text="Opponent Turn Alerts",
             variable=self.continuous_var,
             command=self._on_continuous_toggle,
             bg=self.bg_color,
@@ -2748,7 +2939,8 @@ class AdvisorGUI:
         ).pack(anchor=tk.W, pady=5)
 
         # Show thinking checkbox
-        self.show_thinking_var = tk.BooleanVar(value=True)
+        show_thinking_default = self.prefs.show_thinking if self.prefs else True
+        self.show_thinking_var = tk.BooleanVar(value=show_thinking_default)
         tk.Checkbutton(
             settings_frame,
             text="Show AI Thinking",
@@ -2760,8 +2952,24 @@ class AdvisorGUI:
             activeforeground=self.fg_color
         ).pack(anchor=tk.W, pady=5)
 
+        # Show Spider-Man Reskins checkbox
+        reskin_default = self.prefs.reskin_names if self.prefs else False
+        self.reskin_var = tk.BooleanVar(value=reskin_default)
+        tk.Checkbutton(
+            settings_frame,
+            text="Show Spider-Man Reskins",
+            variable=self.reskin_var,
+            command=self._on_reskin_toggle,
+            bg=self.bg_color,
+            fg=self.fg_color,
+            selectcolor='#1a1a1a',
+            activebackground=self.bg_color,
+            activeforeground=self.fg_color
+        ).pack(anchor=tk.W, pady=5)
+
         # Always on top checkbox
-        self.always_on_top_var = tk.BooleanVar(value=False)
+        always_on_top_default = self.prefs.always_on_top if self.prefs else True
+        self.always_on_top_var = tk.BooleanVar(value=always_on_top_default)
         tk.Checkbutton(
             settings_frame,
             text="Always on Top",
@@ -2832,6 +3040,43 @@ class AdvisorGUI:
             pady=5
         ).pack(pady=5, fill=tk.X)
 
+        # Chat/Prompt input area
+        chat_label = tk.Label(
+            settings_frame,
+            text="📝 SEND PROMPT",
+            bg=self.bg_color,
+            fg=self.accent_color,
+            font=('Consolas', 10, 'bold')
+        )
+        chat_label.pack(pady=(15, 5), anchor=tk.W)
+
+        self.prompt_text = tk.Text(
+            settings_frame,
+            height=4,
+            bg='#1a1a1a',
+            fg=self.fg_color,
+            font=('Consolas', 9),
+            relief=tk.FLAT,
+            padx=5,
+            pady=5,
+            wrap=tk.WORD
+        )
+        self.prompt_text.pack(pady=(0, 5), fill=tk.BOTH, expand=False)
+        self.prompt_text.bind('<Control-Return>', self._on_prompt_send)
+
+        send_btn = tk.Button(
+            settings_frame,
+            text="Send [Ctrl+Enter]",
+            command=self._on_prompt_send,
+            bg=self.info_color,
+            fg='#1a1a1a',
+            font=('Consolas', 9),
+            relief=tk.FLAT,
+            padx=10,
+            pady=5
+        )
+        send_btn.pack(pady=5, fill=tk.X)
+
         # Main content area (right side)
         content_frame = tk.Frame(self.root, bg=self.bg_color)
         content_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -2872,6 +3117,15 @@ class AdvisorGUI:
         self.board_text.pack(fill=tk.BOTH, expand=True)
         self.board_text.config(state=tk.DISABLED)
 
+        # Configure color tags for draft pack display (matching messages_text colors)
+        self.board_text.tag_config('color_w', foreground='#ffff99')   # White - pale yellow
+        self.board_text.tag_config('color_u', foreground='#55aaff')   # Blue
+        self.board_text.tag_config('color_b', foreground='#aaaaaa')   # Black - gray
+        self.board_text.tag_config('color_r', foreground='#ff5555')   # Red
+        self.board_text.tag_config('color_g', foreground='#00ff88')   # Green
+        self.board_text.tag_config('color_c', foreground='#cccccc')   # Colorless - light gray
+        self.board_text.tag_config('color_multi', foreground='#ffdd44') # Multicolor - orange-yellow
+
         # Advisor messages area (bottom)
         self.advisor_label = tk.Label(
             content_frame,
@@ -2903,6 +3157,50 @@ class AdvisorGUI:
         self.messages_text.tag_config('red', foreground='#ff5555')
         self.messages_text.tag_config('white', foreground='#ffffff')
 
+        # RAG References panel (bottom)
+        rag_header_frame = tk.Frame(content_frame, bg=self.bg_color)
+        rag_header_frame.pack(pady=(10, 5), fill=tk.X)
+
+        self.rag_label = tk.Label(
+            rag_header_frame,
+            text="═══ RAG REFERENCES ═══",
+            bg=self.bg_color,
+            fg=self.info_color,
+            font=('Consolas', 10, 'bold')
+        )
+        self.rag_label.pack(side=tk.LEFT, expand=True)
+
+        # Toggle button for RAG references
+        self.rag_toggle_btn = tk.Button(
+            rag_header_frame,
+            text="[Expand]",
+            bg='#1a1a1a',
+            fg=self.info_color,
+            font=('Consolas', 8),
+            relief=tk.FLAT,
+            command=self._toggle_rag_panel
+        )
+        self.rag_toggle_btn.pack(side=tk.RIGHT, padx=5)
+
+        self.rag_text = scrolledtext.ScrolledText(
+            content_frame,
+            height=6,
+            bg='#1a1a1a',
+            fg=self.fg_color,
+            font=('Consolas', 8),
+            relief=tk.FLAT,
+            padx=10,
+            pady=10
+        )
+        self.rag_text.pack(fill=tk.BOTH, expand=False)
+        self.rag_text.config(state=tk.DISABLED)
+
+        # Tag configurations for RAG panel
+        self.rag_text.tag_config('rule', foreground='#ffff00', font=('Consolas', 8, 'bold'))
+        self.rag_text.tag_config('card', foreground='#00ff88', font=('Consolas', 8, 'bold'))
+        self.rag_text.tag_config('query', foreground='#55aaff', font=('Consolas', 8, 'italic'))
+        self.rag_text.tag_config('stats', foreground='#ff88ff')
+
     def _update_loop(self):
         """Process queued updates"""
         if not self.running:
@@ -2917,6 +3215,14 @@ class AdvisorGUI:
         while self.message_queue:
             msg, color = self.message_queue.popleft()
             self._add_message_to_display(msg, color)
+
+        # Update RAG references (every 500ms to reduce overhead)
+        if not hasattr(self, '_rag_update_counter'):
+            self._rag_update_counter = 0
+        self._rag_update_counter += 1
+        if self._rag_update_counter >= 5:  # Update every 500ms (100ms * 5)
+            self._update_rag_references()
+            self._rag_update_counter = 0
 
         # Schedule next update
         self.root.after(100, self._update_loop)
@@ -2934,8 +3240,236 @@ class AdvisorGUI:
         """Update board state display"""
         self.board_text.config(state=tk.NORMAL)
         self.board_text.delete(1.0, tk.END)
-        self.board_text.insert(1.0, "\n".join(self.board_state_lines))
+
+        # Insert lines with color tag support for draft pack
+        for i, line in enumerate(self.board_state_lines):
+            if i > 0:
+                self.board_text.insert(tk.END, "\n")
+
+            # Check if this is a draft pack line (has color codes in columns 4-5)
+            if len(line) > 5 and line[0].isdigit():
+                # Parse line to apply color tags
+                # Format: "#  C  R Card Name..."
+                # Colors at positions 4 and 6 (after the # and two spaces)
+                self._insert_line_with_colors(line)
+            else:
+                # Regular line, no color formatting
+                self.board_text.insert(tk.END, line)
+
         self.board_text.config(state=tk.DISABLED)
+
+    def _insert_line_with_colors(self, line: str):
+        """Insert a draft pack line with color tags applied to color codes"""
+        import re
+
+        # Pattern to find color codes: W, U, B, R, G, C, or multicolor like WU, BR, etc.
+        # Position 4-5 is the color field (after "#  ")
+        # Position 7-8 is the rarity field (after "   ")
+
+        pos = 0
+
+        # Insert #
+        if len(line) > pos:
+            self.board_text.insert(tk.END, line[pos])
+            pos += 1
+
+        # Insert spaces (3 spaces after #)
+        while pos < len(line) and line[pos] == ' ' and pos < 3:
+            self.board_text.insert(tk.END, line[pos])
+            pos += 1
+
+        # Extract and apply color code (1-2 chars)
+        color_start = pos
+        while pos < len(line) and line[pos] != ' ':
+            pos += 1
+        color_code = line[color_start:pos]
+
+        # Apply appropriate tag based on color
+        if color_code:
+            if len(color_code) > 1:
+                # Multicolor
+                tag = 'color_multi'
+            elif color_code in ['W', 'U', 'B', 'R', 'G', 'C']:
+                tag = f'color_{color_code.lower()}'
+            else:
+                tag = None
+
+            if tag:
+                self.board_text.insert(tk.END, color_code, tag)
+            else:
+                self.board_text.insert(tk.END, color_code)
+
+        # Insert remaining text as-is
+        if pos < len(line):
+            self.board_text.insert(tk.END, line[pos:])
+
+    def _update_rag_references(self):
+        """Update RAG references display from advisor's last references"""
+        if not hasattr(self.advisor, 'get_last_rag_references'):
+            return
+
+        references = self.advisor.get_last_rag_references()
+        if not references:
+            self.rag_text.config(state=tk.NORMAL)
+            self.rag_text.delete(1.0, tk.END)
+            self.rag_text.insert(1.0, "No RAG references available. Click [Expand] to see when references are used.", 'white')
+            self.rag_text.config(state=tk.DISABLED)
+            return
+
+        self.rag_text.config(state=tk.NORMAL)
+        self.rag_text.delete(1.0, tk.END)
+
+        # Store references for click handling
+        self._current_rag_references = references
+
+        # Display queries
+        if references.get('queries'):
+            self.rag_text.insert(tk.END, "Queries: ", 'white')
+            for i, query in enumerate(references['queries'][:2]):
+                if i > 0:
+                    self.rag_text.insert(tk.END, " | ")
+                self.rag_text.insert(tk.END, f"[{query}]", f'query_{i}')
+            self.rag_text.insert(tk.END, "\n")
+
+        # Display rules
+        rules = references.get('rules', [])
+        if rules:
+            self.rag_text.insert(tk.END, "Rules: ", 'white')
+            for i, rule in enumerate(rules[:3]):
+                if i > 0:
+                    self.rag_text.insert(tk.END, " | ")
+                rule_id = rule.get('id', 'Unknown')
+                self.rag_text.insert(tk.END, f"[{rule_id}]", f'rule_{i}')
+            self.rag_text.insert(tk.END, "\n")
+
+        # Display card stats
+        cards = references.get('cards', {})
+        if cards:
+            self.rag_text.insert(tk.END, "Cards: ", 'white')
+            card_names = list(cards.keys())[:3]
+            for i, card_name in enumerate(card_names):
+                if i > 0:
+                    self.rag_text.insert(tk.END, " | ")
+                card_info = cards[card_name]
+                win_rate = card_info.get('gih_win_rate', 0)
+                self.rag_text.insert(tk.END, f"[{card_name} {win_rate:.1%}]", f'card_{i}')
+
+        # Configure underline for clickable items
+        for tag_name in self.rag_text.tag_names():
+            if tag_name.startswith(('query_', 'rule_', 'card_')):
+                self.rag_text.tag_configure(tag_name, underline=True, foreground='#00ccff')
+                self.rag_text.tag_bind(tag_name, '<Button-1>', lambda e, tag=tag_name: self._on_rag_reference_click(e, tag))
+                self.rag_text.tag_bind(tag_name, '<Enter>', lambda e, tag=tag_name: self._on_rag_reference_hover(e, tag, True))
+                self.rag_text.tag_bind(tag_name, '<Leave>', lambda e, tag=tag_name: self._on_rag_reference_hover(e, tag, False))
+
+        self.rag_text.config(state=tk.DISABLED)
+
+    def _on_rag_reference_hover(self, event, tag, entering):
+        """Handle hover over RAG references"""
+        if entering:
+            self.rag_text.config(cursor='hand2')
+        else:
+            self.rag_text.config(cursor='arrow')
+
+    def _on_rag_reference_click(self, event, tag):
+        """Handle click on RAG references to show details"""
+        if not hasattr(self, '_current_rag_references'):
+            return
+
+        details = ""
+
+        # Parse tag to determine type
+        if tag.startswith('query_'):
+            idx = int(tag.split('_')[1])
+            queries = self._current_rag_references.get('queries', [])
+            if idx < len(queries):
+                details = f"Query used to retrieve rules:\n{queries[idx]}"
+
+        elif tag.startswith('rule_'):
+            idx = int(tag.split('_')[1])
+            rules = self._current_rag_references.get('rules', [])
+            if idx < len(rules):
+                rule = rules[idx]
+                rule_id = rule.get('id', 'Unknown')
+                rule_text = rule.get('text', 'No details available')
+                rule_section = rule.get('section', 'Unknown')
+                details = f"Rule {rule_id} ({rule_section}):\n{rule_text}"
+
+        elif tag.startswith('card_'):
+            idx = int(tag.split('_')[1])
+            cards = list(self._current_rag_references.get('cards', {}).items())
+            if idx < len(cards):
+                card_name, card_info = cards[idx]
+                details = f"Card Statistics for {card_name}:\n"
+                details += f"  GIH Win Rate: {card_info.get('gih_win_rate', 0):.1%}\n"
+                details += f"  Games Played: {card_info.get('games_played', 0)}\n"
+                details += f"  IWD (In-hand win delta): {card_info.get('iwd', 'N/A')}\n"
+                details += f"  Format: {card_info.get('format', 'Unknown')}"
+
+        if details:
+            self._show_rag_detail_popup(details)
+
+    def _show_rag_detail_popup(self, details):
+        """Show a popup window with detailed RAG reference information"""
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("RAG Reference Details")
+        popup.geometry("600x400")
+        popup.configure(bg=self.bg_color)
+
+        # Header
+        header = tk.Label(
+            popup,
+            text="RAG Reference Details",
+            bg=self.bg_color,
+            fg=self.info_color,
+            font=('Consolas', 12, 'bold')
+        )
+        header.pack(pady=(10, 5), fill=tk.X)
+
+        # Details text
+        details_text = scrolledtext.ScrolledText(
+            popup,
+            bg='#1a1a1a',
+            fg=self.fg_color,
+            font=('Consolas', 10),
+            relief=tk.FLAT,
+            padx=10,
+            pady=10,
+            wrap=tk.WORD
+        )
+        details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        details_text.insert(1.0, details)
+        details_text.config(state=tk.DISABLED)
+
+        # Close button
+        close_btn = tk.Button(
+            popup,
+            text="Close",
+            bg='#1a1a1a',
+            fg=self.accent_color,
+            font=('Consolas', 10),
+            relief=tk.FLAT,
+            command=popup.destroy
+        )
+        close_btn.pack(pady=10)
+
+        # Center the popup on the main window
+        popup.transient(self.root)
+        popup.grab_set()
+
+    def _toggle_rag_panel(self):
+        """Toggle RAG panel expanded/collapsed state"""
+        if self.rag_panel_expanded:
+            # Collapse
+            self.rag_text.config(height=3)
+            self.rag_toggle_btn.config(text="[Expand]")
+            self.rag_panel_expanded = False
+        else:
+            # Expand
+            self.rag_text.config(height=8)
+            self.rag_toggle_btn.config(text="[Collapse]")
+            self.rag_panel_expanded = True
 
     def add_message(self, message, color='white'):
         """Thread-safe message adding"""
@@ -3026,18 +3560,93 @@ class AdvisorGUI:
         """Handle continuous monitoring toggle"""
         if hasattr(self.advisor, 'continuous_monitoring'):
             self.advisor.continuous_monitoring = self.continuous_var.get()
+            # Save to preferences
+            if self.prefs:
+                self.prefs.opponent_turn_alerts = self.continuous_var.get()
             status = "ENABLED" if self.continuous_var.get() else "DISABLED"
-            self.add_message(f"Continuous monitoring {status}", "cyan")
+            self.add_message(f"Opponent Turn Alerts {status}", "cyan")
+
+    def _on_reskin_toggle(self):
+        """Handle reskin names toggle"""
+        if hasattr(self.advisor, 'game_state_mgr') and hasattr(self.advisor.game_state_mgr, 'card_lookup'):
+            self.advisor.game_state_mgr.card_lookup.show_reskin_names = self.reskin_var.get()
+            # Save to preferences
+            if self.prefs:
+                self.prefs.reskin_names = self.reskin_var.get()
+            status = "ENABLED" if self.reskin_var.get() else "DISABLED"
+            self.add_message(f"Spider-Man Reskins {status}", "cyan")
 
     def _on_always_on_top_toggle(self):
         """Handle always on top toggle"""
-        self.root.attributes('-topmost', self.always_on_top_var.get())
+        state = self.always_on_top_var.get()
+        self.root.attributes('-topmost', state)
+        # Save immediately
+        if self.prefs:
+            self.prefs.always_on_top = state
+            self.prefs.save()
+
+    def on_closing(self):
+        """Handle window close event - save preferences before exiting"""
+        # Save all settings to preferences
+        if self.prefs:
+            self.prefs.opponent_turn_alerts = self.continuous_var.get()
+            self.prefs.show_thinking = self.show_thinking_var.get()
+            self.prefs.reskin_names = self.reskin_var.get()
+            self.prefs.tts_volume = self.volume_var.get()
+
+            # Save window state
+            try:
+                self.prefs.window_geometry = self.root.geometry()
+                # always_on_top is read from window state (already set)
+            except Exception as e:
+                logging.warning(f"Could not save window geometry: {e}")
+
+            self.prefs.save()
+            logging.info("GUI preferences saved on close")
+
+        self.running = False
+        self.root.destroy()
 
     def _clear_messages(self):
         """Clear message area"""
         self.messages_text.config(state=tk.NORMAL)
         self.messages_text.delete(1.0, tk.END)
         self.messages_text.config(state=tk.DISABLED)
+
+    def _on_prompt_send(self, event=None):
+        """Handle user-sent prompt"""
+        prompt_text = self.prompt_text.get("1.0", tk.END).strip()
+
+        if not prompt_text:
+            return
+
+        # Display user prompt in advisor area
+        self.add_message(f"You: {prompt_text}", 'cyan')
+
+        # Clear input field
+        self.prompt_text.config(state=tk.NORMAL)
+        self.prompt_text.delete("1.0", tk.END)
+        self.prompt_text.config(state=tk.NORMAL)
+
+        # Send to advisor in background thread
+        def send_prompt():
+            try:
+                # If advisor has client, use it directly for free-form queries
+                if hasattr(self.advisor, 'client') and self.advisor.client:
+                    response = self.advisor.client.generate(prompt_text)
+                    if response:
+                        self.add_message(f"Advisor: {response}", 'green')
+                    else:
+                        self.add_message("Advisor: (No response from AI model)", 'yellow')
+                else:
+                    self.add_message("Advisor: AI client not available", 'red')
+            except Exception as e:
+                logging.error(f"Error sending prompt: {e}")
+                self.add_message(f"Advisor: Error - {str(e)}", 'red')
+
+        import threading
+        thread = threading.Thread(target=send_prompt, daemon=True)
+        thread.start()
 
     def _on_exit(self):
         """Handle exit button"""
@@ -3051,47 +3660,106 @@ class AdvisorGUI:
         import threading
         import subprocess
         import os
-        import base64
-        import requests
-        try:
-            import config
-        except ImportError:
-            config = None
 
-        def upload_to_imgbb(image_path):
-            if not config or not hasattr(config, 'IMGBB_API_KEY') or not config.IMGBB_API_KEY or config.IMGBB_API_KEY == "YOUR_IMGBB_API_KEY":
-                return None, "Imgbb API key not configured."
+        # Prompt for GitHub and ImgBB tokens BEFORE starting background thread
+        self.add_message("📸 Preparing bug report...", "cyan")
+        github_token = None
+        imgbb_token = None
+        self.add_message("📤 Submit to GitHub? (requires GitHub token + ImgBB API key)", "cyan")
 
-            with open(image_path, "rb") as file:
-                payload = {
-                    "key": config.IMGBB_API_KEY,
-                    "image": base64.b64encode(file.read()),
-                }
-                response = requests.post("https://api.imgbb.com/1/upload", payload)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data["data"]["url"], None
-                else:
-                    return None, response.text
+        # Check for cached tokens first
+        github_cache_file = Path("logs/.github_token_cache")
+        imgbb_cache_file = Path("logs/.imgbb_api_key_cache")
 
-        def create_github_issue(title, body):
-            if not config or not all(hasattr(config, attr) for attr in ['GITHUB_OWNER', 'GITHUB_REPO', 'GITHUB_TOKEN']):
-                return None, "GitHub credentials not configured."
-            if any(val in (None, "", "YOUR_GITHUB_USERNAME", "YOUR_GITHUB_REPOSITORY", "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN") for val in [config.GITHUB_OWNER, config.GITHUB_REPO, config.GITHUB_TOKEN]):
-                 return None, "GitHub credentials not configured."
+        if github_cache_file.exists():
+            try:
+                with open(github_cache_file, 'r') as f:
+                    cached_token = f.read().strip()
+                    if cached_token and len(cached_token) > 20:  # Basic validation
+                        github_token = cached_token
+                        self.add_message("✓ Using cached GitHub token", "green")
+            except Exception as e:
+                logging.debug(f"Could not read GitHub token cache: {e}")
 
+        if imgbb_cache_file.exists():
+            try:
+                with open(imgbb_cache_file, 'r') as f:
+                    cached_key = f.read().strip()
+                    if cached_key and len(cached_key) > 20:  # Basic validation
+                        imgbb_token = cached_key
+                        self.add_message("✓ Using cached ImgBB API key", "green")
+            except Exception as e:
+                logging.debug(f"Could not read ImgBB cache: {e}")
 
-            url = f"https://api.github.com/repos/{config.GITHUB_OWNER}/{config.GITHUB_REPO}/issues"
-            headers = {
-                "Authorization": f"token {config.GITHUB_TOKEN}",
-                "Accept": "application/vnd.github.v3+json",
-            }
-            data = {"title": title, "body": body}
-            response = requests.post(url, json=data, headers=headers)
-            if response.status_code == 201:
-                return response.json()["html_url"], None
-            else:
-                return None, response.text
+        # If tokens not cached, prompt user
+        if not github_token or not imgbb_token:
+            try:
+                from tkinter import simpledialog
+                if hasattr(self, 'root'):
+                    # Prompt for GitHub token if not cached
+                    if not github_token:
+                        token = simpledialog.askstring(
+                            "GitHub Token",
+                            "Enter your GitHub Personal Access Token:\n(Leave blank to save locally only)\n\nGet token: https://github.com/settings/tokens\n\nToken format: ghp_...",
+                            parent=self.root,
+                            show="*"
+                        )
+                        if token:
+                            github_token = token.strip()
+                            logging.debug(f"GitHub token received: {len(github_token)} chars")
+
+                            # Validate token format
+                            if len(github_token) > 20 and '\n' not in github_token and '\r' not in github_token:
+                                # Cache the token
+                                try:
+                                    github_cache_file.parent.mkdir(parents=True, exist_ok=True)
+                                    with open(github_cache_file, 'w') as f:
+                                        f.write(github_token)
+                                    github_cache_file.chmod(0o600)
+                                    self.add_message("✓ GitHub token cached", "green")
+                                except Exception as e:
+                                    logging.debug(f"Could not cache GitHub token: {e}")
+                            else:
+                                self.add_message("⚠️ Invalid GitHub token format", "yellow")
+                                github_token = None
+
+                    # Prompt for ImgBB API key if not cached
+                    if not imgbb_token:
+                        key = simpledialog.askstring(
+                            "ImgBB API Key",
+                            "Enter your ImgBB API key for screenshot hosting:\n(Leave blank to save locally only)\n\nGet key: https://imgbb.com/api\n\nKey format: 32 character hex string",
+                            parent=self.root,
+                            show="*"
+                        )
+                        if key:
+                            imgbb_token = key.strip()
+                            logging.debug(f"ImgBB key received: {len(imgbb_token)} chars")
+
+                            # Validate key format (should be 32 hex chars)
+                            if len(imgbb_token) == 32 and '\n' not in imgbb_token and '\r' not in imgbb_token:
+                                # Cache the key
+                                try:
+                                    imgbb_cache_file.parent.mkdir(parents=True, exist_ok=True)
+                                    with open(imgbb_cache_file, 'w') as f:
+                                        f.write(imgbb_token)
+                                    imgbb_cache_file.chmod(0o600)
+                                    self.add_message("✓ ImgBB API key cached", "green")
+                                except Exception as e:
+                                    logging.debug(f"Could not cache ImgBB key: {e}")
+                            else:
+                                self.add_message("⚠️ Invalid ImgBB key format (should be 32 chars)", "yellow")
+                                imgbb_token = None
+
+                    # Check if we have both tokens for GitHub upload
+                    if github_token and imgbb_token:
+                        self.add_message("✓ Both tokens received - will upload to GitHub", "green")
+                    elif github_token or imgbb_token:
+                        self.add_message("⚠️ Need both GitHub token AND ImgBB key to upload", "yellow")
+                        github_token = None
+                        imgbb_token = None
+
+            except Exception as e:
+                logging.debug(f"Token prompt not available: {e}")
 
         def capture_in_background():
             try:
@@ -3102,97 +3770,332 @@ class AdvisorGUI:
                 # Generate timestamp for this report
                 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
                 report_file = f"{bug_dir}/bug_report_{timestamp}.txt"
-                screenshot_file = f"{bug_dir}/screenshot_{timestamp}.png"
 
-                # Take screenshot using gnome-screenshot or scrot
-                try:
-                    subprocess.run(['gnome-screenshot', '-f', screenshot_file],
-                                 timeout=2, check=False, capture_output=True)
-                except:
+                # Take screenshot using intelligent multi-tool detection
+                screenshot_file = "Screenshot not available"
+                if CONFIG_MANAGER_AVAILABLE:
                     try:
-                        subprocess.run(['scrot', screenshot_file],
-                                     timeout=2, check=False, capture_output=True)
-                    except:
-                        screenshot_file = "Screenshot failed (install gnome-screenshot or scrot)"
+                        from screenshot_util import ScreenshotCapture
+                        capturer = ScreenshotCapture()
+                        if capturer.available_tool:
+                            # Try to capture both MTGA and Advisor windows as a composite
+                            screenshot = None
+                            mtga_names = ["MTGA", "Magic: The Gathering Arena", "MTG Arena"]
+                            advisor_names = ["Advisor", "Voice Advisor"]
+
+                            # Try all combinations to capture both windows
+                            for mtga_name in mtga_names:
+                                for advisor_name in advisor_names:
+                                    screenshot = capturer.capture_multiple_windows([mtga_name, advisor_name])
+                                    if screenshot:
+                                        logging.debug(f"Captured composite: {mtga_name} + {advisor_name}")
+                                        break
+                                if screenshot:
+                                    break
+
+                            # If composite failed, try single windows
+                            if not screenshot:
+                                for window_name in mtga_names + advisor_names:
+                                    screenshot = capturer.capture_window_by_name(window_name)
+                                    if screenshot:
+                                        logging.debug(f"Captured {window_name} window")
+                                        break
+
+                            # If no specific window found, capture full screen
+                            if not screenshot:
+                                screenshot = capturer.capture_screen()
+
+                            # Optimize the screenshot
+                            if screenshot:
+                                screenshot = capturer.resize_for_claude(screenshot)
+
+                            if screenshot:
+                                # Copy optimized screenshot to bug_reports directory
+                                import shutil
+                                dest_screenshot = f"{bug_dir}/screenshot_{timestamp}.png"
+                                shutil.copy(str(screenshot), dest_screenshot)
+                                screenshot_file = dest_screenshot
+                                logging.debug(f"Screenshot captured and optimized: {dest_screenshot}")
+                        else:
+                            screenshot_file = "Screenshot tool not available (install gnome-screenshot, scrot, or imagemagick)"
+                    except Exception as e:
+                        screenshot_file = f"Screenshot capture failed: {e}"
+                        logging.debug(f"Screenshot error: {e}")
 
                 # Collect current state
                 board_state_text = "\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
 
-                # Read recent logs (last 300 lines)
+                # Read recent logs (last 50 lines for GitHub - keep it concise)
                 recent_logs = ""
                 try:
                     with open("/home/joshu/logparser/logs/advisor.log", "r") as f:
                         lines = f.readlines()
-                        recent_logs = "".join(lines[-300:])
+                        recent_logs = "".join(lines[-50:])
                 except Exception as e:
                     recent_logs = f"Failed to read logs: {e}"
+
+                # Extract relevant MTGA log snippets
+                mtga_log_snippets = ""
+                try:
+                    # Try to find MTGA log file
+                    mtga_log_path = Path.home() / ".local/share/Steam/steamapps/compatdata/2141910/pfx/drive_c/users/steamuser/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log"
+                    if not mtga_log_path.exists():
+                        # Try macOS path
+                        mtga_log_path = Path.home() / "Library/Logs/Wizards Of The Coast/MTGA/Player.log"
+                    if not mtga_log_path.exists():
+                        # Try Windows path
+                        mtga_log_path = Path("C:/Users") / Path.home().name / "AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log"
+
+                    if mtga_log_path.exists():
+                        with open(mtga_log_path, "r", errors="ignore") as f:
+                            # Read last 50 lines and extract relevant events
+                            lines = f.readlines()
+                            mtga_lines = lines[-100:] if len(lines) > 100 else lines
+
+                            # Filter for interesting events
+                            interesting_keywords = [
+                                "GreToClientEvent",
+                                "GameState",
+                                "ClientToGre",
+                                "ERROR",
+                                "Exception",
+                                "Warning",
+                            ]
+
+                            relevant_lines = []
+                            for line in mtga_lines:
+                                if any(keyword in line for keyword in interesting_keywords):
+                                    relevant_lines.append(line.strip())
+
+                            if relevant_lines:
+                                mtga_log_snippets = "\n".join(relevant_lines[-20:])  # Last 20 relevant lines
+                            else:
+                                mtga_log_snippets = "(No relevant MTGA events found in recent logs)"
+                    else:
+                        mtga_log_snippets = "(MTGA log file not found)"
+                except Exception as e:
+                    mtga_log_snippets = f"Failed to extract MTGA logs: {e}"
 
                 # Get current settings
                 settings = f"""Model: {self.model_var.get()}
 Voice: {self.voice_var.get()}
 TTS Engine: {self.tts_engine_var.get()}
 Volume: {self.volume_var.get()}%
-Continuous Monitoring: {self.continuous_var.get()}
+Opponent Turn Alerts: {self.continuous_var.get()}
 Show AI Thinking: {self.show_thinking_var.get()}
+Show Spider-Man Reskins: {self.reskin_var.get()}
 """
 
-                # Write bug report to local file
+                # Write bug report
                 with open(report_file, "w") as f:
                     f.write("="*70 + "\n")
                     f.write(f"BUG REPORT - {timestamp}\n")
                     f.write("="*70 + "\n\n")
+
                     f.write("SCREENSHOT:\n")
                     f.write(f"{screenshot_file}\n\n")
+
                     f.write("="*70 + "\n")
                     f.write("CURRENT SETTINGS:\n")
                     f.write("="*70 + "\n")
                     f.write(settings + "\n")
+
                     f.write("="*70 + "\n")
                     f.write("CURRENT BOARD STATE:\n")
                     f.write("="*70 + "\n")
                     f.write(board_state_text + "\n\n")
+
                     f.write("="*70 + "\n")
                     f.write("RECENT LOGS (last 300 lines):\n")
                     f.write("="*70 + "\n")
                     f.write(recent_logs + "\n")
-                self.add_message(f"✓ Bug report saved locally: {report_file}", "green")
-                logging.info(f"Bug report captured locally: {report_file}")
 
-                # Upload screenshot
-                screenshot_url, error = upload_to_imgbb(screenshot_file)
-                if error:
-                    self.add_message(f"✗ Screenshot upload failed: {error}", "red")
-                    logging.error(f"Screenshot upload failed: {error}")
-                    return
+                # Create symlinks to latest versions for easy reference
+                try:
+                    latest_report_link = f"{bug_dir}/LATEST_BUG_REPORT.txt"
+                    latest_screenshot_link = f"{bug_dir}/LATEST_SCREENSHOT.jpg"
 
-                # Create GitHub issue
-                issue_title = f"Bug Report: {timestamp}"
-                issue_body = f"""
-**Screenshot:**
-![Screenshot]({screenshot_url})
+                    # Remove old symlinks if they exist
+                    for link_path in [latest_report_link, latest_screenshot_link]:
+                        if os.path.islink(link_path) or os.path.exists(link_path):
+                            try:
+                                os.remove(link_path)
+                            except:
+                                pass
 
-**Settings:**
-```
-{settings}
-```
+                    # Create new symlinks to latest versions
+                    os.symlink(os.path.basename(report_file), latest_report_link)
+                    if screenshot_file and screenshot_file.endswith(".jpg"):
+                        os.symlink(os.path.basename(screenshot_file), latest_screenshot_link)
 
-**Board State:**
-```
-{board_state_text}
-```
+                    logging.debug(f"Created symlinks to latest bug report")
+                except Exception as e:
+                    logging.debug(f"Could not create symlinks: {e}")
 
-**Recent Logs:**
-```
-{recent_logs}
-```
-"""
-                issue_url, error = create_github_issue(issue_title, issue_body)
-                if error:
-                    self.add_message(f"✗ GitHub issue creation failed: {error}", "red")
-                    logging.error(f"GitHub issue creation failed: {error}")
+                # Show success message
+                self.add_message(f"✓ Bug report saved: {report_file}", "green")
+                logging.info(f"Bug report captured: {report_file}")
+
+                # Attempt GitHub upload if token was provided
+                if github_token:
+                    # Create GitHub issue
+                    issue_title = f"Bug Report: {timestamp}"
+
+                    # Build issue body
+                    issue_body_parts = []
+
+                    # Note about screenshot (saved locally, not embedded due to GitHub security restrictions)
+                    if screenshot_file and os.path.exists(screenshot_file):
+                        issue_body_parts.append(f"📸 **Screenshot:** `{os.path.basename(screenshot_file)}`")
+                        issue_body_parts.append("")
+
+                    issue_body_parts.extend([
+                        "**Settings:**",
+                        "```",
+                        settings,
+                        "```",
+                        "",
+                        "**Board State:**",
+                        "```",
+                        board_state_text,
+                        "```",
+                        "",
+                        "**MTGA Log Snippets:**",
+                        "```",
+                        mtga_log_snippets,
+                        "```",
+                        "",
+                        "**Advisor Logs:**",
+                        "```",
+                        recent_logs,
+                        "```",
+                    ])
+
+                    issue_body = "\n".join(issue_body_parts)
+
+                    # Check size and truncate if necessary (GitHub limit is 65536 chars)
+                    max_body_size = 60000  # Leave some buffer
+                    if len(issue_body) > max_body_size:
+                        # Truncate logs if needed
+                        logging.warning(f"Issue body too large ({len(issue_body)} chars), truncating logs")
+                        # Remove MTGA logs first if they're too long
+                        if "**MTGA Log Snippets:**" in issue_body:
+                            issue_body_parts = [p for p in issue_body_parts if "MTGA Log" not in p]
+                            issue_body = "\n".join(issue_body_parts[:10])  # Keep just settings and board state
+                            if len(issue_body) > max_body_size:
+                                # If still too big, truncate advisor logs
+                                issue_body_parts = [p for p in issue_body_parts if "Advisor Logs" not in p]
+                                issue_body = "\n".join(issue_body_parts[:8])
+
+                    try:
+                        # Create issue
+                        url = "https://api.github.com/repos/josharmour/mtga-voice-assistant/issues"
+                        headers = {
+                            "Authorization": f"token {github_token}",
+                            "Accept": "application/vnd.github.v3+json",
+                        }
+                        issue_data = {"title": issue_title, "body": issue_body}
+                        response = requests.post(url, json=issue_data, headers=headers, timeout=10)
+
+                        if response.status_code == 201:
+                            issue_url = response.json()["html_url"]
+                            issue_number = response.json()["number"]
+                            self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
+                            logging.info(f"Bug report uploaded to GitHub: {issue_url}")
+
+                            # Now attach screenshot as a comment if available
+                            if screenshot_file and os.path.exists(screenshot_file):
+                                try:
+                                    filename = os.path.basename(screenshot_file)
+
+                                    # Read screenshot binary
+                                    with open(screenshot_file, 'rb') as f:
+                                        screenshot_data = f.read()
+
+                                    file_size_kb = len(screenshot_data) / 1024
+                                    logging.info(f"Screenshot size: {file_size_kb:.1f}KB")
+
+                                    # Upload to ImgBB if token is available
+                                    imgbb_url = None
+
+                                    if imgbb_token:
+                                        try:
+                                            # Upload screenshot file directly to ImgBB
+                                            logging.info(f"Uploading screenshot to ImgBB ({file_size_kb:.1f}KB, API key: {imgbb_token[:8]}...)...")
+                                            imgbb_upload_url = "https://api.imgbb.com/1/upload"
+
+                                            # Use multipart form data with binary file
+                                            imgbb_files = {
+                                                "image": (filename, screenshot_data, "image/png")
+                                            }
+                                            imgbb_data = {
+                                                "key": imgbb_token  # ImgBB API key
+                                            }
+
+                                            imgbb_response = requests.post(
+                                                imgbb_upload_url,
+                                                files=imgbb_files,
+                                                data=imgbb_data,
+                                                timeout=60
+                                            )
+
+                                            if imgbb_response.status_code == 200:
+                                                imgbb_json = imgbb_response.json()
+                                                if imgbb_json.get("success"):
+                                                    imgbb_url = imgbb_json["data"]["url"]
+                                                    logging.info(f"Screenshot uploaded to ImgBB: {imgbb_url}")
+                                                else:
+                                                    logging.warning(f"ImgBB upload failed (API error): {imgbb_json}")
+                                            else:
+                                                try:
+                                                    error_text = imgbb_response.text[:500]
+                                                except:
+                                                    error_text = "Unable to read response"
+                                                logging.warning(f"ImgBB upload failed: HTTP {imgbb_response.status_code} - {error_text}")
+                                        except Exception as e:
+                                            logging.warning(f"ImgBB upload error: {e}")
+                                    else:
+                                        logging.info("No ImgBB token provided, skipping upload")
+
+                                    # Add comment to issue with screenshot
+                                    comment_url = f"https://api.github.com/repos/josharmour/mtga-voice-assistant/issues/{issue_number}/comments"
+                                    comment_headers = {
+                                        "Authorization": f"token {github_token}",
+                                        "Accept": "application/vnd.github.v3+json",
+                                    }
+
+                                    if imgbb_url:
+                                        # Use ImgBB URL (external hosting)
+                                        comment_body = f"📸 **Screenshot** ({file_size_kb:.1f}KB)\n\n![Screenshot]({imgbb_url})"
+                                    else:
+                                        # Fallback: If no ImgBB URL, just mention file was saved locally
+                                        comment_body = f"📸 **Screenshot** ({file_size_kb:.1f}KB - saved locally as `{filename}`)"
+
+                                    comment_response = requests.post(
+                                        comment_url,
+                                        json={"body": comment_body},
+                                        headers=comment_headers,
+                                        timeout=30
+                                    )
+
+                                    if comment_response.status_code == 201:
+                                        logging.info(f"Screenshot attached to issue #{issue_number}")
+                                        self.add_message("✓ Screenshot attached", "green")
+                                    else:
+                                        logging.warning(f"Comment creation failed: {comment_response.status_code}")
+                                        self.add_message("⚠️ Screenshot comment failed (file saved locally)", "yellow")
+
+                                except Exception as e:
+                                    logging.warning(f"Screenshot attachment error: {e}")
+                                    self.add_message("⚠️ Screenshot attachment failed (file saved locally)", "yellow")
+                        else:
+                            self.add_message(f"✗ GitHub issue creation failed: {response.status_code}", "red")
+                            logging.error(f"GitHub issue creation failed: {response.text}")
+                    except Exception as e:
+                        self.add_message(f"✗ GitHub upload failed: {e}", "red")
+                        logging.error(f"GitHub upload failed: {e}")
                 else:
-                    self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
-                    logging.info(f"Bug report uploaded to GitHub: {issue_url}")
+                    self.add_message("ℹ️ Bug report saved locally only", "yellow")
 
             except Exception as e:
                 self.add_message(f"✗ Bug report failed: {e}", "red")
@@ -3201,6 +4104,48 @@ Show AI Thinking: {self.show_thinking_var.get()}
         # Run in background thread so it doesn't freeze the UI
         threading.Thread(target=capture_in_background, daemon=True).start()
         self.add_message("📸 Capturing bug report...", "cyan")
+
+    def _prompt_github_token(self):
+        """Prompt user for GitHub token via dialog or return None to skip"""
+        try:
+            # Show instructions
+            self.add_message("🔐 GitHub Authentication Required", "cyan")
+            self.add_message("Create a Personal Access Token with 'public_repo' scope:", "yellow")
+            self.add_message("  1. Visit: https://github.com/settings/tokens", "cyan")
+            self.add_message("  2. Click 'Generate new token (classic)'", "cyan")
+            self.add_message("  3. Check only 'public_repo' under scopes", "cyan")
+            self.add_message("  4. Generate and copy the token", "cyan")
+            self.add_message("  5. Copy token and paste it below when the dialog appears", "cyan")
+            self.add_message("", "white")
+
+            # Check if we have root (GUI mode)
+            if not hasattr(self, 'root'):
+                logging.warning("Not in GUI mode - cannot show token dialog")
+                return None, "GUI not available"
+
+            try:
+                from tkinter import simpledialog
+
+                # Show the token prompt dialog
+                token = simpledialog.askstring(
+                    "GitHub Token",
+                    "Paste your GitHub Personal Access Token:\n(ghp_... format)\n\nWill be used only for this bug report",
+                    parent=self.root,
+                    show="*"
+                )
+
+                if token:
+                    self.add_message("✓ Token received", "green")
+                    return token, None
+                else:
+                    return None, "Token entry cancelled"
+            except Exception as e:
+                logging.error(f"Dialog error: {e}")
+                return None, str(e)
+
+        except Exception as e:
+            logging.error(f"Token prompt error: {e}")
+            return None, str(e)
 
     def _manual_deck_suggestion(self):
         """Manually trigger deck suggestions using the current card pool"""
@@ -3301,7 +4246,20 @@ class CLIVoiceAdvisor:
         self.gui = None
         self.tk_root = None
         self.previous_board_state = None  # Track previous state for importance detection
-        self.continuous_monitoring = True  # Enable continuous advisory mode
+
+        # Load user preferences for persistent settings across sessions
+        self.prefs = None
+        if CONFIG_MANAGER_AVAILABLE:
+            self.prefs = UserPreferences.load()
+            if not use_tui:
+                logging.debug("User preferences loaded successfully")
+
+        # Set continuous monitoring from preferences or use default
+        if self.prefs:
+            self.continuous_monitoring = self.prefs.opponent_turn_alerts
+        else:
+            self.continuous_monitoring = True  # Enable continuous advisory mode
+
         self.last_alert_time = 0  # Timestamp of last critical alert (for rate limiting)
 
         self.log_path = detect_player_log_path()
@@ -3313,13 +4271,19 @@ class CLIVoiceAdvisor:
         # Initialize card database and show status
         if not use_tui:
             print("Loading card database...")
-        card_db = ArenaCardDatabase()
+
+        # Pass reskin preference to card database if available
+        show_reskin_names = self.prefs.reskin_names if self.prefs else False
+        card_db = ArenaCardDatabase(show_reskin_names=show_reskin_names)
         if not use_tui:
-            if card_db.db:
-                print(f"✓ Loaded card database from ScryfallDB")
+            if card_db.conn:
+                cursor = card_db.conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM cards")
+                total = cursor.fetchone()[0]
+                print(f"✓ Loaded unified card database ({total:,} cards)")
             else:
-                print(f"⚠ Arena database not found - using cache with {len(card_db.cache)} cards")
-                print("  (Some newer cards may show as Unknown)")
+                print(f"⚠ Card database not found - cards will show as Unknown")
+                print("  Run: python build_unified_card_database.py")
 
         # Check if Ollama is running before initializing AI advisor
         ollama_test = OllamaClient()
@@ -3376,6 +4340,7 @@ class CLIVoiceAdvisor:
         self.cli_thread = None
         self.running = True
         self._deck_suggestions_generated = False  # Track if deck suggestions shown
+        self._last_announced_pick = None  # Deduplication: track (pack_num, pick_num) of last TTS announcement
 
         # Fetch available Ollama models
         self.available_models = self._fetch_ollama_models()
@@ -3400,6 +4365,12 @@ class CLIVoiceAdvisor:
             self.gui.set_status(status)
         elif self.use_tui and self.tui:
             self.tui.set_status(status)
+
+    def get_last_rag_references(self) -> Optional[Dict]:
+        """Proxy method to get RAG references from AI advisor"""
+        if hasattr(self, 'ai_advisor') and hasattr(self.ai_advisor, 'get_last_rag_references'):
+            return self.ai_advisor.get_last_rag_references()
+        return None
 
     # GUI Callback Methods
     def _on_gui_model_change(self, model):
@@ -3507,40 +4478,6 @@ class CLIVoiceAdvisor:
             # Return default model as fallback
             return ["llama3.2"]
 
-    def get_last_rag_references(self) -> Optional[Dict]:
-        """Proxy method to get RAG references from AI advisor"""
-        if hasattr(self, 'ai_advisor') and hasattr(self.ai_advisor, 'get_last_rag_references'):
-            return self.ai_advisor.get_last_rag_references()
-        return None
-
-    def _format_card_display(self, card: GameObject) -> str:
-        """Format card display with name, P/T, and status indicators"""
-        if "Unknown" in card.name:
-            return f"{card.name} ⚠️"
-
-        status_parts = []
-        if card.is_tapped:
-            status_parts.append("🔄")
-        if card.power is not None and card.toughness is not None:
-            status_parts.append(f"{card.power}/{card.toughness}")
-        if card.summoning_sick:
-            status_parts.append("😴")
-        if card.is_attacking:
-            status_parts.append("⚡")
-        if card.counters:
-            counter_parts = []
-            for ctype, count in card.counters.items():
-                # Handle counter values that might be objects with a 'value' attribute or plain integers
-                counter_val = count.get('value') if isinstance(count, dict) else (count.value if hasattr(count, 'value') else count)
-                counter_parts.append(f"{counter_val} {ctype}")
-            counter_str = ", ".join(counter_parts)
-            status_parts.append(f"[{counter_str}]")
-
-        if status_parts:
-            return f"{card.name} ({', '.join(status_parts)})"
-        else:
-            return card.name
-
     # Draft event callbacks
     def _on_draft_pool(self, data: dict):
         """Handle EventGetCoursesV2 - sealed/draft pool event"""
@@ -3595,6 +4532,7 @@ class CLIVoiceAdvisor:
             # Reset state for new draft
             if pack_num == 1 and pick_num == 1:
                 self._deck_suggestions_generated = False
+                self._last_announced_pick = None  # Reset deduplication tracking for new draft
                 self.draft_advisor.picked_cards = []
                 logging.info("New draft detected - reset state")
 
@@ -3667,21 +4605,26 @@ class CLIVoiceAdvisor:
                 display_draft_pack(pack_cards, pack_num, pick_num, recommendation)
 
             # Speak recommendation if TTS enabled
+            # Deduplication: only speak if this is a new pick (not already announced)
             if self.tts and pack_cards:
-                # Check if Pick Two Draft mode is enabled
-                pick_two_mode = False
-                if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
-                    pick_two_mode = self.gui.pick_two_draft_var.get()
+                current_pick = (pack_num, pick_num)
+                if current_pick != self._last_announced_pick:
+                    self._last_announced_pick = current_pick
 
-                if pick_two_mode and len(pack_cards) >= 2:
-                    # Read both top picks
-                    top_pick = pack_cards[0].name
-                    second_pick = pack_cards[1].name
-                    self.tts.speak(f"Pick {top_pick} and {second_pick}")
-                else:
-                    # Read only top pick
-                    top_pick = pack_cards[0].name
-                    self.tts.speak(f"Pick {top_pick}")
+                    # Check if Pick Two Draft mode is enabled
+                    pick_two_mode = False
+                    if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
+                        pick_two_mode = self.gui.pick_two_draft_var.get()
+
+                    if pick_two_mode and len(pack_cards) >= 2:
+                        # Read both top picks
+                        top_pick = pack_cards[0].name
+                        second_pick = pack_cards[1].name
+                        self.tts.speak(f"Pick {top_pick} and {second_pick}")
+                    else:
+                        # Read only top pick
+                        top_pick = pack_cards[0].name
+                        self.tts.speak(f"Pick {top_pick}")
 
             # Check if draft is complete
             # Standard draft: Pack 3, Pick 15 or >= 45 cards
@@ -3728,6 +4671,7 @@ class CLIVoiceAdvisor:
             # Reset state for new draft
             if pack_num == 1 and pick_num == 1:
                 self._deck_suggestions_generated = False
+                self._last_announced_pick = None  # Reset deduplication tracking for new draft
                 self.draft_advisor.picked_cards = []
                 logging.info("New draft detected - reset state")
 
@@ -3786,21 +4730,26 @@ class CLIVoiceAdvisor:
                 display_draft_pack(pack_cards, pack_num, pick_num, recommendation)
 
             # Speak recommendation if TTS enabled
+            # Deduplication: only speak if this is a new pick (not already announced)
             if self.tts and pack_cards:
-                # Check if Pick Two Draft mode is enabled
-                pick_two_mode = False
-                if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
-                    pick_two_mode = self.gui.pick_two_draft_var.get()
+                current_pick = (pack_num, pick_num)
+                if current_pick != self._last_announced_pick:
+                    self._last_announced_pick = current_pick
 
-                if pick_two_mode and len(pack_cards) >= 2:
-                    # Read both top picks
-                    top_pick = pack_cards[0].name
-                    second_pick = pack_cards[1].name
-                    self.tts.speak(f"Pick {top_pick} and {second_pick}")
-                else:
-                    # Read only top pick
-                    top_pick = pack_cards[0].name
-                    self.tts.speak(f"Pick {top_pick}")
+                    # Check if Pick Two Draft mode is enabled
+                    pick_two_mode = False
+                    if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
+                        pick_two_mode = self.gui.pick_two_draft_var.get()
+
+                    if pick_two_mode and len(pack_cards) >= 2:
+                        # Read both top picks
+                        top_pick = pack_cards[0].name
+                        second_pick = pack_cards[1].name
+                        self.tts.speak(f"Pick {top_pick} and {second_pick}")
+                    else:
+                        # Read only top pick
+                        top_pick = pack_cards[0].name
+                        self.tts.speak(f"Pick {top_pick}")
 
             # Check if draft is complete
             pick_two_mode = False
@@ -3841,6 +4790,7 @@ class CLIVoiceAdvisor:
             # Reset state for new draft
             if pack_num == 1 and pick_num == 1:
                 self._deck_suggestions_generated = False
+                self._last_announced_pick = None  # Reset deduplication tracking for new draft
                 self.draft_advisor.picked_cards = []
                 logging.info("New draft detected - reset state")
 
@@ -3878,21 +4828,26 @@ class CLIVoiceAdvisor:
                 display_draft_pack(pack_cards, pack_num, pick_num, recommendation)
 
             # Speak recommendation if TTS enabled
+            # Deduplication: only speak if this is a new pick (not already announced)
             if self.tts and pack_cards:
-                # Check if Pick Two Draft mode is enabled
-                pick_two_mode = False
-                if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
-                    pick_two_mode = self.gui.pick_two_draft_var.get()
+                current_pick = (pack_num, pick_num)
+                if current_pick != self._last_announced_pick:
+                    self._last_announced_pick = current_pick
 
-                if pick_two_mode and len(pack_cards) >= 2:
-                    # Read both top picks
-                    top_pick = pack_cards[0].name
-                    second_pick = pack_cards[1].name
-                    self.tts.speak(f"Pick {top_pick} and {second_pick}")
-                else:
-                    # Read only top pick
-                    top_pick = pack_cards[0].name
-                    self.tts.speak(f"Pick {top_pick}")
+                    # Check if Pick Two Draft mode is enabled
+                    pick_two_mode = False
+                    if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
+                        pick_two_mode = self.gui.pick_two_draft_var.get()
+
+                    if pick_two_mode and len(pack_cards) >= 2:
+                        # Read both top picks
+                        top_pick = pack_cards[0].name
+                        second_pick = pack_cards[1].name
+                        self.tts.speak(f"Pick {top_pick} and {second_pick}")
+                    else:
+                        # Read only top pick
+                        top_pick = pack_cards[0].name
+                        self.tts.speak(f"Pick {top_pick}")
 
             # Update draft advisor's picked cards list
             for card_id in picked_cards:
@@ -3947,6 +4902,7 @@ class CLIVoiceAdvisor:
             # Reset state for new draft
             if pack_num == 1 and pick_num == 1:
                 self._deck_suggestions_generated = False
+                self._last_announced_pick = None  # Reset deduplication tracking for new draft
                 self.draft_advisor.picked_cards = []
                 logging.info("New draft detected - reset state")
 
@@ -3987,21 +4943,26 @@ class CLIVoiceAdvisor:
                 display_draft_pack(pack_cards, pack_num, pick_num, recommendation)
 
             # Speak recommendation if TTS enabled
+            # Deduplication: only speak if this is a new pick (not already announced)
             if self.tts and pack_cards:
-                # Check if Pick Two Draft mode is enabled
-                pick_two_mode = False
-                if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
-                    pick_two_mode = self.gui.pick_two_draft_var.get()
+                current_pick = (pack_num, pick_num)
+                if current_pick != self._last_announced_pick:
+                    self._last_announced_pick = current_pick
 
-                if pick_two_mode and len(pack_cards) >= 2:
-                    # Read both top picks
-                    top_pick = pack_cards[0].name
-                    second_pick = pack_cards[1].name
-                    self.tts.speak(f"Pick {top_pick} and {second_pick}")
-                else:
-                    # Read only top pick
-                    top_pick = pack_cards[0].name
-                    self.tts.speak(f"Pick {top_pick}")
+                    # Check if Pick Two Draft mode is enabled
+                    pick_two_mode = False
+                    if self.use_gui and self.gui and hasattr(self.gui, 'pick_two_draft_var'):
+                        pick_two_mode = self.gui.pick_two_draft_var.get()
+
+                    if pick_two_mode and len(pack_cards) >= 2:
+                        # Read both top picks
+                        top_pick = pack_cards[0].name
+                        second_pick = pack_cards[1].name
+                        self.tts.speak(f"Pick {top_pick} and {second_pick}")
+                    else:
+                        # Read only top pick
+                        top_pick = pack_cards[0].name
+                        self.tts.speak(f"Pick {top_pick}")
 
             # Update draft advisor's picked cards list
             for card_id in picked_cards:
@@ -4205,6 +5166,12 @@ class CLIVoiceAdvisor:
                 self.log_follower.close()
             finally:
                 self.tui.cleanup()
+
+                # Save preferences before exiting
+                if self.prefs and CONFIG_MANAGER_AVAILABLE:
+                    self.prefs.save()
+                    logging.info("User preferences saved")
+
                 # Clean up database connection
                 if hasattr(self.game_state_mgr.card_lookup, 'close'):
                     self.game_state_mgr.card_lookup.close()
@@ -4305,6 +5272,11 @@ class CLIVoiceAdvisor:
         except Exception as e:
             logging.error(f"CLI error: {e}")
         finally:
+            # Save preferences before exiting
+            if self.prefs and CONFIG_MANAGER_AVAILABLE:
+                self.prefs.save()
+                logging.info("User preferences saved")
+
             # Clean up database connection
             if hasattr(self.game_state_mgr.card_lookup, 'close'):
                 self.game_state_mgr.card_lookup.close()
@@ -4416,15 +5388,55 @@ class CLIVoiceAdvisor:
                 setting = parts[1].lower()
                 if setting in ["on", "true", "1", "yes"]:
                     self.continuous_monitoring = True
+                    if self.prefs:
+                        self.prefs.opponent_turn_alerts = True
                     self._output("✓ Continuous monitoring ENABLED - AI will alert you of critical changes anytime", "green")
                 elif setting in ["off", "false", "0", "no"]:
                     self.continuous_monitoring = False
+                    if self.prefs:
+                        self.prefs.opponent_turn_alerts = False
                     self._output("✓ Continuous monitoring DISABLED - advice only when you have priority", "yellow")
                 else:
                     self._output("✗ Use '/continuous on' or '/continuous off'", "red")
             else:
                 status = "ENABLED" if self.continuous_monitoring else "DISABLED"
                 self._output(f"✓ Continuous monitoring: {status}", "green")
+        elif cmd == "/opponent-alerts":
+            if len(parts) > 1:
+                setting = parts[1].lower()
+                if setting in ["on", "true", "1", "yes"]:
+                    self.continuous_monitoring = True
+                    if self.prefs:
+                        self.prefs.opponent_turn_alerts = True
+                    self._output("✓ Opponent Turn Alerts: ON", "green")
+                elif setting in ["off", "false", "0", "no"]:
+                    self.continuous_monitoring = False
+                    if self.prefs:
+                        self.prefs.opponent_turn_alerts = False
+                    self._output("✓ Opponent Turn Alerts: OFF", "yellow")
+                else:
+                    self._output("✗ Use '/opponent-alerts on' or '/opponent-alerts off'", "red")
+            else:
+                status = "ON" if self.continuous_monitoring else "OFF"
+                self._output(f"Opponent Turn Alerts: {status}", "green")
+        elif cmd == "/reskins":
+            if len(parts) > 1:
+                setting = parts[1].lower()
+                if setting in ["on", "true", "1", "yes"]:
+                    self.game_state_mgr.card_lookup.show_reskin_names = True
+                    if self.prefs:
+                        self.prefs.reskin_names = True
+                    self._output("✓ Reskin names: ON (Spider-Man variants enabled)", "green")
+                elif setting in ["off", "false", "0", "no"]:
+                    self.game_state_mgr.card_lookup.show_reskin_names = False
+                    if self.prefs:
+                        self.prefs.reskin_names = False
+                    self._output("✓ Reskin names: OFF (canonical names)", "yellow")
+                else:
+                    self._output("✗ Use '/reskins on' or '/reskins off'", "red")
+            else:
+                status = "ON" if self.game_state_mgr.card_lookup.show_reskin_names else "OFF"
+                self._output(f"Reskin names: {status}", "green")
         else:
             self._output(f"Unknown command: {cmd}. Type /help for commands.", "red")
 
@@ -4482,17 +5494,18 @@ Provide a concise answer (1-2 sentences) based on the board state.
         help_lines = [
             "",
             "Commands:",
-            "  /help              - Show this help menu",
-            "  /settings          - Interactive settings menu (TUI: ↑↓ Enter ESC)",
-            "  /clear             - Clear message history",
-            "  /quit or /exit     - Exit the advisor",
-            "  /continuous [on/off] - Toggle continuous monitoring (alerts for critical changes anytime)",
-            "  /tts               - Show active TTS engine (Kokoro or BarkTTS)",
-            "  /voice [name]      - Change voice (e.g., /voice bella, /voice v2/en_speaker_3)",
-            "  /volume [0-100]    - Set volume (e.g., /volume 80)",
-            "  /models            - List available Ollama models",
-            "  /model [name]      - Change AI model (e.g., /model llama3.2, /model qwen)",
-            "  /status            - Show current board state",
+            "  /help                    - Show this help menu",
+            "  /settings                - Interactive settings menu (TUI: ↑↓ Enter ESC)",
+            "  /clear                   - Clear message history",
+            "  /quit or /exit           - Exit the advisor",
+            "  /opponent-alerts [on/off] - Toggle opponent turn alerts (alerts for critical changes anytime)",
+            "  /reskins [on/off]        - Show Spider-Man reskin names (e.g., /reskins on)",
+            "  /tts                     - Show active TTS engine (Kokoro or BarkTTS)",
+            "  /voice [name]            - Change voice (e.g., /voice bella, /voice v2/en_speaker_3)",
+            "  /volume [0-100]          - Set volume (e.g., /volume 80)",
+            "  /models                  - List available Ollama models",
+            "  /model [name]            - Change AI model (e.g., /model llama3.2, /model qwen)",
+            "  /status                  - Show current board state",
             "",
             "Interactive Settings (TUI mode):",
             "  ↑/↓ arrows      - Navigate settings",
@@ -4692,162 +5705,143 @@ Provide a concise answer (1-2 sentences) based on the board state.
             self.advice_thread = threading.Thread(target=self._generate_and_speak_advice, args=(board_state,))
             self.advice_thread.start()
 
-    def _safe_card_name(self, card) -> str:
-        """Safely get card name with fallback for None/missing attributes"""
-        try:
-            if card is None:
-                return "Unknown"
-            if hasattr(card, 'name') and card.name:
-                return str(card.name)
-            if hasattr(card, 'grp_id'):
-                return f"Unknown({card.grp_id})"
-            return "Unknown"
-        except Exception as e:
-            logging.warning(f"Error getting card name: {e}")
-            return "Unknown"
+    def _format_card_display(self, card: GameObject) -> str:
+        """Format card display with name, type, P/T, and status indicators"""
+        # Check if card is unknown
+        if "Unknown" in card.name:
+            return f"{card.name} ⚠️"
+
+        # Build status indicators
+        status_parts = []
+
+        # Add tapped status
+        if card.is_tapped:
+            status_parts.append("🔄")
+
+        # Add power/toughness for creatures
+        if card.power is not None and card.toughness is not None:
+            # Handle dict format {'value': int} just in case
+            power_val = card.power.get("value") if isinstance(card.power, dict) else card.power
+            tough_val = card.toughness.get("value") if isinstance(card.toughness, dict) else card.toughness
+            status_parts.append(f"{power_val}/{tough_val}")
+
+        # Add summoning sickness indicator
+        if card.summoning_sick:
+            status_parts.append("😴")
+
+        # Add attacking status
+        if card.is_attacking:
+            status_parts.append("⚡")
+
+        # Add any counters
+        if card.counters:
+            counter_str = ", ".join([f"{count}x {ctype}" for ctype, count in card.counters.items()])
+            status_parts.append(f"[{counter_str}]")
+
+        # Combine all parts
+        if status_parts:
+            return f"{card.name} ({', '.join(status_parts)})"
+        else:
+            return card.name
 
     def _display_board_state(self, board_state: BoardState):
-        """Display a comprehensive visual representation of the current board state (error-safe)"""
-        try:
-            # Build board state lines
-            lines = []
+        """Display a comprehensive visual representation of the current board state"""
+        # Build board state lines
+        lines = []
+        lines.append("")
+        lines.append("="*70)
+        if board_state.in_mulligan_phase:
+            lines.append("🎴 MULLIGAN PHASE - Opening Hand")
+        else:
+            lines.append(f"TURN {board_state.current_turn} - {board_state.current_phase}")
+        lines.append("="*70)
+
+        # Game History - what happened this turn
+        if board_state.history and board_state.history.turn_number == board_state.current_turn:
+            history = board_state.history
+            if history.cards_played_this_turn or history.died_this_turn or history.lands_played_this_turn:
+                lines.append("")
+                lines.append("📜 THIS TURN:")
+                if history.cards_played_this_turn:
+                    played_names = [c.name for c in history.cards_played_this_turn]
+                    lines.append(f"   ⚡ Played: {', '.join(played_names)}")
+                if history.lands_played_this_turn > 0:
+                    lines.append(f"   🌍 Lands: {history.lands_played_this_turn}")
+                if history.died_this_turn:
+                    lines.append(f"   💀 Died: {', '.join(history.died_this_turn)}")
+
+        # Opponent info
+        lines.append("")
+        lines.append("─"*70)
+        opponent_lib = board_state.opponent_library_count if board_state.opponent_library_count > 0 else "?"
+        lines.append(f"OPPONENT: ❤️  {board_state.opponent_life} life | 🃏 {board_state.opponent_hand_count} cards | 📖 {opponent_lib} library")
+
+        lines.append("")
+        lines.append(f"  ⚔️  Battlefield ({len(board_state.opponent_battlefield)}):")
+        if board_state.opponent_battlefield:
+            for card in board_state.opponent_battlefield:
+                card_info = self._format_card_display(card)
+                lines.append(f"      • {card_info}")
+        else:
+            lines.append("      (empty)")
+
+        if board_state.opponent_graveyard:
+            recent = board_state.opponent_graveyard[-5:]
+            lines.append(f"  ⚰️ Graveyard ({len(board_state.opponent_graveyard)}): {', '.join([c.name for c in recent])}")
+
+        if board_state.opponent_exile:
+            lines.append(f"  🚫 Exile ({len(board_state.opponent_exile)}): {', '.join([c.name for c in board_state.opponent_exile])}")
+
+        # Stack (shared)
+        if board_state.stack:
             lines.append("")
-            lines.append("="*70)
-            if board_state.in_mulligan_phase:
-                lines.append("🎴 MULLIGAN PHASE - Opening Hand")
-            else:
-                lines.append(f"TURN {board_state.current_turn} - {board_state.current_phase}")
-            lines.append("="*70)
+            lines.append("─"*70)
+            lines.append(f"📋 STACK ({len(board_state.stack)}):")
+            for card in board_state.stack:
+                lines.append(f"   ⚡ {card.name}")
 
-            # Game History - what happened this turn
-            try:
-                if board_state.history and board_state.history.turn_number == board_state.current_turn:
-                    history = board_state.history
-                    if history.cards_played_this_turn or history.died_this_turn or history.lands_played_this_turn:
-                        lines.append("")
-                        lines.append("📜 THIS TURN:")
-                        if history.cards_played_this_turn:
-                            played_names = [self._safe_card_name(c) for c in history.cards_played_this_turn]
-                            lines.append(f"   ⚡ Played: {', '.join(played_names)}")
-                        if history.lands_played_this_turn > 0:
-                            lines.append(f"   🌍 Lands: {history.lands_played_this_turn}")
-                        if history.died_this_turn:
-                            lines.append(f"   💀 Died: {', '.join(history.died_this_turn)}")
-            except Exception as e:
-                logging.warning(f"Error building game history: {e}")
-                lines.append("   (error displaying history)")
+        # Your info
+        lines.append("")
+        lines.append("─"*70)
+        your_lib = board_state.your_library_count if board_state.your_library_count > 0 else "?"
+        lines.append(f"YOU: ❤️  {board_state.your_life} life | 🃏 {board_state.your_hand_count} cards | 📖 {your_lib} library")
 
-            # Opponent info
-            try:
-                lines.append("")
-                lines.append("─"*70)
-                opponent_lib = board_state.opponent_library_count if board_state.opponent_library_count > 0 else "?"
-                lines.append(f"OPPONENT: ❤️  {board_state.opponent_life} life | 🃏 {board_state.opponent_hand_count} cards | 📖 {opponent_lib} library")
+        lines.append("")
+        lines.append(f"  🃏 Hand ({len(board_state.your_hand)}):")
+        if board_state.your_hand:
+            for card in board_state.your_hand:
+                card_info = self._format_card_display(card)
+                lines.append(f"      • {card_info}")
+        else:
+            lines.append("      (empty)")
 
-                lines.append("")
-                lines.append(f"  ⚔️  Battlefield ({len(board_state.opponent_battlefield)}):")
-                if board_state.opponent_battlefield:
-                    for card in board_state.opponent_battlefield:
-                        try:
-                            card_info = self._format_card_display(card)
-                            lines.append(f"      • {card_info}")
-                        except Exception as e:
-                            logging.warning(f"Error formatting opponent battlefield card: {e}")
-                            lines.append(f"      • {self._safe_card_name(card)} (error displaying details)")
-                else:
-                    lines.append("      (empty)")
+        lines.append("")
+        lines.append(f"  ⚔️  Battlefield ({len(board_state.your_battlefield)}):")
+        if board_state.your_battlefield:
+            for card in board_state.your_battlefield:
+                card_info = self._format_card_display(card)
+                lines.append(f"      • {card_info}")
+        else:
+            lines.append("      (empty)")
 
-                if board_state.opponent_graveyard:
-                    recent = board_state.opponent_graveyard[-5:]
-                    graveyard_names = [self._safe_card_name(c) for c in recent]
-                    lines.append(f"  ⚰️ Graveyard ({len(board_state.opponent_graveyard)}): {', '.join(graveyard_names)}")
+        if board_state.your_graveyard:
+            recent = board_state.your_graveyard[-5:]
+            lines.append(f"  ⚰️ Graveyard ({len(board_state.your_graveyard)}): {', '.join([c.name for c in recent])}")
 
-                if board_state.opponent_exile:
-                    exile_names = [self._safe_card_name(c) for c in board_state.opponent_exile]
-                    lines.append(f"  🚫 Exile ({len(board_state.opponent_exile)}): {', '.join(exile_names)}")
-            except Exception as e:
-                logging.warning(f"Error building opponent board state: {e}")
-                lines.append("   (error displaying opponent board)")
+        if board_state.your_exile:
+            lines.append(f"  🚫 Exile ({len(board_state.your_exile)}): {', '.join([c.name for c in board_state.your_exile])}")
 
-            # Stack (shared)
-            try:
-                if board_state.stack:
-                    lines.append("")
-                    lines.append("─"*70)
-                    lines.append(f"📋 STACK ({len(board_state.stack)}):")
-                    for card in board_state.stack:
-                        try:
-                            stack_name = self._safe_card_name(card)
-                            lines.append(f"   ⚡ {stack_name}")
-                        except Exception as e:
-                            logging.warning(f"Error displaying stack card: {e}")
-                            lines.append(f"   ⚡ (error displaying card)")
-            except Exception as e:
-                logging.warning(f"Error building stack display: {e}")
+        lines.append("")
+        lines.append("="*70)
 
-            # Your info
-            try:
-                lines.append("")
-                lines.append("─"*70)
-                your_lib = board_state.your_library_count if board_state.your_library_count > 0 else "?"
-                lines.append(f"YOU: ❤️  {board_state.your_life} life | 🃏 {board_state.your_hand_count} cards | 📖 {your_lib} library")
-
-                lines.append("")
-                lines.append(f"  🃏 Hand ({len(board_state.your_hand)}):")
-                if board_state.your_hand:
-                    for card in board_state.your_hand:
-                        try:
-                            card_info = self._format_card_display(card)
-                            lines.append(f"      • {card_info}")
-                        except Exception as e:
-                            logging.warning(f"Error formatting hand card: {e}")
-                            lines.append(f"      • {self._safe_card_name(card)} (error displaying details)")
-                else:
-                    lines.append("      (empty)")
-
-                lines.append("")
-                lines.append(f"  ⚔️  Battlefield ({len(board_state.your_battlefield)}):")
-                if board_state.your_battlefield:
-                    for card in board_state.your_battlefield:
-                        try:
-                            card_info = self._format_card_display(card)
-                            lines.append(f"      • {card_info}")
-                        except Exception as e:
-                            logging.warning(f"Error formatting your battlefield card: {e}")
-                            lines.append(f"      • {self._safe_card_name(card)} (error displaying details)")
-                else:
-                    lines.append("      (empty)")
-
-                if board_state.your_graveyard:
-                    recent = board_state.your_graveyard[-5:]
-                    graveyard_names = [self._safe_card_name(c) for c in recent]
-                    lines.append(f"  ⚰️ Graveyard ({len(board_state.your_graveyard)}): {', '.join(graveyard_names)}")
-
-                if board_state.your_exile:
-                    exile_names = [self._safe_card_name(c) for c in board_state.your_exile]
-                    lines.append(f"  🚫 Exile ({len(board_state.your_exile)}): {', '.join(exile_names)}")
-            except Exception as e:
-                logging.warning(f"Error building your board state: {e}")
-                lines.append("   (error displaying your board)")
-
-            lines.append("")
-            lines.append("="*70)
-
-            # Output board state
-            try:
-                if self.use_gui and self.gui:
-                    self.gui.set_board_state(lines)
-                elif self.use_tui and self.tui:
-                    self.tui.set_board_state(lines)
-                else:
-                    for line in lines:
-                        print(line)
-            except Exception as e:
-                logging.error(f"Error outputting board state: {e}")
-                print("Error displaying board state")
-        except Exception as e:
-            logging.error(f"Critical error in _display_board_state: {e}")
-            print(f"Error displaying board state: {e}")
+        # Output board state
+        if self.use_gui and self.gui:
+            self.gui.set_board_state(lines)
+        elif self.use_tui and self.tui:
+            self.tui.set_board_state(lines)
+        else:
+            for line in lines:
+                print(line)
 
     def _strip_markdown(self, text: str) -> str:
         """Remove markdown formatting for TTS (asterisks, hashtags, etc.)"""
@@ -5033,6 +6027,11 @@ if __name__ == "__main__":
     parser.add_argument("--tui", action="store_true", help="Use Text User Interface (TUI) mode with curses")
     parser.add_argument("--cli", action="store_true", help="Use basic Command Line Interface (CLI) mode")
     args = parser.parse_args()
+
+    # Check and update card database before starting
+    if not check_and_update_card_database():
+        print("Cannot start without card database.")
+        sys.exit(1)
 
     # Default to GUI unless TUI or CLI specified
     use_gui = not args.tui and not args.cli and TKINTER_AVAILABLE
