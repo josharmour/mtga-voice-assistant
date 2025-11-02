@@ -826,7 +826,7 @@ class ArenaCardDatabase:
     A unified card database that uses ScryfallDB for caching and lookups.
     Thread-safe access to SQLite database.
     """
-    def __init__(self, db_path: str = "data/scryfall_cache.db"):
+    def __init__(self, db_path: str = "data/unified_cards.db"):
         if SCRYFALL_DB_AVAILABLE:
             self.db = ScryfallDB(db_path)
             logging.info(f"✓ Using ScryfallDB for card data at {db_path}")
@@ -4621,104 +4621,162 @@ Provide a concise answer (1-2 sentences) based on the board state.
             self.advice_thread = threading.Thread(target=self._generate_and_speak_advice, args=(board_state,))
             self.advice_thread.start()
 
+    def _safe_card_name(self, card) -> str:
+        """Safely get card name with fallback for None/missing attributes"""
+        try:
+            if card is None:
+                return "Unknown"
+            if hasattr(card, 'name') and card.name:
+                return str(card.name)
+            if hasattr(card, 'grp_id'):
+                return f"Unknown({card.grp_id})"
+            return "Unknown"
+        except Exception as e:
+            logging.warning(f"Error getting card name: {e}")
+            return "Unknown"
+
     def _display_board_state(self, board_state: BoardState):
-        """Display a comprehensive visual representation of the current board state"""
-        # Build board state lines
-        lines = []
-        lines.append("")
-        lines.append("="*70)
-        if board_state.in_mulligan_phase:
-            lines.append("🎴 MULLIGAN PHASE - Opening Hand")
-        else:
-            lines.append(f"TURN {board_state.current_turn} - {board_state.current_phase}")
-        lines.append("="*70)
-
-        # Game History - what happened this turn
-        if board_state.history and board_state.history.turn_number == board_state.current_turn:
-            history = board_state.history
-            if history.cards_played_this_turn or history.died_this_turn or history.lands_played_this_turn:
-                lines.append("")
-                lines.append("📜 THIS TURN:")
-                if history.cards_played_this_turn:
-                    played_names = [c.name for c in history.cards_played_this_turn]
-                    lines.append(f"   ⚡ Played: {', '.join(played_names)}")
-                if history.lands_played_this_turn > 0:
-                    lines.append(f"   🌍 Lands: {history.lands_played_this_turn}")
-                if history.died_this_turn:
-                    lines.append(f"   💀 Died: {', '.join(history.died_this_turn)}")
-
-        # Opponent info
-        lines.append("")
-        lines.append("─"*70)
-        opponent_lib = board_state.opponent_library_count if board_state.opponent_library_count > 0 else "?"
-        lines.append(f"OPPONENT: ❤️  {board_state.opponent_life} life | 🃏 {board_state.opponent_hand_count} cards | 📖 {opponent_lib} library")
-
-        lines.append("")
-        lines.append(f"  ⚔️  Battlefield ({len(board_state.opponent_battlefield)}):")
-        if board_state.opponent_battlefield:
-            for card in board_state.opponent_battlefield:
-                card_info = self._format_card_display(card)
-                lines.append(f"      • {card_info}")
-        else:
-            lines.append("      (empty)")
-
-        if board_state.opponent_graveyard:
-            recent = board_state.opponent_graveyard[-5:]
-            lines.append(f"  ⚰️ Graveyard ({len(board_state.opponent_graveyard)}): {', '.join([c.name for c in recent])}")
-
-        if board_state.opponent_exile:
-            lines.append(f"  🚫 Exile ({len(board_state.opponent_exile)}): {', '.join([c.name for c in board_state.opponent_exile])}")
-
-        # Stack (shared)
-        if board_state.stack:
+        """Display a comprehensive visual representation of the current board state (error-safe)"""
+        try:
+            # Build board state lines
+            lines = []
             lines.append("")
-            lines.append("─"*70)
-            lines.append(f"📋 STACK ({len(board_state.stack)}):")
-            for card in board_state.stack:
-                lines.append(f"   ⚡ {card.name}")
+            lines.append("="*70)
+            if board_state.in_mulligan_phase:
+                lines.append("🎴 MULLIGAN PHASE - Opening Hand")
+            else:
+                lines.append(f"TURN {board_state.current_turn} - {board_state.current_phase}")
+            lines.append("="*70)
 
-        # Your info
-        lines.append("")
-        lines.append("─"*70)
-        your_lib = board_state.your_library_count if board_state.your_library_count > 0 else "?"
-        lines.append(f"YOU: ❤️  {board_state.your_life} life | 🃏 {board_state.your_hand_count} cards | 📖 {your_lib} library")
+            # Game History - what happened this turn
+            try:
+                if board_state.history and board_state.history.turn_number == board_state.current_turn:
+                    history = board_state.history
+                    if history.cards_played_this_turn or history.died_this_turn or history.lands_played_this_turn:
+                        lines.append("")
+                        lines.append("📜 THIS TURN:")
+                        if history.cards_played_this_turn:
+                            played_names = [self._safe_card_name(c) for c in history.cards_played_this_turn]
+                            lines.append(f"   ⚡ Played: {', '.join(played_names)}")
+                        if history.lands_played_this_turn > 0:
+                            lines.append(f"   🌍 Lands: {history.lands_played_this_turn}")
+                        if history.died_this_turn:
+                            lines.append(f"   💀 Died: {', '.join(history.died_this_turn)}")
+            except Exception as e:
+                logging.warning(f"Error building game history: {e}")
+                lines.append("   (error displaying history)")
 
-        lines.append("")
-        lines.append(f"  🃏 Hand ({len(board_state.your_hand)}):")
-        if board_state.your_hand:
-            for card in board_state.your_hand:
-                card_info = self._format_card_display(card)
-                lines.append(f"      • {card_info}")
-        else:
-            lines.append("      (empty)")
+            # Opponent info
+            try:
+                lines.append("")
+                lines.append("─"*70)
+                opponent_lib = board_state.opponent_library_count if board_state.opponent_library_count > 0 else "?"
+                lines.append(f"OPPONENT: ❤️  {board_state.opponent_life} life | 🃏 {board_state.opponent_hand_count} cards | 📖 {opponent_lib} library")
 
-        lines.append("")
-        lines.append(f"  ⚔️  Battlefield ({len(board_state.your_battlefield)}):")
-        if board_state.your_battlefield:
-            for card in board_state.your_battlefield:
-                card_info = self._format_card_display(card)
-                lines.append(f"      • {card_info}")
-        else:
-            lines.append("      (empty)")
+                lines.append("")
+                lines.append(f"  ⚔️  Battlefield ({len(board_state.opponent_battlefield)}):")
+                if board_state.opponent_battlefield:
+                    for card in board_state.opponent_battlefield:
+                        try:
+                            card_info = self._format_card_display(card)
+                            lines.append(f"      • {card_info}")
+                        except Exception as e:
+                            logging.warning(f"Error formatting opponent battlefield card: {e}")
+                            lines.append(f"      • {self._safe_card_name(card)} (error displaying details)")
+                else:
+                    lines.append("      (empty)")
 
-        if board_state.your_graveyard:
-            recent = board_state.your_graveyard[-5:]
-            lines.append(f"  ⚰️ Graveyard ({len(board_state.your_graveyard)}): {', '.join([c.name for c in recent])}")
+                if board_state.opponent_graveyard:
+                    recent = board_state.opponent_graveyard[-5:]
+                    graveyard_names = [self._safe_card_name(c) for c in recent]
+                    lines.append(f"  ⚰️ Graveyard ({len(board_state.opponent_graveyard)}): {', '.join(graveyard_names)}")
 
-        if board_state.your_exile:
-            lines.append(f"  🚫 Exile ({len(board_state.your_exile)}): {', '.join([c.name for c in board_state.your_exile])}")
+                if board_state.opponent_exile:
+                    exile_names = [self._safe_card_name(c) for c in board_state.opponent_exile]
+                    lines.append(f"  🚫 Exile ({len(board_state.opponent_exile)}): {', '.join(exile_names)}")
+            except Exception as e:
+                logging.warning(f"Error building opponent board state: {e}")
+                lines.append("   (error displaying opponent board)")
 
-        lines.append("")
-        lines.append("="*70)
+            # Stack (shared)
+            try:
+                if board_state.stack:
+                    lines.append("")
+                    lines.append("─"*70)
+                    lines.append(f"📋 STACK ({len(board_state.stack)}):")
+                    for card in board_state.stack:
+                        try:
+                            stack_name = self._safe_card_name(card)
+                            lines.append(f"   ⚡ {stack_name}")
+                        except Exception as e:
+                            logging.warning(f"Error displaying stack card: {e}")
+                            lines.append(f"   ⚡ (error displaying card)")
+            except Exception as e:
+                logging.warning(f"Error building stack display: {e}")
 
-        # Output board state
-        if self.use_gui and self.gui:
-            self.gui.set_board_state(lines)
-        elif self.use_tui and self.tui:
-            self.tui.set_board_state(lines)
-        else:
-            for line in lines:
-                print(line)
+            # Your info
+            try:
+                lines.append("")
+                lines.append("─"*70)
+                your_lib = board_state.your_library_count if board_state.your_library_count > 0 else "?"
+                lines.append(f"YOU: ❤️  {board_state.your_life} life | 🃏 {board_state.your_hand_count} cards | 📖 {your_lib} library")
+
+                lines.append("")
+                lines.append(f"  🃏 Hand ({len(board_state.your_hand)}):")
+                if board_state.your_hand:
+                    for card in board_state.your_hand:
+                        try:
+                            card_info = self._format_card_display(card)
+                            lines.append(f"      • {card_info}")
+                        except Exception as e:
+                            logging.warning(f"Error formatting hand card: {e}")
+                            lines.append(f"      • {self._safe_card_name(card)} (error displaying details)")
+                else:
+                    lines.append("      (empty)")
+
+                lines.append("")
+                lines.append(f"  ⚔️  Battlefield ({len(board_state.your_battlefield)}):")
+                if board_state.your_battlefield:
+                    for card in board_state.your_battlefield:
+                        try:
+                            card_info = self._format_card_display(card)
+                            lines.append(f"      • {card_info}")
+                        except Exception as e:
+                            logging.warning(f"Error formatting your battlefield card: {e}")
+                            lines.append(f"      • {self._safe_card_name(card)} (error displaying details)")
+                else:
+                    lines.append("      (empty)")
+
+                if board_state.your_graveyard:
+                    recent = board_state.your_graveyard[-5:]
+                    graveyard_names = [self._safe_card_name(c) for c in recent]
+                    lines.append(f"  ⚰️ Graveyard ({len(board_state.your_graveyard)}): {', '.join(graveyard_names)}")
+
+                if board_state.your_exile:
+                    exile_names = [self._safe_card_name(c) for c in board_state.your_exile]
+                    lines.append(f"  🚫 Exile ({len(board_state.your_exile)}): {', '.join(exile_names)}")
+            except Exception as e:
+                logging.warning(f"Error building your board state: {e}")
+                lines.append("   (error displaying your board)")
+
+            lines.append("")
+            lines.append("="*70)
+
+            # Output board state
+            try:
+                if self.use_gui and self.gui:
+                    self.gui.set_board_state(lines)
+                elif self.use_tui and self.tui:
+                    self.tui.set_board_state(lines)
+                else:
+                    for line in lines:
+                        print(line)
+            except Exception as e:
+                logging.error(f"Error outputting board state: {e}")
+                print("Error displaying board state")
+        except Exception as e:
+            logging.error(f"Critical error in _display_board_state: {e}")
+            print(f"Error displaying board state: {e}")
 
     def _strip_markdown(self, text: str) -> str:
         """Remove markdown formatting for TTS (asterisks, hashtags, etc.)"""
