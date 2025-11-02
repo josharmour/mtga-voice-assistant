@@ -3452,7 +3452,12 @@ class CLIVoiceAdvisor:
         if card.is_attacking:
             status_parts.append("⚡")
         if card.counters:
-            counter_str = ", ".join([f"{count}x {ctype}" for ctype, count in card.counters.items()])
+            counter_parts = []
+            for ctype, count in card.counters.items():
+                # Handle counter values that might be objects with a 'value' attribute or plain integers
+                counter_val = count.get('value') if isinstance(count, dict) else (count.value if hasattr(count, 'value') else count)
+                counter_parts.append(f"{counter_val} {ctype}")
+            counter_str = ", ".join(counter_parts)
             status_parts.append(f"[{counter_str}]")
 
         if status_parts:
