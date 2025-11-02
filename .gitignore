@@ -43,3 +43,6 @@ local-docs/
 
 # Ignore large data files
 data/*.csv
+
+# Configuration file with credentials
+config.py
