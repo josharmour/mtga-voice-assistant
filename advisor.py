@@ -3431,6 +3431,35 @@ class CLIVoiceAdvisor:
             # Return default model as fallback
             return ["llama3.2"]
 
+    def get_last_rag_references(self) -> Optional[Dict]:
+        """Proxy method to get RAG references from AI advisor"""
+        if hasattr(self, 'ai_advisor') and hasattr(self.ai_advisor, 'get_last_rag_references'):
+            return self.ai_advisor.get_last_rag_references()
+        return None
+
+    def _format_card_display(self, card: GameObject) -> str:
+        """Format card display with name, P/T, and status indicators"""
+        if "Unknown" in card.name:
+            return f"{card.name} ⚠️"
+
+        status_parts = []
+        if card.is_tapped:
+            status_parts.append("🔄")
+        if card.power is not None and card.toughness is not None:
+            status_parts.append(f"{card.power}/{card.toughness}")
+        if card.summoning_sick:
+            status_parts.append("😴")
+        if card.is_attacking:
+            status_parts.append("⚡")
+        if card.counters:
+            counter_str = ", ".join([f"{count}x {ctype}" for ctype, count in card.counters.items()])
+            status_parts.append(f"[{counter_str}]")
+
+        if status_parts:
+            return f"{card.name} ({', '.join(status_parts)})"
+        else:
+            return card.name
+
     # Draft event callbacks
     def _on_draft_pool(self, data: dict):
         """Handle EventGetCoursesV2 - sealed/draft pool event"""
@@ -4618,8 +4647,8 @@ Provide a concise answer (1-2 sentences) based on the board state.
         lines.append(f"  ⚔️  Battlefield ({len(board_state.opponent_battlefield)}):")
         if board_state.opponent_battlefield:
             for card in board_state.opponent_battlefield:
-                status = "⚠ UNKNOWN" if "Unknown" in card.name else ""
-                lines.append(f"      • {card.name} {status}")
+                card_info = self._format_card_display(card)
+                lines.append(f"      • {card_info}")
         else:
             lines.append("      (empty)")
 
@@ -4648,8 +4677,8 @@ Provide a concise answer (1-2 sentences) based on the board state.
         lines.append(f"  🃏 Hand ({len(board_state.your_hand)}):")
         if board_state.your_hand:
             for card in board_state.your_hand:
-                status = "⚠ UNKNOWN" if "Unknown" in card.name else ""
-                lines.append(f"      • {card.name} {status}")
+                card_info = self._format_card_display(card)
+                lines.append(f"      • {card_info}")
         else:
             lines.append("      (empty)")
 
@@ -4657,8 +4686,8 @@ Provide a concise answer (1-2 sentences) based on the board state.
         lines.append(f"  ⚔️  Battlefield ({len(board_state.your_battlefield)}):")
         if board_state.your_battlefield:
             for card in board_state.your_battlefield:
-                status = "⚠ UNKNOWN" if "Unknown" in card.name else ""
-                lines.append(f"      • {card.name} {status}")
+                card_info = self._format_card_display(card)
+                lines.append(f"      • {card_info}")
         else:
             lines.append("      (empty)")
 
