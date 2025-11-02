@@ -3051,6 +3051,47 @@ class AdvisorGUI:
         import threading
         import subprocess
         import os
+        import base64
+        import requests
+        try:
+            import config
+        except ImportError:
+            config = None
+
+        def upload_to_imgbb(image_path):
+            if not config or not hasattr(config, 'IMGBB_API_KEY') or not config.IMGBB_API_KEY or config.IMGBB_API_KEY == "YOUR_IMGBB_API_KEY":
+                return None, "Imgbb API key not configured."
+
+            with open(image_path, "rb") as file:
+                payload = {
+                    "key": config.IMGBB_API_KEY,
+                    "image": base64.b64encode(file.read()),
+                }
+                response = requests.post("https://api.imgbb.com/1/upload", payload)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["data"]["url"], None
+                else:
+                    return None, response.text
+
+        def create_github_issue(title, body):
+            if not config or not all(hasattr(config, attr) for attr in ['GITHUB_OWNER', 'GITHUB_REPO', 'GITHUB_TOKEN']):
+                return None, "GitHub credentials not configured."
+            if any(val in (None, "", "YOUR_GITHUB_USERNAME", "YOUR_GITHUB_REPOSITORY", "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN") for val in [config.GITHUB_OWNER, config.GITHUB_REPO, config.GITHUB_TOKEN]):
+                 return None, "GitHub credentials not configured."
+
+
+            url = f"https://api.github.com/repos/{config.GITHUB_OWNER}/{config.GITHUB_REPO}/issues"
+            headers = {
+                "Authorization": f"token {config.GITHUB_TOKEN}",
+                "Accept": "application/vnd.github.v3+json",
+            }
+            data = {"title": title, "body": body}
+            response = requests.post(url, json=data, headers=headers)
+            if response.status_code == 201:
+                return response.json()["html_url"], None
+            else:
+                return None, response.text
 
         def capture_in_background():
             try:
@@ -3095,33 +3136,63 @@ Continuous Monitoring: {self.continuous_var.get()}
 Show AI Thinking: {self.show_thinking_var.get()}
 """
 
-                # Write bug report
+                # Write bug report to local file
                 with open(report_file, "w") as f:
                     f.write("="*70 + "\n")
                     f.write(f"BUG REPORT - {timestamp}\n")
                     f.write("="*70 + "\n\n")
-
                     f.write("SCREENSHOT:\n")
                     f.write(f"{screenshot_file}\n\n")
-
                     f.write("="*70 + "\n")
                     f.write("CURRENT SETTINGS:\n")
                     f.write("="*70 + "\n")
                     f.write(settings + "\n")
-
                     f.write("="*70 + "\n")
                     f.write("CURRENT BOARD STATE:\n")
                     f.write("="*70 + "\n")
                     f.write(board_state_text + "\n\n")
-
                     f.write("="*70 + "\n")
                     f.write("RECENT LOGS (last 300 lines):\n")
                     f.write("="*70 + "\n")
                     f.write(recent_logs + "\n")
+                self.add_message(f"✓ Bug report saved locally: {report_file}", "green")
+                logging.info(f"Bug report captured locally: {report_file}")
 
-                # Show success message
-                self.add_message(f"✓ Bug report saved: {report_file}", "green")
-                logging.info(f"Bug report captured: {report_file}")
+                # Upload screenshot
+                screenshot_url, error = upload_to_imgbb(screenshot_file)
+                if error:
+                    self.add_message(f"✗ Screenshot upload failed: {error}", "red")
+                    logging.error(f"Screenshot upload failed: {error}")
+                    return
+
+                # Create GitHub issue
+                issue_title = f"Bug Report: {timestamp}"
+                issue_body = f"""
+**Screenshot:**
+![Screenshot]({screenshot_url})
+
+**Settings:**
+```
+{settings}
+```
+
+**Board State:**
+```
+{board_state_text}
+```
+
+**Recent Logs:**
+```
+{recent_logs}
+```
+"""
+                issue_url, error = create_github_issue(issue_title, issue_body)
+                if error:
+                    self.add_message(f"✗ GitHub issue creation failed: {error}", "red")
+                    logging.error(f"GitHub issue creation failed: {error}")
+                else:
+                    self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
+                    logging.info(f"Bug report uploaded to GitHub: {issue_url}")
 
             except Exception as e:
                 self.add_message(f"✗ Bug report failed: {e}", "red")
