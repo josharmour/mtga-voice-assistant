@@ -824,6 +824,7 @@ except ImportError:
 class ArenaCardDatabase:
     """
     A unified card database that uses ScryfallDB for caching and lookups.
+    Thread-safe access to SQLite database.
     """
     def __init__(self, db_path: str = "data/scryfall_cache.db"):
         if SCRYFALL_DB_AVAILABLE:
@@ -833,6 +834,7 @@ class ArenaCardDatabase:
             self.db = None
             logging.warning("✗ ScryfallDB not found. Card lookups will be slower.")
         self.cache: Dict[int, dict] = {}
+        self._db_lock = threading.Lock()  # Thread-safe database access
 
     def get_card_name(self, grp_id: int) -> str:
         """Get card name from grpId."""
@@ -840,22 +842,23 @@ class ArenaCardDatabase:
         return card_data.get("name", f"Unknown({grp_id})") if card_data else f"Unknown({grp_id})"
 
     def get_card_data(self, grp_id: int) -> Optional[dict]:
-        """Get full card data from cache or database."""
+        """Get full card data from cache or database (thread-safe)."""
         if not grp_id:
             return None
 
-        # Check in-memory cache first
+        # Check in-memory cache first (safe - no DB access)
         if grp_id in self.cache:
             return self.cache[grp_id]
 
-        # If using ScryfallDB, check the database
+        # If using ScryfallDB, check the database (thread-safe)
         if self.db:
-            card_data = self.db.get_card_by_grpId(grp_id)
+            with self._db_lock:
+                card_data = self.db.get_card_by_grpId(grp_id)
             if card_data:
                 self.cache[grp_id] = card_data
                 return card_data
 
-        # Fallback for when ScryfallDB is not available or fails
+        # Fallback for when ScryfallDB is not available or fails (thread-safe)
         logging.warning(f"Card {grp_id} not in DB, fetching from Scryfall API.")
         return self._fetch_from_scryfall_api(grp_id)
 
@@ -865,7 +868,7 @@ class ArenaCardDatabase:
         return card_data.get("oracle_text", "") if card_data else ""
 
     def _fetch_from_scryfall_api(self, grp_id: int) -> Optional[dict]:
-        """Directly fetch from Scryfall API as a last resort."""
+        """Directly fetch from Scryfall API as a last resort (thread-safe)."""
         try:
             response = requests.get(f"https://api.scryfall.com/cards/arena/{grp_id}", timeout=5)
             if response.status_code == 200:
@@ -873,12 +876,12 @@ class ArenaCardDatabase:
                 # Manually structure the data to match our DB schema
                 power = card_data.get('power')
                 toughness = card_data.get('toughness')
-                
+
                 try:
                     power = int(power) if power else None
                 except (ValueError, TypeError):
                     power = None
-                
+
                 try:
                     toughness = int(toughness) if toughness else None
                 except (ValueError, TypeError):
@@ -897,14 +900,16 @@ class ArenaCardDatabase:
                     "type_line": card_data.get("type_line", ""),
                     "mana_cost": card_data.get("mana_cost", ""),
                 }
-                self.cache[grp_id] = structured_data
+                with self._db_lock:
+                    self.cache[grp_id] = structured_data
                 return structured_data
         except requests.exceptions.RequestException as e:
             logging.error(f"Scryfall API error for grpId {grp_id}: {e}")
-        
-        # Cache failure to prevent repeated API calls
-        self.cache[grp_id] = {"name": f"Unknown({grp_id})"}
-        return self.cache[grp_id]
+
+        # Cache failure to prevent repeated API calls (thread-safe)
+        with self._db_lock:
+            self.cache[grp_id] = {"name": f"Unknown({grp_id})"}
+            return self.cache[grp_id]
 
     def close(self):
         """Close the database connection."""
