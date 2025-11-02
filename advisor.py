@@ -3239,8 +3239,8 @@ class CLIVoiceAdvisor:
             print("Loading card database...")
         card_db = ArenaCardDatabase()
         if not use_tui:
-            if card_db.conn:
-                print(f"✓ Loaded {len(card_db.cache)} cards from Arena database")
+            if card_db.db:
+                print(f"✓ Loaded card database from ScryfallDB")
             else:
                 print(f"⚠ Arena database not found - using cache with {len(card_db.cache)} cards")
                 print("  (Some newer cards may show as Unknown)")
