@@ -17,7 +17,8 @@ class ScryfallDB:
     def __init__(self, db_path: str = "data/scryfall_cache.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path)
+        # Allow SQLite to be used from multiple threads (thread-safe with locks in ArenaCardDatabase)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10)
         self.create_table()
 
     def create_table(self):
