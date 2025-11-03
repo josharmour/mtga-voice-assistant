@@ -54,6 +54,12 @@ class UserPreferences:
     reskin_names: bool = False
     show_thinking: bool = True
 
+    # API Keys (stored securely in user preferences)
+    github_token: str = ""
+    github_owner: str = ""
+    github_repo: str = ""
+    imgbb_api_key: str = ""
+
     @classmethod
     def load(cls) -> "UserPreferences":
         """Load preferences from file or create defaults."""
@@ -120,6 +126,27 @@ class UserPreferences:
         if reskin_names is not None:
             self.reskin_names = reskin_names
         self.save()
+
+    def set_api_keys(self, github_token: str = None, github_owner: str = None,
+                     github_repo: str = None, imgbb_api_key: str = None):
+        """Update API keys for bug reporting."""
+        if github_token is not None:
+            self.github_token = github_token
+        if github_owner is not None:
+            self.github_owner = github_owner
+        if github_repo is not None:
+            self.github_repo = github_repo
+        if imgbb_api_key is not None:
+            self.imgbb_api_key = imgbb_api_key
+        self.save()
+
+    def has_github_credentials(self) -> bool:
+        """Check if GitHub credentials are configured."""
+        return bool(self.github_token and self.github_owner and self.github_repo)
+
+    def has_imgbb_credentials(self) -> bool:
+        """Check if ImgBB API key is configured."""
+        return bool(self.imgbb_api_key)
 
     def __repr__(self) -> str:
         """String representation of preferences."""

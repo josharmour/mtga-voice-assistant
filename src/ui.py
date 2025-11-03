@@ -939,6 +939,145 @@ class AdvisorGUI:
             logging.error(f"Error on exit: {e}")
             self.root.quit()
 
+    def _prompt_for_credentials(self):
+        """Show dialog to collect GitHub and ImgBB API credentials."""
+        if not TKINTER_AVAILABLE:
+            return None
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Bug Report API Credentials")
+        dialog.geometry("600x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (400 // 2)
+        dialog.geometry(f"600x400+{x}+{y}")
+
+        result = {}
+
+        # Main frame with padding
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Title
+        title_label = ttk.Label(
+            main_frame,
+            text="API Credentials for Bug Reporting",
+            font=("TkDefaultFont", 12, "bold")
+        )
+        title_label.pack(pady=(0, 10))
+
+        # Info label
+        info_label = ttk.Label(
+            main_frame,
+            text="These credentials will be saved locally for future bug reports.\n"
+                 "Leave blank to skip uploading to GitHub and ImgBB.",
+            justify=tk.LEFT,
+            wraplength=550
+        )
+        info_label.pack(pady=(0, 15))
+
+        # Create a scrollable frame for the form
+        canvas = tk.Canvas(main_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # GitHub credentials
+        github_label = ttk.Label(scrollable_frame, text="GitHub Credentials:", font=("TkDefaultFont", 10, "bold"))
+        github_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
+
+        ttk.Label(scrollable_frame, text="GitHub Owner (username):").grid(row=1, column=0, sticky="w", pady=2)
+        github_owner_entry = ttk.Entry(scrollable_frame, width=50)
+        github_owner_entry.grid(row=1, column=1, sticky="ew", pady=2, padx=(10, 0))
+
+        ttk.Label(scrollable_frame, text="GitHub Repo (repository name):").grid(row=2, column=0, sticky="w", pady=2)
+        github_repo_entry = ttk.Entry(scrollable_frame, width=50)
+        github_repo_entry.grid(row=2, column=1, sticky="ew", pady=2, padx=(10, 0))
+
+        ttk.Label(scrollable_frame, text="GitHub Token (personal access token):").grid(row=3, column=0, sticky="w", pady=2)
+        github_token_entry = ttk.Entry(scrollable_frame, width=50, show="*")
+        github_token_entry.grid(row=3, column=1, sticky="ew", pady=2, padx=(10, 0))
+
+        # Separator
+        ttk.Separator(scrollable_frame, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=15)
+
+        # ImgBB credentials
+        imgbb_label = ttk.Label(scrollable_frame, text="ImgBB Credentials:", font=("TkDefaultFont", 10, "bold"))
+        imgbb_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 5))
+
+        ttk.Label(scrollable_frame, text="ImgBB API Key:").grid(row=6, column=0, sticky="w", pady=2)
+        imgbb_key_entry = ttk.Entry(scrollable_frame, width=50, show="*")
+        imgbb_key_entry.grid(row=6, column=1, sticky="ew", pady=2, padx=(10, 0))
+
+        # Help text
+        help_text = ttk.Label(
+            scrollable_frame,
+            text="How to get these credentials:\n\n"
+                 "GitHub Token: Settings → Developer settings → Personal access tokens → Generate new token\n"
+                 "  (Required scope: 'repo' for creating issues)\n\n"
+                 "ImgBB API Key: https://api.imgbb.com/ → Get API key (free)",
+            justify=tk.LEFT,
+            foreground="gray",
+            wraplength=550
+        )
+        help_text.grid(row=7, column=0, columnspan=2, sticky="w", pady=(15, 0))
+
+        scrollable_frame.columnconfigure(1, weight=1)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Buttons frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(15, 0))
+
+        def on_save():
+            result["github_owner"] = github_owner_entry.get().strip()
+            result["github_repo"] = github_repo_entry.get().strip()
+            result["github_token"] = github_token_entry.get().strip()
+            result["imgbb_api_key"] = imgbb_key_entry.get().strip()
+            dialog.destroy()
+
+        def on_cancel():
+            result["cancelled"] = True
+            dialog.destroy()
+
+        save_btn = ttk.Button(button_frame, text="Save & Continue", command=on_save)
+        save_btn.pack(side=tk.LEFT, padx=5)
+
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=on_cancel)
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+
+        # Pre-fill with existing values or project defaults
+        if CONFIG_MANAGER_AVAILABLE and self.prefs:
+            # Use stored values if available, otherwise use project defaults
+            github_owner_entry.insert(0, self.prefs.github_owner or "josharmour")
+            github_repo_entry.insert(0, self.prefs.github_repo or "mtga-voice-assistant")
+            if self.prefs.github_token:
+                github_token_entry.insert(0, self.prefs.github_token)
+            if self.prefs.imgbb_api_key:
+                imgbb_key_entry.insert(0, self.prefs.imgbb_api_key)
+        else:
+            # No preferences available, use project defaults
+            github_owner_entry.insert(0, "josharmour")
+            github_repo_entry.insert(0, "mtga-voice-assistant")
+
+        # Wait for dialog to close
+        dialog.wait_window()
+
+        return result if result and not result.get("cancelled") else None
+
     def _capture_bug_report(self):
         """Capture bug report with screenshot, logs, and board state"""
         import threading
@@ -947,44 +1086,157 @@ class AdvisorGUI:
         import time
         import base64
         import requests
+
+        # Ask user if they want to add a title and description (before background thread)
+        add_details = False
+        issue_title = None
+        user_description = None
+        should_upload = False
+        credentials_ready = False
+
         try:
-            import config
-        except ImportError:
-            config = None
+            from tkinter import messagebox, simpledialog
+            if self.root and self.root.winfo_exists():
+                add_details = messagebox.askyesno(
+                    "Bug Report Details",
+                    "Do you want to add a title and description to this bug report?",
+                    parent=self.root
+                )
+                if add_details:
+                    # Prompt for title
+                    title_prompt = simpledialog.askstring(
+                        "Bug Report Title",
+                        "Enter a title for the bug report (or leave blank for default):",
+                        parent=self.root
+                    )
+                    if title_prompt and title_prompt.strip():
+                        issue_title = title_prompt.strip()
+
+                    # Prompt for description
+                    desc_prompt = simpledialog.askstring(
+                        "Bug Report Description",
+                        "Please describe the bug:",
+                        parent=self.root
+                    )
+                    if desc_prompt and desc_prompt.strip():
+                        user_description = desc_prompt.strip()
+        except (ImportError, Exception) as e:
+            logging.debug(f"GUI not available for bug report details: {e}")
+
+        # Notify user we're starting the capture
+        self.add_message("📸 Capturing bug report...", "cyan")
+
+        # Define a callback to handle upload decision and credentials AFTER local save
+        def handle_upload_decision():
+            """Called from background thread when local save is complete."""
+            nonlocal should_upload, credentials_ready
+
+            # Ask user if they want to upload to GitHub (must be in main thread)
+            try:
+                from tkinter import messagebox
+                if self.root and self.root.winfo_exists():
+                    # Use after() to run in main thread
+                    result = []
+                    def ask_upload():
+                        result.append(messagebox.askyesno(
+                            "Upload Bug Report?",
+                            "Bug report saved locally!\n\nWould you like to upload it to GitHub?",
+                            parent=self.root
+                        ))
+                    self.root.after(0, ask_upload)
+                    # Wait for result
+                    import time
+                    timeout = 30  # 30 second timeout
+                    elapsed = 0
+                    while not result and elapsed < timeout:
+                        time.sleep(0.1)
+                        elapsed += 0.1
+
+                    if result and result[0]:
+                        should_upload = True
+
+                        # Check for cached credentials
+                        needs_credentials = False
+                        if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                            if not self.prefs.has_github_credentials() or not self.prefs.imgbb_api_key:
+                                needs_credentials = True
+                        else:
+                            needs_credentials = True
+
+                        if needs_credentials:
+                            # Prompt for credentials in main thread
+                            cred_result = []
+                            def ask_credentials():
+                                cred_result.append(self._prompt_for_credentials())
+                            self.root.after(0, ask_credentials)
+
+                            # Wait for credentials
+                            elapsed = 0
+                            while not cred_result and elapsed < timeout:
+                                time.sleep(0.1)
+                                elapsed += 0.1
+
+                            if cred_result and cred_result[0] and not cred_result[0].get("cancelled"):
+                                credentials = cred_result[0]
+                                # Save the credentials
+                                if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                                    self.prefs.set_api_keys(
+                                        github_token=credentials.get("github_token", ""),
+                                        github_owner=credentials.get("github_owner", ""),
+                                        github_repo=credentials.get("github_repo", ""),
+                                        imgbb_api_key=credentials.get("imgbb_api_key", "")
+                                    )
+                                    logging.info("API credentials saved to user preferences")
+                                    credentials_ready = True
+                            else:
+                                should_upload = False
+                        else:
+                            credentials_ready = True
+            except (ImportError, Exception) as e:
+                logging.debug(f"GUI not available for upload prompt: {e}")
 
         def upload_to_imgbb(image_path):
-            if not config or not hasattr(config, 'IMGBB_API_KEY') or not config.IMGBB_API_KEY or config.IMGBB_API_KEY == "YOUR_IMGBB_API_KEY":
-                return None, "Imgbb API key not configured."
+            """Upload image to ImgBB using stored credentials."""
+            if not CONFIG_MANAGER_AVAILABLE or not self.prefs or not self.prefs.imgbb_api_key:
+                return None, "ImgBB API key not configured."
 
-            with open(image_path, "rb") as file:
-                payload = {
-                    "key": config.IMGBB_API_KEY,
-                    "image": base64.b64encode(file.read()),
-                }
-                response = requests.post("https://api.imgbb.com/1/upload", payload)
-                if response.status_code == 200:
-                    data = response.json()
-                    return data["data"]["url"], None
-                else:
-                    return None, response.text
+            try:
+                with open(image_path, "rb") as file:
+                    payload = {
+                        "key": self.prefs.imgbb_api_key,
+                        "image": base64.b64encode(file.read()),
+                    }
+                    response = requests.post("https://api.imgbb.com/1/upload", payload)
+                    if response.status_code == 200:
+                        data = response.json()
+                        return data["data"]["url"], None
+                    else:
+                        return None, f"ImgBB API error: {response.text}"
+            except Exception as e:
+                return None, f"ImgBB upload failed: {str(e)}"
 
         def create_github_issue(title, body):
-            if not config or not all(hasattr(config, attr) for attr in ['GITHUB_OWNER', 'GITHUB_REPO', 'GITHUB_TOKEN']):
-                return None, "GitHub credentials not configured."
-            if any(val in (None, "", "YOUR_GITHUB_USERNAME", "YOUR_GITHUB_REPOSITORY", "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN") for val in [config.GITHUB_OWNER, config.GITHUB_REPO, config.GITHUB_TOKEN]):
+            """Create GitHub issue using stored credentials."""
+            if not CONFIG_MANAGER_AVAILABLE or not self.prefs:
+                return None, "Config manager not available."
+
+            if not self.prefs.has_github_credentials():
                 return None, "GitHub credentials not configured."
 
-            url = f"https://api.github.com/repos/{config.GITHUB_OWNER}/{config.GITHUB_REPO}/issues"
-            headers = {
-                "Authorization": f"token {config.GITHUB_TOKEN}",
-                "Accept": "application/vnd.github.v3+json",
-            }
-            data = {"title": title, "body": body}
-            response = requests.post(url, json=data, headers=headers)
-            if response.status_code == 201:
-                return response.json()["html_url"], None
-            else:
-                return None, response.text
+            try:
+                url = f"https://api.github.com/repos/{self.prefs.github_owner}/{self.prefs.github_repo}/issues"
+                headers = {
+                    "Authorization": f"token {self.prefs.github_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                }
+                data = {"title": title, "body": body}
+                response = requests.post(url, json=data, headers=headers)
+                if response.status_code == 201:
+                    return response.json()["html_url"], None
+                else:
+                    return None, f"GitHub API error: {response.text}"
+            except Exception as e:
+                return None, f"GitHub issue creation failed: {str(e)}"
 
         def capture_in_background():
             try:
@@ -997,39 +1249,9 @@ class AdvisorGUI:
                 report_file = os.path.join(bug_dir, f"bug_report_{timestamp}.txt")
                 screenshot_file = os.path.join(bug_dir, f"screenshot_{timestamp}.png")
 
-                # Ask user if they want to add a title and description
-                add_details = False
-                issue_title = f"Bug Report: {timestamp}"
-                user_description = "No description provided."
-
-                try:
-                    from tkinter import messagebox, simpledialog
-                    if self.root and self.root.winfo_exists():
-                        add_details = messagebox.askyesno(
-                            "Bug Report Details",
-                            "Do you want to add a title and description to this bug report?",
-                            parent=self.root
-                        )
-                        if add_details:
-                            # Prompt for title
-                            title_prompt = simpledialog.askstring(
-                                "Bug Report Title",
-                                "Enter a title for the bug report (or leave blank for default):",
-                                parent=self.root
-                            )
-                            if title_prompt and title_prompt.strip():
-                                issue_title = title_prompt.strip()
-
-                            # Prompt for description
-                            desc_prompt = simpledialog.askstring(
-                                "Bug Report Description",
-                                "Please describe the bug:",
-                                parent=self.root
-                            )
-                            if desc_prompt and desc_prompt.strip():
-                                user_description = desc_prompt.strip()
-                except (ImportError, Exception) as e:
-                    logging.debug(f"GUI not available for bug report details: {e}")
+                # Use title and description from parent scope (already prompted before thread started)
+                final_title = issue_title if issue_title else f"Bug Report: {timestamp}"
+                final_description = user_description if user_description else "No description provided."
 
                 # Take screenshot using gnome-screenshot or scrot
                 try:
@@ -1067,11 +1289,11 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                 # Write bug report to local file
                 with open(report_file, "w") as f:
                     f.write("="*70 + "\n")
-                    f.write(f"BUG REPORT: {issue_title}\n")
+                    f.write(f"BUG REPORT: {final_title}\n")
                     f.write("="*70 + "\n\n")
 
                     f.write("USER DESCRIPTION:\n")
-                    f.write(f"{user_description}\n\n")
+                    f.write(f"{final_description}\n\n")
 
                     f.write("SCREENSHOT:\n")
                     f.write(f"{screenshot_file}\n\n")
@@ -1094,17 +1316,34 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                 self.add_message(f"✓ Bug report saved locally: {report_file}", "green")
                 logging.info(f"Bug report captured locally: {report_file}")
 
+                # Handle upload decision and credentials (runs in main thread via after())
+                handle_upload_decision()
+
+                # Only attempt upload if credentials_ready flag is set (from main thread)
+                if not should_upload:
+                    self.add_message("✓ Bug report saved locally only", "green")
+                    return
+
+                if not credentials_ready:
+                    self.add_message("⚠ Upload cancelled - credentials not configured", "yellow")
+                    return
+
                 # Upload screenshot to Imgbb
                 screenshot_url, error = upload_to_imgbb(screenshot_file)
                 if error:
                     self.add_message(f"⚠ Screenshot upload failed: {error}", "yellow")
                     logging.warning(f"Screenshot upload failed: {error}")
+
+                    # If ImgBB API key is invalid, suggest re-entering credentials
+                    if "Invalid API" in str(error) or "Bad" in str(error):
+                        self.add_message("💡 Tip: Your ImgBB API key may be invalid. Delete ~/.mtga_advisor/preferences.json to re-enter credentials.", "cyan")
+
                     # Continue without screenshot URL
                     screenshot_url = screenshot_file
 
                 # Create GitHub issue
                 issue_body = f"""**Description:**
-{user_description}
+{final_description}
 
 **Screenshot:**
 ![Screenshot]({screenshot_url})
@@ -1124,10 +1363,14 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
 {recent_logs}
 ```
 """
-                issue_url, error = create_github_issue(issue_title, issue_body)
+                issue_url, error = create_github_issue(final_title, issue_body)
                 if error:
-                    self.add_message(f"⚠ GitHub upload skipped: {error}", "yellow")
+                    self.add_message(f"⚠ GitHub upload failed: {error}", "yellow")
                     logging.info(f"GitHub issue not created: {error}")
+
+                    # If credentials are bad, suggest re-entering them
+                    if "Bad credentials" in str(error) or "401" in str(error):
+                        self.add_message("💡 Tip: Your GitHub token may be invalid. Delete ~/.mtga_advisor/preferences.json to re-enter credentials.", "cyan")
                 else:
                     self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
                     logging.info(f"Bug report uploaded to GitHub: {issue_url}")
