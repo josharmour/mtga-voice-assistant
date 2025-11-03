@@ -15,16 +15,9 @@ from scipy.stats import norm
 from tabulate import tabulate
 from termcolor import colored
 
+from rag_advisor import clean_card_name
+
 logger = logging.getLogger(__name__)
-
-
-def strip_html_tags(text: str) -> str:
-    """Remove HTML tags from text (e.g., <nobr>, <sprite>)"""
-    if not text:
-        return text
-    # Remove all HTML tags
-    clean_text = re.sub(r'<[^>]+>', '', text)
-    return clean_text.strip()
 
 
 @dataclass
@@ -90,11 +83,13 @@ class DraftAdvisor:
         if self.rag and hasattr(self.rag, 'card_metadata'):
             self.metadata_db = self.rag.card_metadata
         else:
+            # Fallback if RAG system not available
             try:
-                from rag_advisor import CardMetadataDB
-                self.metadata_db = CardMetadataDB('data/card_metadata.db')
+                from rag_advisor import CardStatsDB
+                self.metadata_db = CardStatsDB('data/card_stats.db')
+                logger.info("RAG not present. Using CardStatsDB directly for metadata.")
             except Exception as e:
-                logger.warning(f"Could not initialize CardMetadataDB: {e}")
+                logger.warning(f"Could not initialize CardStatsDB as fallback: {e}")
 
     def recommend_pick(
         self,
@@ -162,7 +157,7 @@ class DraftAdvisor:
 
                 if card_name:
                     # Strip HTML tags from card name
-                    clean_name = strip_html_tags(card_name)
+                    clean_name = clean_card_name(card_name)
 
                     card = DraftCard(
                         arena_id=arena_id,

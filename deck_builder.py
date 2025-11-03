@@ -18,21 +18,42 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DeckSuggestion:
-    """Represents a suggested deck configuration"""
-    main_colors: str  # e.g., "WU", "BR"
-    splash_colors: str  # e.g., "" or "G"
-    maindeck: Dict[str, int]  # {card_name: count}
-    sideboard: Dict[str, int]  # {card_name: count}
-    lands: Dict[str, int]  # {land_name: count}
-    similarity_score: float  # 0-1 how well it matches drafted cards
-    win_rate: float  # Average win rate of source decks
-    num_source_decks: int  # How many winning decks this is based on
-    color_pair_name: str  # Human-readable like "Azorius (WU)"
+    """Represents a suggested deck configuration.
+
+    Attributes:
+        main_colors: The primary color identity of the deck (e.g., "WU").
+        splash_colors: Any splash colors in the deck (e.g., "G").
+        maindeck: A dictionary mapping card names to their counts in the main deck.
+        sideboard: A dictionary mapping card names to their counts in the sideboard.
+        lands: A dictionary mapping basic land names to their counts.
+        similarity_score: A score from 0 to 1 indicating how well the suggested
+            deck matches the player's drafted cards.
+        win_rate: The average win rate of the source decks this suggestion is based on.
+        num_source_decks: The number of winning decks used to generate this suggestion.
+        color_pair_name: The human-readable name for the color pair (e.g., "Azorius").
+    """
+    main_colors: str
+    splash_colors: str
+    maindeck: Dict[str, int]
+    sideboard: Dict[str, int]
+    lands: Dict[str, int]
+    similarity_score: float
+    win_rate: float
+    num_source_decks: int
+    color_pair_name: str
 
 
 class DeckBuilder:
-    """
-    Builds deck suggestions based on 17lands winning deck data
+    """Builds deck suggestions for a pool of drafted cards.
+
+    This class uses historical data of winning decks from 17lands to find
+    archetypes that best match a player's drafted card pool. It then
+    constructs a suggested decklist based on the most similar winning decks.
+
+    Attributes:
+        data_dir: The directory where 17lands CSV data is stored.
+        winning_decks_cache: An in-memory cache for winning deck data to avoid
+            re-reading files.
     """
 
     # Standard limited deck composition
@@ -324,8 +345,12 @@ class DeckBuilder:
         return self.COLOR_PAIR_NAMES.get(colors, colors)
 
 
-def display_deck_suggestion(suggestion: DeckSuggestion):
-    """Display a deck suggestion using clean table format"""
+def display_deck_suggestion(suggestion: DeckSuggestion) -> None:
+    """Displays a deck suggestion in a clean, readable table format for the terminal.
+
+    Args:
+        suggestion: The `DeckSuggestion` object to display.
+    """
     from tabulate import tabulate
     from termcolor import colored
 
