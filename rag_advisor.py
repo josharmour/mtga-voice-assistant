@@ -39,9 +39,23 @@ except ImportError:
 
 
 class RulesParser:
-    """Parses MTG Comprehensive Rules into structured chunks."""
+    """Parses the MTG Comprehensive Rules text file into structured chunks.
+
+    This class reads the official rules text file and processes it into a list
+    of individual rule entries. It uses hierarchical chunking to combine sub-rules
+    with their parent rules, which provides better context for semantic search.
+
+    Attributes:
+        rules_path: The path to the rules text file.
+        rules: A list of dictionaries, where each dictionary represents a parsed rule.
+    """
 
     def __init__(self, rules_path: str):
+        """Initializes the RulesParser.
+
+        Args:
+            rules_path: The file path to the Magic Comprehensive Rules text file.
+        """
         self.rules_path = Path(rules_path)
         self.rules: List[Dict[str, str]] = []
 
@@ -117,9 +131,30 @@ class RulesParser:
 
 
 class RulesVectorDB:
-    """Vector database for semantic search over MTG rules."""
+    """Manages a vector database for performing semantic searches over MTG rules.
+
+    This class handles the creation of a ChromaDB collection, the generation of
+    text embeddings using a sentence-transformer model, and the execution of
+    similarity-based queries on the rules.
+
+    Attributes:
+        db_path: The directory where the ChromaDB database is stored.
+        collection_name: The name of the collection holding the rules.
+        client: The ChromaDB client instance.
+        collection: The ChromaDB collection object.
+        embedding_model: The sentence-transformer model used for embeddings.
+    """
 
     def __init__(self, db_path: str = "data/chromadb", collection_name: str = "mtg_rules"):
+        """Initializes the vector database for MTG rules.
+
+        This constructor sets up the ChromaDB client and loads the sentence-
+        transformer model required for generating embeddings.
+
+        Args:
+            db_path: The directory to store the vector database files.
+            collection_name: The name of the collection within the database.
+        """
         self.db_path = Path(db_path)
         self.collection_name = collection_name
         self.client = None
@@ -253,9 +288,22 @@ class RulesVectorDB:
 
 
 class CardStatsDB:
-    """SQLite database for 17lands card statistics."""
+    """Manages an SQLite database for storing and retrieving 17lands card statistics.
+
+    This class provides an interface for inserting, updating, and querying card
+    performance data, such as win rates and average pick positions.
+
+    Attributes:
+        db_path: The file path to the SQLite database.
+        conn: The active SQLite database connection.
+    """
 
     def __init__(self, db_path: str = "data/card_stats.db"):
+        """Initializes the CardStatsDB.
+
+        Args:
+            db_path: The file path for the SQLite database.
+        """
         self.db_path = Path(db_path)
         self.conn = None
         self._initialize_db()
@@ -392,15 +440,17 @@ class CardStatsDB:
         cursor.execute("DELETE FROM card_stats WHERE set_code = ?", (set_code,))
         self.conn.commit()
         logger.info(f"Deleted old data for set: {set_code}")
-        """
-        Search for cards by name pattern.
+
+    def search_by_name(self, pattern: str, limit: int = 10) -> List[Dict[str, any]]:
+        """Searches for cards by a name pattern.
 
         Args:
-            pattern: SQL LIKE pattern (e.g., "%bolt%")
-            limit: Maximum results to return
+            pattern: An SQL LIKE pattern for the card name (e.g., "%Bolt%").
+            limit: The maximum number of results to return.
 
         Returns:
-            List of card stat dictionaries
+            A list of dictionaries, where each dictionary contains the stats
+            for a matching card.
         """
         if not self.conn:
             return []
@@ -435,9 +485,22 @@ class CardStatsDB:
 
 
 class CardMetadataDB:
-    """SQLite database for card metadata (colors, types, mana cost, etc.)."""
+    """Manages an SQLite database for basic card metadata.
+
+    This class provides a simple interface to query a database of card
+    metadata, such as color identity, mana value, and types.
+
+    Attributes:
+        db_path: The file path to the SQLite database.
+        conn: The active SQLite database connection.
+    """
 
     def __init__(self, db_path: str = "data/card_metadata.db"):
+        """Initializes the CardMetadataDB.
+
+        Args:
+            db_path: The file path for the SQLite database.
+        """
         self.db_path = Path(db_path)
         self.conn = None
         self._initialize_db()
@@ -562,8 +625,17 @@ class CardMetadataDB:
 
 
 class RAGSystem:
-    """
-    Main RAG system integrating rules search and card statistics.
+    """The main Retrieval-Augmented Generation (RAG) system.
+
+    This class integrates the rules vector database and the card statistics
+    database to provide a unified interface for augmenting AI prompts. It can
+    query for relevant rules and fetch performance data for cards, then use
+    this information to enhance the context provided to the LLM.
+
+    Attributes:
+        rules_db: An instance of `RulesVectorDB`.
+        card_stats: An instance of `CardStatsDB`.
+        card_metadata: An instance of `CardMetadataDB`.
     """
 
     def __init__(self,
@@ -794,8 +866,8 @@ class RAGSystem:
                         card_names.add(name)
         return list(card_names)
 
-    def close(self):
-        """Clean up resources."""
+    def close(self) -> None:
+        """Closes database connections and cleans up resources."""
         self.card_stats.close()
 
 
