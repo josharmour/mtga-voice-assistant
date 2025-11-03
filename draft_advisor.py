@@ -82,6 +82,14 @@ class DraftAdvisor:
         self.metadata_db = None
         if self.rag and hasattr(self.rag, 'card_metadata'):
             self.metadata_db = self.rag.card_metadata
+        else:
+            # Fallback if RAG system not available
+            try:
+                from rag_advisor import CardStatsDB
+                self.metadata_db = CardStatsDB('data/card_stats.db')
+                logger.info("RAG not present. Using CardStatsDB directly for metadata.")
+            except Exception as e:
+                logger.warning(f"Could not initialize CardStatsDB as fallback: {e}")
 
     def recommend_pick(
         self,

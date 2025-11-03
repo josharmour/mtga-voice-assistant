@@ -6001,9 +6001,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Check and update card database before starting
-    if not check_and_update_card_database():
-        print("Cannot start without card database.")
-        sys.exit(1)
+    # TODO(git-claude): The `build_unified_card_database.py` script was
+    # deleted during refactoring. This check is temporarily disabled to prevent
+    # a crash on startup. To re-enable, the script needs to be restored or
+    # the database generation logic must be integrated into `manage_data.py`.
+    # For now, the database must be generated manually.
+    # if not check_and_update_card_database():
+    #     print("Cannot start without card database.")
+    #     import sys
+    #     sys.exit(1)
 
     # Default to GUI unless TUI or CLI specified
     use_gui = not args.tui and not args.cli and TKINTER_AVAILABLE
