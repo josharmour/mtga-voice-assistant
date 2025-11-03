@@ -472,7 +472,8 @@ class AdvisorTUI:
 class AdvisorGUI:
     def __init__(self, root, advisor_ref):
         self.root = root
-        self.advisor = advisor_ref
+        self.advisor_ref = advisor_ref  # Used by event handlers and update loop
+        self.advisor = advisor_ref  # Keep for backward compatibility
 
         # Load user preferences for GUI settings persistence
         self.prefs = None
@@ -1085,3 +1086,31 @@ class AdvisorGUI:
             # Try to reschedule despite error
             if self.root and self.root.winfo_exists():
                 self.root.after(100, self._update_loop)
+
+    def update_settings(self, models, voices, bark_voices, current_model, current_voice, volume, tts_engine):
+        """Update GUI settings with current values from advisor."""
+        try:
+            # Update model dropdown
+            if hasattr(self, 'model_dropdown'):
+                self.model_dropdown['values'] = models
+                self.model_var.set(current_model)
+
+            # Update voice dropdown
+            if hasattr(self, 'voice_dropdown'):
+                all_voices = list(voices) + list(bark_voices)
+                self.voice_dropdown['values'] = all_voices
+                self.voice_var.set(current_voice)
+
+            # Update volume slider
+            if hasattr(self, 'volume_slider'):
+                self.volume_var.set(volume)
+                self.volume_label.config(text=f"{volume}%")
+
+            # Update TTS engine radio buttons
+            if hasattr(self, 'tts_engine_var'):
+                self.tts_engine_var.set(tts_engine)
+
+            logging.debug(f"GUI settings updated: model={current_model}, voice={current_voice}, volume={volume}, engine={tts_engine}")
+
+        except Exception as e:
+            logging.error(f"Error updating GUI settings: {e}")
