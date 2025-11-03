@@ -16,6 +16,7 @@ logs/
 data/chromadb/
 data/card_stats.db
 data/card_metadata.db
+data/scryfall_cache.db
 
 # Bug reports
 bug_reports/
