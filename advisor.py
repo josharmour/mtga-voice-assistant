@@ -111,11 +111,14 @@ def detect_player_log_path():
     home = Path.home()
     # Windows
     if os.name == 'nt':
-        username = os.getenv('USERNAME')
-        drive = os.getenv('USERPROFILE')[0]
-        windows_path = f"{drive}:/Users/{username}/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log"
-        if os.path.exists(windows_path):
-            return windows_path
+        # Path is AppData/LocalLow, but LOCALAPPDATA gives AppData/Local.
+        # So, we get the parent of LOCALAPPDATA and append "LocalLow".
+        local_appdata = os.getenv('LOCALAPPDATA')
+        if local_appdata:
+            appdata_dir = Path(local_appdata).parent
+            windows_path = appdata_dir / "LocalLow" / "Wizards Of The Coast" / "MTGA" / "Player.log"
+            if windows_path.exists():
+                return str(windows_path)
     # macOS
     elif os.name == 'posix' and os.uname().sysname == 'Darwin':
         macos_path = home / "Library/Logs/Wizards Of The Coast/MTGA/Player.log"
