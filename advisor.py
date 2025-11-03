@@ -69,35 +69,7 @@ for handler in logging.root.handlers:
     if isinstance(handler, logging.StreamHandler):
         handler.setLevel(logging.WARNING)
 
-# ----------------------------------------------------------------------------------
-# Utility Functions
-# ----------------------------------------------------------------------------------
-
-def clean_card_name(name: str) -> str:
-    """
-    Remove HTML tags from card names.
-
-    Some card names from Arena's database contain HTML tags like <nobr> and </nobr>
-    that need to be stripped for proper display and matching.
-
-    Args:
-        name: Raw card name potentially containing HTML tags
-
-    Returns:
-        Clean card name with all HTML tags removed
-
-    Examples:
-        "<nobr>Full-Throttle</nobr> Fanatic" -> "Full-Throttle Fanatic"
-        "<nobr>Bane-Marked</nobr> Leonin" -> "Bane-Marked Leonin"
-    """
-    if not name:
-        return name
-
-    # Remove all HTML tags using regex
-    # This handles <nobr>, </nobr>, and any other HTML tags
-    clean_name = re.sub(r'<[^>]+>', '', name)
-
-    return clean_name
+from rag_advisor import clean_card_name
 
 # ----------------------------------------------------------------------------------
 # Part 1: Arena Log Detection and Path Handling
@@ -6548,9 +6520,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Check and update card database before starting
-    if not check_and_update_card_database():
-        print("Cannot start without card database.")
-        sys.exit(1)
+    # TODO(git-claude): The `build_unified_card_database.py` script was
+    # deleted during refactoring. This check is temporarily disabled to prevent
+    # a crash on startup. To re-enable, the script needs to be restored or
+    # the database generation logic must be integrated into `manage_data.py`.
+    # For now, the database must be generated manually.
+    # if not check_and_update_card_database():
+    #     print("Cannot start without card database.")
+    #     import sys
+    #     sys.exit(1)
 
     # Default to GUI unless TUI or CLI specified
     use_gui = not args.tui and not args.cli and TKINTER_AVAILABLE

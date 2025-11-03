@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import Dict, List
 
 import requests
-from rag_advisor import CardStatsDB, ALL_SETS, CURRENT_STANDARD
+from rag_advisor import CardStatsDB
+from constants import ALL_SETS, CURRENT_STANDARD
 from scryfall_db import ScryfallDB
 
 # Configure logging
@@ -48,7 +49,7 @@ def download_card_data_api(
         'start': start_date,
     }
 
-    logger.info(f"Downloading {set_code} ({ALL_SETS.get(set_code, set_code)}) via API...")
+    logger.info(f"Downloading {set_code} via API...")
     try:
         response = requests.get(CARD_DATA_API, params=params, timeout=30)
         response.raise_for_status()
@@ -166,9 +167,8 @@ def show_17lands_database_status():
         cursor.execute("SELECT COUNT(*) FROM card_stats WHERE set_code = ?", (set_code,))
         card_count = cursor.fetchone()[0]
         age_days = (datetime.now() - db_sets[set_code]).days
-        set_name = ALL_SETS.get(set_code, "Unknown Set")
         status = "⚠️" if age_days > 90 else "✅"
-        logger.info(f"  {status} {set_code:6s} | {card_count:5,} cards | {age_days:3d} days old | {set_name}")
+        logger.info(f"  {status} {set_code:6s} | {card_count:5,} cards | {age_days:3d} days old")
         total_cards += card_count
     conn.close()
     logger.info(f"Total: {len(db_sets)} sets, {total_cards:,} cards")
@@ -181,7 +181,7 @@ def update_17lands_data(all_sets: bool, max_age: int):
 
     db_sets = check_database_sets()
     cutoff_date = datetime.now() - timedelta(days=max_age)
-    sets_to_check = list(ALL_SETS.keys()) if all_sets else CURRENT_STANDARD
+    sets_to_check = ALL_SETS if all_sets else CURRENT_STANDARD
     needs_update = [
         s for s in sets_to_check if s not in db_sets or db_sets[s] < cutoff_date
     ]
