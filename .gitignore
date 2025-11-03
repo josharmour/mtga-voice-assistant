@@ -46,5 +46,11 @@ local-docs/
 data/*.csv
 data/scryfall_cache.db
 
-# Configuration file with credentials
+# Configuration files with credentials
 config.py
+config.json
+
+# Generated database files
+scryfall_cache.db
+unified_cards.db
+data/scryfall_default_cards.json
