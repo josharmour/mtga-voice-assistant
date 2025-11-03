@@ -18,6 +18,7 @@ import sqlite3
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +393,8 @@ class CardStatsDB:
         cursor.execute("DELETE FROM card_stats WHERE set_code = ?", (set_code,))
         self.conn.commit()
         logger.info(f"Deleted old data for set: {set_code}")
+
+    def search_card_stats(self, pattern: str, limit: int = 10) -> List[Dict]:
         """
         Search for cards by name pattern.
 
@@ -575,16 +578,11 @@ class RAGSystem:
         self.card_stats = CardStatsDB(card_stats_db)
         self.card_metadata = CardMetadataDB(card_metadata_db)
         self.rules_path = rules_path
-
-        # Track initialization state
         self.rules_initialized = False
 
     def initialize_rules(self, force_recreate: bool = False):
         """
         Parse and index MTG rules.
-
-        Args:
-            force_recreate: If True, recreate the entire index
         """
         if not CHROMADB_AVAILABLE or not SENTENCE_TRANSFORMERS_AVAILABLE:
             logger.warning("Cannot initialize rules: dependencies not available")
@@ -593,7 +591,6 @@ class RAGSystem:
         logger.info("Initializing rules database...")
         parser = RulesParser(self.rules_path)
         rules = parser.parse()
-
         if rules:
             self.rules_db.initialize_collection(rules, force_recreate=force_recreate)
             self.rules_initialized = True
@@ -604,91 +601,67 @@ class RAGSystem:
     def query_rules(self, question: str, top_k: int = 3) -> List[Dict[str, any]]:
         """
         Query MTG rules database with semantic search.
-
-        Args:
-            question: Natural language question about rules
-            top_k: Number of relevant rules to return
-
-        Returns:
-            List of relevant rule sections
         """
         if not self.rules_initialized:
             logger.warning("Rules not initialized. Call initialize_rules() first.")
             return []
-
         return self.rules_db.query(question, top_k=top_k)
 
     def get_card_stats(self, card_name: str) -> Optional[Dict[str, any]]:
         """
         Get 17lands statistics for a card.
-
-        Args:
-            card_name: Name of the card
-
-        Returns:
-            Dictionary of card statistics or None
         """
         return self.card_stats.get_card_stats(card_name)
 
     def enhance_prompt(self, board_state: Dict[str, any], base_prompt: str) -> str:
         """
-        Enhance AI prompt with an expert persona, structured context, and goal-oriented queries.
-        Uses concurrency to fetch data efficiently.
-
-        Args:
-            board_state: Current game state dictionary
-            base_prompt: Base prompt to enhance
-
-        Returns:
-            Enhanced prompt with RAG context
+        Enhance AI prompt with an expert persona, structured context, and goal-oriented queries,
+        fetching all data concurrently.
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        # 1. Define Expert Persona and Objectives
         persona = (
             "You are an expert Magic: The Gathering strategist providing tactical advice during a live match. "
             "Your goal is to help the player win. Your advice must be clear, direct, and actionable. "
             "Justify your recommendations by referencing the provided rules and card data. Explain the 'why'."
         )
 
-        # 2. Goal-Oriented Prompting based on Game Phase
         phase = board_state.get('phase', 'main')
         if phase in ['combat', 'declare_attackers']:
             goal_prompt = "It is the declare attackers step. What is the optimal attack? Analyze potential blocks, combat tricks, and risks. How does this attack advance our plan to win?"
         elif phase == 'declare_blockers':
             goal_prompt = "The opponent has attacked. What is the optimal blocking strategy to minimize damage and preserve our board state? Should we take any damage to save a key creature?"
-        else: # Main phase, etc.
-            goal_prompt = base_prompt # Fallback to the original prompt
+        else:
+            goal_prompt = base_prompt
 
-        # --- RAG Data Fetching (Concurrent) ---
-        tasks = []
         rules_results = []
         stats_results = {}
 
+        situation_queries = self._detect_situation(board_state)
+        card_names = self._get_card_names_from_board(board_state)
+
         with ThreadPoolExecutor() as executor:
-            situation_queries = self._detect_situation(board_state)
+            rule_futures = {}
             if situation_queries and self.rules_initialized:
                 for query in situation_queries[:2]:
-                    tasks.append(executor.submit(self.query_rules, query, top_k=2))
+                    future = executor.submit(self.query_rules, query, top_k=2)
+                    rule_futures[future] = query
 
-            card_names_to_query = self._get_card_names_from_board(board_state)
-            for card_name in card_names_to_query:
-                tasks.append(executor.submit(self.get_card_stats, card_name))
+            stat_futures = {executor.submit(self.get_card_stats, name): name for name in card_names}
 
-            for future in as_completed(tasks):
+            for future in as_completed(rule_futures):
+                try:
+                    rules_results.extend(future.result())
+                except Exception as e:
+                    logger.error(f"A rule query task failed: {e}")
+
+            for future in as_completed(stat_futures):
                 try:
                     result = future.result()
-                    if not result: continue
-                    if isinstance(result, list) and all(isinstance(i, dict) and 'text' in i for i in result):
-                        rules_results.extend(result)
-                    elif isinstance(result, dict) and 'card_name' in result:
+                    if result:
                         stats_results[result['card_name']] = result
                 except Exception as e:
-                    logger.error(f"A RAG task failed: {e}")
+                    logger.error(f"A card stats task failed: {e}")
 
-        # 3. Assemble Prompt with Structured, Annotated Context
         enhanced_prompt = f"{persona}\n\n## Current Goal\n{goal_prompt}\n"
-
         if rules_results:
             enhanced_prompt += "\n## Relevant MTG Rules\n"
             for rule in rules_results:
@@ -696,102 +669,44 @@ class RAGSystem:
 
         if stats_results:
             enhanced_prompt += "\n## Tactical Analysis of Key Cards\n"
-            for card_name, stats in stats_results.items():
+            for name, stats in stats_results.items():
                 if stats and (stats.get('games_played') or 0) > 100:
-                    # Tactical Annotation
                     win_rate = stats.get('gih_win_rate') or 0.0
-                    tactical_note = "A key performer; prioritize it." if win_rate > 0.58 else "A solid role-player." if win_rate > 0.53 else "Below average performer."
-                    
-                    enhanced_prompt += (
-                        f"- **{card_name}**: "
-                        f"GIH Win Rate: {win_rate:.1%} ({stats.get('games_played', 0)} games). "
-                        f"*Tactical Note: {tactical_note}*\n"
-                    )
+                    note = "A key performer; prioritize it." if win_rate > 0.58 else "A solid role-player." if win_rate > 0.53 else "Below average performer."
+                    enhanced_prompt += f"- **{name}**: GIH Win Rate: {win_rate:.1%} ({stats.get('games_played', 0)} games). *Tactical Note: {note}*\n"
         
         return enhanced_prompt
 
     def _detect_situation(self, board_state: Dict[str, any]) -> List[str]:
-        """
-        Detect current game situation and generate relevant rule queries.
-
-        Args:
-            board_state: Current game state
-
-        Returns:
-            List of natural language queries for relevant rules
-        """
+        """Detect current game situation and generate relevant rule queries."""
         queries = []
-
-        # Check for combat
         if board_state.get('phase') in ['combat', 'declare_attackers', 'declare_blockers']:
-            queries.append("combat damage and blocking rules")
-            queries.append("first strike and double strike")
-
-        # Check for stack/spell resolution
+            queries.extend(["combat damage and blocking rules", "first strike and double strike"])
         if board_state.get('stack_size', 0) > 0:
-            queries.append("stack and priority rules")
-            queries.append("resolving spells and abilities")
+            queries.extend(["stack and priority rules", "resolving spells and abilities"])
 
-        # Check for keywords in card names (simplified)
         battlefield = board_state.get('battlefield', {})
-        keywords = ['flying', 'trample', 'first strike', 'lifelink', 'deathtouch']
+        keywords = {'flying', 'trample', 'first strike', 'lifelink', 'deathtouch'}
+        present_keywords = set()
+        for zone in battlefield.values():
+            for card in zone:
+                card_name = card.get('name', '').lower()
+                for keyword in keywords:
+                    if keyword in card_name:
+                        present_keywords.add(keyword)
 
-        for keyword in keywords:
-            for zone in ['player', 'opponent']:
-                if zone in battlefield:
-                    for card in battlefield[zone]:
-                        if keyword in card.get('name', '').lower():
-                            queries.append(f"{keyword} rules and interactions")
-                            break
+        for keyword in present_keywords:
+            queries.append(f"{keyword} rules and interactions")
 
-        # Default query if nothing specific detected
-        if not queries:
-            queries.append("priority and phases")
-
-        return queries
-
-    def _get_board_card_stats(self, board_state: Dict[str, any]) -> Dict[str, Dict]:
-        """
-        Get statistics for cards currently on the battlefield.
-
-        Args:
-            board_state: Current game state
-
-        Returns:
-            Dictionary mapping card names to their statistics
-        """
-        stats_dict = {}
-        battlefield = board_state.get('battlefield', {})
-
-        for zone in ['player', 'opponent']:
-            if zone in battlefield:
-                for card in battlefield[zone]:
-                    card_name = card.get('name', '')
-                    if card_name and card_name not in stats_dict:
-                        stats = self.get_card_stats(card_name)
-                        if stats:
-                            stats_dict[card_name] = stats
-
-        return stats_dict
+        return queries if queries else ["priority and phases"]
 
     def _get_card_names_from_board(self, board_state: Dict[str, any]) -> List[str]:
-        """
-        Get unique card names from the battlefield.
-
-        Args:
-            board_state: Current game state
-
-        Returns:
-            A list of unique card names.
-        """
+        """Get unique card names from the battlefield."""
         card_names = set()
-        battlefield = board_state.get('battlefield', {})
-
-        for zone in ['player', 'opponent']:
-            if zone in battlefield:
-                for card in battlefield[zone]:
-                    if name := card.get('name'):
-                        card_names.add(name)
+        for zone in board_state.get('battlefield', {}).values():
+            for card in zone:
+                if name := card.get('name'):
+                    card_names.add(name)
         return list(card_names)
 
     def close(self):
@@ -799,168 +714,28 @@ class RAGSystem:
         self.card_stats.close()
 
 
-# Sample data loader for 17lands (mock data)
 def load_sample_17lands_data(db: CardStatsDB):
-    """
-    Load sample 17lands data for testing.
-    In production, this would fetch from 17lands API or CSV exports.
-    """
+    """Load sample 17lands data for testing."""
     sample_data = [
-        {
-            'card_name': 'Lightning Bolt',
-            'set_code': 'M21',
-            'color': 'R',
-            'rarity': 'common',
-            'games_played': 50000,
-            'win_rate': 0.58,
-            'gih_win_rate': 0.62,
-            'iwd': 0.04,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Counterspell',
-            'set_code': 'M21',
-            'color': 'U',
-            'rarity': 'common',
-            'games_played': 45000,
-            'win_rate': 0.59,
-            'gih_win_rate': 0.61,
-            'iwd': 0.03,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Llanowar Elves',
-            'set_code': 'M21',
-            'color': 'G',
-            'rarity': 'common',
-            'games_played': 55000,
-            'win_rate': 0.61,
-            'gih_win_rate': 0.68,
-            'iwd': 0.09,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Jace, the Mind Sculptor',
-            'set_code': 'A25',
-            'color': 'U',
-            'rarity': 'mythic',
-            'games_played': 12000,
-            'win_rate': 0.65,
-            'gih_win_rate': 0.70,
-            'iwd': 0.05,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Sheoldred, the Apocalypse',
-            'set_code': 'DMU',
-            'color': 'B',
-            'rarity': 'mythic',
-            'games_played': 80000,
-            'win_rate': 0.68,
-            'gih_win_rate': 0.72,
-            'iwd': 0.04,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Grizzly Bears',
-            'set_code': '10E',
-            'color': 'G',
-            'rarity': 'common',
-            'games_played': 200,
-            'win_rate': 0.50,
-            'gih_win_rate': 0.51,
-            'iwd': 0.01,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Jace, the Mind Sculptor',
-            'set_code': 'A25',
-            'color': 'U',
-            'rarity': 'mythic',
-            'games_played': 12000,
-            'win_rate': 0.65,
-            'gih_win_rate': 0.70,
-            'iwd': 0.05,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Sheoldred, the Apocalypse',
-            'set_code': 'DMU',
-            'color': 'B',
-            'rarity': 'mythic',
-            'games_played': 80000,
-            'win_rate': 0.68,
-            'gih_win_rate': 0.72,
-            'iwd': 0.04,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Grizzly Bears',
-            'set_code': '10E',
-            'color': 'G',
-            'rarity': 'common',
-            'games_played': 200,
-            'win_rate': 0.50,
-            'gih_win_rate': 0.51,
-            'iwd': 0.01,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Jace, the Mind Sculptor',
-            'set_code': 'A25',
-            'color': 'U',
-            'rarity': 'mythic',
-            'games_played': 12000,
-            'win_rate': 0.65,
-            'gih_win_rate': 0.70,
-            'iwd': 0.05,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Sheoldred, the Apocalypse',
-            'set_code': 'DMU',
-            'color': 'B',
-            'rarity': 'mythic',
-            'games_played': 80000,
-            'win_rate': 0.68,
-            'gih_win_rate': 0.72,
-            'iwd': 0.04,
-            'last_updated': '2025-01-15'
-        },
-        {
-            'card_name': 'Grizzly Bears',
-            'set_code': '10E',
-            'color': 'G',
-            'rarity': 'common',
-            'games_played': 200,
-            'win_rate': 0.50,
-            'gih_win_rate': 0.51,
-            'iwd': 0.01,
-            'last_updated': '2025-01-15'
-        }
+        {'card_name': 'Lightning Bolt', 'set_code': 'M21', 'color': 'R', 'rarity': 'common', 'games_played': 50000, 'win_rate': 0.58, 'gih_win_rate': 0.62, 'iwd': 0.04, 'last_updated': '2025-01-15'},
+        {'card_name': 'Counterspell', 'set_code': 'M21', 'color': 'U', 'rarity': 'common', 'games_played': 45000, 'win_rate': 0.59, 'gih_win_rate': 0.61, 'iwd': 0.03, 'last_updated': '2025-01-15'},
+        {'card_name': 'Llanowar Elves', 'set_code': 'M21', 'color': 'G', 'rarity': 'common', 'games_played': 55000, 'win_rate': 0.61, 'gih_win_rate': 0.68, 'iwd': 0.09, 'last_updated': '2025-01-15'},
+        {'card_name': 'Jace, the Mind Sculptor', 'set_code': 'A25', 'color': 'U', 'rarity': 'mythic', 'games_played': 12000, 'win_rate': 0.65, 'gih_win_rate': 0.70, 'iwd': 0.05, 'last_updated': '2025-01-15'},
+        {'card_name': 'Sheoldred, the Apocalypse', 'set_code': 'DMU', 'color': 'B', 'rarity': 'mythic', 'games_played': 80000, 'win_rate': 0.68, 'gih_win_rate': 0.72, 'iwd': 0.04, 'last_updated': '2025-01-15'},
+        {'card_name': 'Grizzly Bears', 'set_code': '10E', 'color': 'G', 'rarity': 'common', 'games_played': 200, 'win_rate': 0.50, 'gih_win_rate': 0.51, 'iwd': 0.01, 'last_updated': '2025-01-15'}
     ]
-
     db.insert_card_stats(sample_data)
     logger.info(f"Loaded {len(sample_data)} sample cards")
 
 
 if __name__ == "__main__":
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-
-    # Initialize RAG system
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger.info("Initializing RAG system...")
     rag = RAGSystem()
 
-    # Initialize rules database (only needed once)
     if CHROMADB_AVAILABLE and SENTENCE_TRANSFORMERS_AVAILABLE:
         logger.info("Initializing rules database (this may take a few minutes)...")
         rag.initialize_rules(force_recreate=False)
-
-        # Test rules query
         logger.info("\nTesting rules query...")
         results = rag.query_rules("What are the combat steps?", top_k=3)
         for result in results:
@@ -968,30 +743,21 @@ if __name__ == "__main__":
     else:
         logger.warning("Skipping rules initialization (dependencies not available)")
 
-    # Load sample card data
     logger.info("\nLoading sample card statistics...")
     load_sample_17lands_data(rag.card_stats)
-
-    # Test card stats query
     logger.info("\nTesting card stats query...")
     stats = rag.get_card_stats("Lightning Bolt")
     if stats:
         logger.info(f"Lightning Bolt stats: WR={stats['win_rate']:.1%}, GIH WR={stats['gih_win_rate']:.1%}")
 
-    # Test enhanced prompt
     logger.info("\nTesting prompt enhancement...")
     mock_board_state = {
         'phase': 'combat',
-        'battlefield': {
-            'player': [{'name': 'Lightning Bolt'}],
-            'opponent': [{'name': 'Llanowar Elves'}]
-        }
+        'battlefield': {'player': [{'name': 'Lightning Bolt'}], 'opponent': [{'name': 'Llanowar Elves'}]}
     }
-
     base_prompt = "Analyze the current board state and provide tactical advice."
     enhanced_prompt = rag.enhance_prompt(mock_board_state, base_prompt)
     logger.info(f"\nEnhanced prompt length: {len(enhanced_prompt)} chars")
     logger.info(f"Preview: {enhanced_prompt[:500]}...")
-
     rag.close()
     logger.info("\nRAG system test complete!")

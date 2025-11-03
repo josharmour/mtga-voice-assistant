@@ -17,6 +17,7 @@ import argparse
 import logging
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List
@@ -88,22 +89,29 @@ def download_multiple_sets(
     format_type: str = "PremierDraft"
 ) -> int:
     """
-    Download card data for multiple sets via API.
+    Download card data for multiple sets via API concurrently.
     """
     db = CardStatsDB()
     total_cards = 0
-    for i, set_code in enumerate(set_codes, 1):
-        logger.info(f"\n[{i}/{len(set_codes)}] Processing {set_code}...")
-        cards = download_card_data_api(set_code, format_type)
-        if cards:
-            db.delete_set_data(set_code)
-            db.insert_card_stats(cards)
-            total_cards += len(cards)
-            logger.info(f"  ✓ Added {len(cards)} cards to database")
-        else:
-            logger.warning(f"  ⚠️  No data available for {set_code}")
-        if i < len(set_codes):
-            time.sleep(1)
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_set = {executor.submit(download_card_data_api, set_code, format_type): set_code for set_code in set_codes}
+
+        for i, future in enumerate(as_completed(future_to_set), 1):
+            set_code = future_to_set[future]
+            logger.info(f"\n[{i}/{len(set_codes)}] Processing result for {set_code}...")
+            try:
+                cards = future.result()
+                if cards:
+                    db.delete_set_data(set_code)
+                    db.insert_card_stats(cards)
+                    total_cards += len(cards)
+                    logger.info(f"  ✓ Added {len(cards)} cards for {set_code} to database")
+                else:
+                    logger.warning(f"  ⚠️  No data available for {set_code}")
+            except Exception as exc:
+                logger.error(f"  ✗ {set_code} generated an exception: {exc}")
+
     db.close()
     return total_cards
 
@@ -194,10 +202,22 @@ def update_17lands_data(all_sets: bool, max_age: int):
     download_multiple_sets(needs_update)
     logger.info("17lands data update complete.")
 
+def fetch_and_cache_card(card_name: str, scryfall_db: ScryfallDB) -> bool:
+    """Worker function to fetch a single card and be kind to the API."""
+    try:
+        # get_card_by_name will fetch and cache if not present
+        result = scryfall_db.get_card_by_name(card_name) is not None
+        time.sleep(0.1)  # Scryfall API asks for a 50-100ms delay per request
+        return result
+    except Exception as e:
+        logger.error(f"Failed to fetch {card_name}: {e}")
+        return False
+
+
 def update_scryfall_data():
     """
-    Pre-populate the Scryfall database with cards found in the 17lands database.
-    This is useful for ensuring that all relevant cards are cached locally.
+    Pre-populate the Scryfall database with cards found in the 17lands database,
+    using concurrent requests to speed up the process.
     """
     logger.info("="*70)
     logger.info("UPDATING SCRYFALL CACHE")
@@ -215,19 +235,26 @@ def update_scryfall_data():
         all_card_names = [row[0] for row in res.fetchall()]
 
     logger.info(f"Found {len(all_card_names)} unique card names in 17lands DB.")
-    logger.info("Updating Scryfall cache... This may take a while.")
+    logger.info("Updating Scryfall cache concurrently... This may take a while.")
 
     cached_count = 0
-    for i, name in enumerate(all_card_names):
-        if i % 100 == 0:
-            logger.info(f"Processed {i}/{len(all_card_names)} cards...")
-        
-        # This will fetch and cache the card if it's not already in the DB
-        if scryfall_db.get_card_by_name(name):
-            cached_count += 1
-        time.sleep(0.1)  # To be kind to the Scryfall API
+    total_cards = len(all_card_names)
 
-    logger.info(f"Scryfall cache update complete. Cached {cached_count} cards.")
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_name = {executor.submit(fetch_and_cache_card, name, scryfall_db): name for name in all_card_names}
+        
+        for i, future in enumerate(as_completed(future_to_name), 1):
+            if i % 100 == 0 or i == total_cards:
+                logger.info(f"Processed {i}/{total_cards} cards...")
+
+            try:
+                if future.result():
+                    cached_count += 1
+            except Exception as exc:
+                card_name = future_to_name[future]
+                logger.error(f"{card_name} generated an exception: {exc}")
+
+    logger.info(f"Scryfall cache update complete. Successfully processed {cached_count}/{total_cards} cards.")
 
 def main():
     parser = argparse.ArgumentParser(
