@@ -1065,3 +1065,23 @@ class AdvisorGUI:
             logging.error(f"Error during window close: {e}")
             if self.root:
                 self.root.destroy()
+
+    def _update_loop(self):
+        """Main GUI update loop."""
+        try:
+            # Update board state display
+            if self.advisor_ref and hasattr(self.advisor_ref, 'board_state'):
+                board_state = self.advisor_ref.board_state
+                if board_state:
+                    # Update board display (placeholder)
+                    pass
+
+            # Schedule next update
+            if self.root and self.root.winfo_exists():
+                self.root.after(100, self._update_loop)
+
+        except Exception as e:
+            logging.error(f"Error in update loop: {e}")
+            # Try to reschedule despite error
+            if self.root and self.root.winfo_exists():
+                self.root.after(100, self._update_loop)
