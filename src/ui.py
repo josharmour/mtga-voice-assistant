@@ -895,3 +895,64 @@ class AdvisorGUI:
         self.rag_text.tag_config('card', foreground='#00ff88', font=('Consolas', 8, 'bold'))
         self.rag_text.tag_config('query', foreground='#55aaff', font=('Consolas', 8, 'italic'))
         self.rag_text.tag_config('stats', foreground='#ff88ff')
+
+    def _on_model_change(self, event=None):
+        """Handle model selection change."""
+        try:
+            model = self.model_var.get()
+            if model and CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_model(model)
+                logging.debug(f"Model changed to: {model}")
+        except Exception as e:
+            logging.error(f"Error changing model: {e}")
+
+    def _on_voice_change(self, event=None):
+        """Handle voice selection change."""
+        try:
+            voice = self.voice_var.get()
+            if voice and CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_voice_name(voice)
+                logging.debug(f"Voice changed to: {voice}")
+        except Exception as e:
+            logging.error(f"Error changing voice: {e}")
+
+    def _toggle_rag_panel(self):
+        """Toggle RAG references panel visibility."""
+        try:
+            if self.rag_text.winfo_viewable():
+                self.rag_text.pack_forget()
+                self.rag_toggle_btn.config(text="[Expand]")
+            else:
+                self.rag_text.pack(fill=tk.BOTH, expand=False)
+                self.rag_toggle_btn.config(text="[Collapse]")
+        except Exception as e:
+            logging.error(f"Error toggling RAG panel: {e}")
+
+    def _on_exit(self):
+        """Handle exit button click."""
+        try:
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.save()
+            self.root.quit()
+        except Exception as e:
+            logging.error(f"Error on exit: {e}")
+            self.root.quit()
+
+    def _capture_bug_report(self):
+        """Capture bug report (F12)."""
+        try:
+            # Simple placeholder for bug report
+            logging.info("Bug report requested")
+            # In a full implementation, this would capture logs and system info
+        except Exception as e:
+            logging.error(f"Error capturing bug report: {e}")
+
+    def _manual_deck_suggestion(self):
+        """Request manual deck suggestion."""
+        try:
+            if self.advisor_ref:
+                # Trigger a manual deck suggestion through the advisor
+                logging.info("Manual deck suggestion requested")
+                # This would be passed to the advisor to generate a deck suggestion
+        except Exception as e:
+            logging.error(f"Error requesting deck suggestion: {e}")
