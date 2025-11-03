@@ -956,3 +956,88 @@ class AdvisorGUI:
                 # This would be passed to the advisor to generate a deck suggestion
         except Exception as e:
             logging.error(f"Error requesting deck suggestion: {e}")
+
+    def _on_tts_engine_change(self):
+        """Handle TTS engine selection change."""
+        try:
+            engine = self.tts_engine_var.get()
+            if engine and CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_voice_settings(engine=engine)
+                logging.debug(f"TTS engine changed to: {engine}")
+        except Exception as e:
+            logging.error(f"Error changing TTS engine: {e}")
+
+    def _on_volume_change(self, value):
+        """Handle volume slider change."""
+        try:
+            volume = int(value)
+            # Update volume label
+            self.volume_label.config(text=f"{volume}%")
+            # Save preference
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_voice_settings(volume=volume)
+                logging.debug(f"Volume changed to: {volume}%")
+        except Exception as e:
+            logging.error(f"Error changing volume: {e}")
+
+    def _on_continuous_toggle(self):
+        """Handle opponent turn alerts toggle."""
+        try:
+            enabled = self.continuous_var.get()
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_game_preferences(opponent_alerts=enabled)
+                logging.debug(f"Opponent turn alerts: {'enabled' if enabled else 'disabled'}")
+        except Exception as e:
+            logging.error(f"Error toggling opponent alerts: {e}")
+
+    def _on_reskin_toggle(self):
+        """Handle reskin names toggle."""
+        try:
+            enabled = self.reskin_var.get()
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_game_preferences(reskin_names=enabled)
+                logging.debug(f"Reskin names: {'enabled' if enabled else 'disabled'}")
+        except Exception as e:
+            logging.error(f"Error toggling reskin names: {e}")
+
+    def _on_always_on_top_toggle(self):
+        """Handle always on top toggle."""
+        try:
+            enabled = self.always_on_top_var.get()
+            if self.root:
+                self.root.attributes('-topmost', enabled)
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.always_on_top = enabled
+                self.prefs.save()
+                logging.debug(f"Always on top: {'enabled' if enabled else 'disabled'}")
+        except Exception as e:
+            logging.error(f"Error toggling always on top: {e}")
+
+    def _clear_messages(self):
+        """Clear the messages display."""
+        try:
+            self.messages_text.config(state=tk.NORMAL)
+            self.messages_text.delete(1.0, tk.END)
+            self.messages_text.config(state=tk.DISABLED)
+            logging.info("Messages cleared")
+        except Exception as e:
+            logging.error(f"Error clearing messages: {e}")
+
+    def _on_prompt_send(self, event=None):
+        """Handle prompt send button or Ctrl+Enter."""
+        try:
+            prompt = self.prompt_text.get(1.0, tk.END).strip()
+            if not prompt:
+                return
+
+            # Clear the prompt text
+            self.prompt_text.delete(1.0, tk.END)
+
+            # Send to advisor if available
+            if self.advisor_ref:
+                logging.info(f"Custom prompt sent: {prompt[:50]}...")
+                # The advisor would process this custom prompt
+                # This is a placeholder for the actual implementation
+
+        except Exception as e:
+            logging.error(f"Error sending prompt: {e}")
