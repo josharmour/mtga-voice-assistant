@@ -8,79 +8,111 @@ def check_and_update_card_database() -> bool:
     """
     Check if card database needs update and offer to update it.
 
+    This now uses the AutoUpdater for intelligent updates:
+    - Detects Arena database changes
+    - Downloads 17lands data for new sets
+    - Updates based on what format you're playing
+
     Returns True if database is ready to use, False if update failed.
     """
     from datetime import datetime, timedelta
     from pathlib import Path
     import sqlite3
+    import sys
+    import os
+
+    # Add parent directory to path to import auto_updater
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    try:
+        from auto_updater import AutoUpdater
+    except ImportError:
+        # Fallback to old behavior if auto_updater isn't available
+        logging.warning("Auto-updater not found, using legacy update check")
+        return _legacy_check_and_update()
 
     db_path = Path("data/unified_cards.db")
 
-    # If database doesn't exist, we need to build it
+    # Use auto-updater for intelligent updates
+    updater = AutoUpdater(auto_mode=True)  # Auto mode for seamless startup
+
+    # If database doesn't exist, build it
     if not db_path.exists():
         print("\n" + "="*70)
-        print("CARD DATABASE NOT FOUND")
+        print("INITIAL SETUP REQUIRED")
         print("="*70)
-        print("The unified card database needs to be built first.")
-        print("This is a one-time setup that downloads ~492MB from Scryfall.")
-        print("Expected time: 5-10 minutes depending on your connection.")
+        print("Setting up card databases for first use.")
+        print("This will:")
+        print("  1. Extract card data from Arena installation")
+        print("  2. Download current win rates from 17lands")
+        print("  3. Create optimized local databases")
+        print()
+        print("Expected time: 2-5 minutes")
         print()
 
-        response = input("Build database now? (y/n): ").strip().lower()
+        response = input("Continue with setup? (y/n): ").strip().lower()
         if response != 'y':
             print("Cannot proceed without card database. Exiting.")
             return False
 
-        print("\nBuilding database...")
-        import subprocess
-        result = subprocess.run(["python3", "build_unified_card_database.py"],
-                              capture_output=False)
-
-        if result.returncode != 0:
+        # Build the database
+        if not updater.rebuild_unified_database():
             print("✗ Database build failed.")
             return False
 
-        print("✓ Database built successfully!")
-        return True
+        print("✓ Card database built successfully!")
 
-    # Database exists - check if it's stale (>7 days old)
-    try:
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM metadata WHERE key = 'default_cards_updated_at'")
-        row = cursor.fetchone()
-        conn.close()
-
-        if not row:
-            logging.warning("No update timestamp in database")
-            return True  # Use database anyway
-
-        last_update_str = row[0]
-        last_update = datetime.fromisoformat(last_update_str.replace('Z', '+00:00').replace('+00:00', ''))
-        age = datetime.now() - last_update
-
-        if age.days >= 7:
-            print(f"\n⚠ Card database is {age.days} days old (updated {last_update_str[:10]})")
-            response = input("Update now? (y/n - update recommended weekly): ").strip().lower()
-
-            if response == 'y':
-                print("Updating database...")
-                import subprocess
-                result = subprocess.run(["python3", "update_card_database.py", "--quick"],
-                                      capture_output=False)
-
-                if result.returncode == 0:
-                    print("✓ Database updated successfully!")
-                else:
-                    print("⚠ Update failed, using existing database.")
-        else:
-            logging.info(f"Card database is current ({age.days} days old)")
+        # Also get 17lands data for current sets
+        print("\nDownloading performance statistics...")
+        updater.update_17lands_data()
 
         return True
 
-    except Exception as e:
-        logging.warning(f"Could not check database age: {e}")
-        return True  # Use database anyway
+    # Database exists - check for updates (daily)
+    last_check_file = Path("data/.last_update_check")
+    should_check = True
+
+    if last_check_file.exists():
+        try:
+            with open(last_check_file, 'r') as f:
+                last_check = datetime.fromisoformat(f.read().strip())
+                hours_since = (datetime.now() - last_check).total_seconds() / 3600
+                if hours_since < 24:
+                    should_check = False
+                    logging.info(f"Skipping update check (last check {hours_since:.1f} hours ago)")
+        except Exception:
+            pass
+
+    if should_check:
+        # Run update check
+        updated = updater.check_and_update_all()
+
+        # Save check timestamp
+        last_check_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(last_check_file, 'w') as f:
+            f.write(datetime.now().isoformat())
+
+        if updated:
+            print("✅ Databases updated successfully!")
+
+    return True
+
+
+def _legacy_check_and_update() -> bool:
+    """Legacy update check for backward compatibility."""
+    from datetime import datetime
+    from pathlib import Path
+    import subprocess
+
+    db_path = Path("data/unified_cards.db")
+
+    if not db_path.exists():
+        print("\nCard database not found. Building...")
+        result = subprocess.run(["python3", "build_unified_card_database.py"],
+                              capture_output=False)
+        return result.returncode == 0
+
+    return True
 
 
 class ArenaCardDatabase:

@@ -924,16 +924,27 @@ class CLIVoiceAdvisor:
             return
 
         try:
-            # Extract set code from event name (e.g., "QuickDraft_BLB_20250815" -> "BLB")
+            # Extract set code and format from event name
             set_code = None
+            format_type = "PremierDraft"  # default
             if event_name and "_" in event_name:
                 parts = event_name.split("_")
                 if len(parts) >= 2:
+                    format_type = parts[0]  # e.g., "QuickDraft", "PremierDraft"
                     set_code = parts[1].upper()
 
             if not set_code:
                 logging.warning("Could not determine set code from event name")
                 return
+
+            # Auto-download 17lands data if needed
+            try:
+                from auto_updater import AutoUpdater
+                updater = AutoUpdater(auto_mode=True)  # Auto mode for seamless experience
+                if not updater.update_for_draft(set_code, format_type):
+                    logging.warning(f"Could not ensure data for {set_code} {format_type}")
+            except Exception as e:
+                logging.debug(f"Auto-updater not available: {e}")
 
             drafted_cards = self.draft_advisor.picked_cards
 

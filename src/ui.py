@@ -13,6 +13,14 @@ except ImportError:
     TKINTER_AVAILABLE = False
     logging.warning("Tkinter not available. GUI mode disabled.")
 
+# Import config manager (optional)
+try:
+    from config_manager import UserPreferences
+    CONFIG_MANAGER_AVAILABLE = True
+except ImportError:
+    CONFIG_MANAGER_AVAILABLE = False
+    logging.warning("Config manager not available. User preferences will not persist.")
+
 class AdvisorTUI:
     """
     Text User Interface for MTGA Voice Advisor using curses.
