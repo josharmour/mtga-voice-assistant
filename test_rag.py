@@ -299,7 +299,7 @@ def test_integration():
         sys.path.insert(0, str(Path(__file__).parent))
 
         # Check if RAG is importable from advisor
-        from advisor import RAG_AVAILABLE
+        from src.ai_advisor import RAG_AVAILABLE
 
         logger.info(f"  RAG_AVAILABLE in advisor: {RAG_AVAILABLE}")
 
@@ -311,8 +311,8 @@ def test_integration():
         # Try to import AIAdvisor (don't instantiate, as it needs Ollama)
         logger.info("  Checking AIAdvisor class...")
 
-        # Read advisor.py to verify integration
-        advisor_path = Path(__file__).parent / "advisor.py"
+        # Read ai_advisor.py to verify integration
+        advisor_path = Path(__file__).parent / "src" / "ai_advisor.py"
         with open(advisor_path, 'r') as f:
             content = f.read()
 
