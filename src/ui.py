@@ -1114,3 +1114,63 @@ class AdvisorGUI:
 
         except Exception as e:
             logging.error(f"Error updating GUI settings: {e}")
+
+    def set_status(self, text: str):
+        """Update status display (currently a no-op for GUI, but required for compatibility)."""
+        try:
+            # Could update window title or a status bar if we add one
+            logging.debug(f"Status: {text}")
+        except Exception as e:
+            logging.error(f"Error setting status: {e}")
+
+    def set_board_state(self, lines: list):
+        """Update board state display."""
+        try:
+            if not hasattr(self, 'board_text'):
+                return
+
+            self.board_text.config(state=tk.NORMAL)
+            self.board_text.delete(1.0, tk.END)
+
+            # Add each line to the board display
+            for line in lines:
+                self.board_text.insert(tk.END, line + '\n')
+
+            self.board_text.config(state=tk.DISABLED)
+            # Auto-scroll to bottom
+            self.board_text.see(tk.END)
+
+        except Exception as e:
+            logging.error(f"Error setting board state: {e}")
+
+    def add_message(self, msg: str, color=None):
+        """Add message to the advisor messages display."""
+        try:
+            if not hasattr(self, 'messages_text'):
+                return
+
+            import time
+            timestamp = time.strftime("%H:%M:%S")
+
+            self.messages_text.config(state=tk.NORMAL)
+
+            # Add timestamp
+            self.messages_text.insert(tk.END, f"[{timestamp}] ")
+
+            # Add message with color tag if specified
+            if color and isinstance(color, str):
+                # Map common color names to tags
+                color_tag = color.lower()
+                if color_tag in ['green', 'blue', 'cyan', 'yellow', 'red', 'white']:
+                    self.messages_text.insert(tk.END, msg + '\n', color_tag)
+                else:
+                    self.messages_text.insert(tk.END, msg + '\n')
+            else:
+                self.messages_text.insert(tk.END, msg + '\n')
+
+            self.messages_text.config(state=tk.DISABLED)
+            # Auto-scroll to bottom
+            self.messages_text.see(tk.END)
+
+        except Exception as e:
+            logging.error(f"Error adding message: {e}")
