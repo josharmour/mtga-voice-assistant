@@ -997,6 +997,40 @@ class AdvisorGUI:
                 report_file = os.path.join(bug_dir, f"bug_report_{timestamp}.txt")
                 screenshot_file = os.path.join(bug_dir, f"screenshot_{timestamp}.png")
 
+                # Ask user if they want to add a title and description
+                add_details = False
+                issue_title = f"Bug Report: {timestamp}"
+                user_description = "No description provided."
+
+                try:
+                    from tkinter import messagebox, simpledialog
+                    if self.root and self.root.winfo_exists():
+                        add_details = messagebox.askyesno(
+                            "Bug Report Details",
+                            "Do you want to add a title and description to this bug report?",
+                            parent=self.root
+                        )
+                        if add_details:
+                            # Prompt for title
+                            title_prompt = simpledialog.askstring(
+                                "Bug Report Title",
+                                "Enter a title for the bug report (or leave blank for default):",
+                                parent=self.root
+                            )
+                            if title_prompt and title_prompt.strip():
+                                issue_title = title_prompt.strip()
+
+                            # Prompt for description
+                            desc_prompt = simpledialog.askstring(
+                                "Bug Report Description",
+                                "Please describe the bug:",
+                                parent=self.root
+                            )
+                            if desc_prompt and desc_prompt.strip():
+                                user_description = desc_prompt.strip()
+                except (ImportError, Exception) as e:
+                    logging.debug(f"GUI not available for bug report details: {e}")
+
                 # Take screenshot using gnome-screenshot or scrot
                 try:
                     subprocess.run(['gnome-screenshot', '-f', screenshot_file],
@@ -1033,8 +1067,11 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                 # Write bug report to local file
                 with open(report_file, "w") as f:
                     f.write("="*70 + "\n")
-                    f.write(f"BUG REPORT - {timestamp}\n")
+                    f.write(f"BUG REPORT: {issue_title}\n")
                     f.write("="*70 + "\n\n")
+
+                    f.write("USER DESCRIPTION:\n")
+                    f.write(f"{user_description}\n\n")
 
                     f.write("SCREENSHOT:\n")
                     f.write(f"{screenshot_file}\n\n")
@@ -1066,8 +1103,10 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                     screenshot_url = screenshot_file
 
                 # Create GitHub issue
-                issue_title = f"Bug Report: {timestamp}"
-                issue_body = f"""**Screenshot:**
+                issue_body = f"""**Description:**
+{user_description}
+
+**Screenshot:**
 ![Screenshot]({screenshot_url})
 
 **Settings:**
