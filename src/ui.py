@@ -1041,3 +1041,27 @@ class AdvisorGUI:
 
         except Exception as e:
             logging.error(f"Error sending prompt: {e}")
+
+    def on_closing(self):
+        """Handle window close event."""
+        try:
+            # Save window geometry
+            if self.root:
+                geometry = self.root.geometry()
+                if geometry and CONFIG_MANAGER_AVAILABLE and self.prefs:
+                    # Parse geometry string: "WIDTHxHEIGHT+X+Y"
+                    parts = geometry.split('+')
+                    if len(parts) >= 3:
+                        size_part = parts[0]
+                        x = int(parts[1])
+                        y = int(parts[2])
+                        if 'x' in size_part:
+                            w, h = map(int, size_part.split('x'))
+                            self.prefs.set_window_geometry(w, h, x, y)
+
+                # Close the window
+                self.root.destroy()
+        except Exception as e:
+            logging.error(f"Error during window close: {e}")
+            if self.root:
+                self.root.destroy()
