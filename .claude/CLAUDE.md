@@ -34,18 +34,9 @@ python advisor.py --cli
 # Test RAG system and initialize databases
 python test_rag.py
 
-# Download card metadata database (~30 seconds)
-python download_card_metadata.py
-
-# Download card statistics from 17lands (~60-180 minutes)
-python download_real_17lands_data.py
-
-# Update existing card data
-python update_card_data.py --status
-python update_card_data.py --auto
-
-# Check available 17lands sets
-python check_available_sets.py
+# Manage and update all data (17lands, Scryfall)
+python manage_data.py --update-17lands
+python manage_data.py --update-scryfall
 
 # View logs in real-time
 tail -f logs/advisor.log
@@ -80,12 +71,12 @@ Optional enhancement system (`rag_advisor.py`) with three complementary database
 1. **Card Statistics DB** (`data/card_stats.db`)
    - 17lands.com performance data (win rates, GIH, IWD)
    - ~6000-8000 cards per format
-   - Downloaded via `download_real_17lands_data.py`
+   - Downloaded via `manage_data.py --update-17lands`
 
 2. **Card Metadata DB** (`data/card_metadata.db`)
    - Card attributes: colors, mana cost, types, rarity
    - ~22,509 cards from 17lands API
-   - Downloaded via `download_card_metadata.py`
+   - Downloaded via `manage_data.py --update-scryfall`
 
 3. **Rules Vector DB** (`data/chromadb/`)
    - MTG Comprehensive Rules with semantic search
