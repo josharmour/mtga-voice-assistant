@@ -69,35 +69,7 @@ for handler in logging.root.handlers:
     if isinstance(handler, logging.StreamHandler):
         handler.setLevel(logging.WARNING)
 
-# ----------------------------------------------------------------------------------
-# Utility Functions
-# ----------------------------------------------------------------------------------
-
-def clean_card_name(name: str) -> str:
-    """
-    Remove HTML tags from card names.
-
-    Some card names from Arena's database contain HTML tags like <nobr> and </nobr>
-    that need to be stripped for proper display and matching.
-
-    Args:
-        name: Raw card name potentially containing HTML tags
-
-    Returns:
-        Clean card name with all HTML tags removed
-
-    Examples:
-        "<nobr>Full-Throttle</nobr> Fanatic" -> "Full-Throttle Fanatic"
-        "<nobr>Bane-Marked</nobr> Leonin" -> "Bane-Marked Leonin"
-    """
-    if not name:
-        return name
-
-    # Remove all HTML tags using regex
-    # This handles <nobr>, </nobr>, and any other HTML tags
-    clean_name = re.sub(r'<[^>]+>', '', name)
-
-    return clean_name
+from rag_advisor import clean_card_name
 
 # ----------------------------------------------------------------------------------
 # Part 1: Arena Log Detection and Path Handling
