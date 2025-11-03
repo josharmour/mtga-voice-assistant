@@ -19,7 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 def strip_html_tags(text: str) -> str:
-    """Remove HTML tags from text (e.g., <nobr>, <sprite>)"""
+    """Removes HTML tags from a given string.
+
+    Args:
+        text: The input string, potentially containing HTML tags.
+
+    Returns:
+        The cleaned string with all HTML tags removed.
+    """
     if not text:
         return text
     # Remove all HTML tags
@@ -29,19 +36,38 @@ def strip_html_tags(text: str) -> str:
 
 @dataclass
 class DraftCard:
-    """Represents a card in a draft pack with stats"""
+    """Represents a single card within a draft pack, enriched with 17lands data.
+
+    This data class holds both the identifying information for a card (like its
+    name and Arena ID) and its performance statistics from 17lands, such as
+    win rates and average taken at.
+
+    Attributes:
+        arena_id: The MTG Arena specific ID for the card.
+        name: The English name of the card.
+        colors: The color identity of the card (e.g., "W", "UB").
+        rarity: The card's rarity (e.g., "common", "mythic").
+        types: A list of card types (e.g., ["Creature", "Elf", "Warrior"]).
+        win_rate: The card's overall win rate.
+        gih_win_rate: Games In Hand win rate.
+        iwd: Improvement When Drawn, a measure of the card's impact.
+        ata: Average Taken At, the average pick number this card is taken at.
+        ever_drawn_game_count: The number of games where this card was drawn.
+        grade: A letter grade (A+ to F) based on its percentile score.
+        score: A percentile score (0-100) calculated from its stats.
+    """
     arena_id: int
     name: str
     colors: str = ""
     rarity: str = ""
     types: List[str] = None
     win_rate: float = 0.0
-    gih_win_rate: float = 0.0  # Games In Hand win rate
-    iwd: float = 0.0  # Improvement When Drawn
-    ata: float = 0.0  # Average Taken At
+    gih_win_rate: float = 0.0
+    iwd: float = 0.0
+    ata: float = 0.0
     ever_drawn_game_count: int = 0
     grade: str = ""
-    score: float = 0.0  # Percentile score 0-100
+    score: float = 0.0
 
     def __post_init__(self):
         if self.types is None:
@@ -49,7 +75,19 @@ class DraftCard:
 
 
 class DraftAdvisor:
-    """Generates draft pick recommendations using 17lands data"""
+    """Analyzes draft packs and provides pick recommendations.
+
+    This class uses card performance data from 17lands to score each card in a
+    draft pack. It calculates a letter grade for each card and generates a
+    recommendation for the best card to pick. It also keeps track of the cards
+    the user has already picked to provide context for future decisions.
+
+    Attributes:
+        card_db: An instance of `ArenaCardDatabase` for card name resolution.
+        rag: An optional `RAGSystem` instance for accessing 17lands data.
+        ollama: An optional `OllamaClient` for potential LLM-based analysis.
+        picked_cards: A list of card names that have been picked so far.
+    """
 
     # Grade thresholds (percentile scores)
     GRADE_THRESHOLDS = {
@@ -314,8 +352,15 @@ class DraftAdvisor:
 
         return rec
 
-    def record_pick(self, card_name: str):
-        """Record a picked card"""
+    def record_pick(self, card_name: str) -> None:
+        """Records a card as having been picked by the user.
+
+        This method adds the card's name to an internal list of picked cards,
+        which can be used to inform future pick recommendations.
+
+        Args:
+            card_name: The name of the card that was picked.
+        """
         self.picked_cards.append(card_name)
         logger.info(f"Recorded pick: {card_name} (total: {len(self.picked_cards)})")
 
@@ -472,12 +517,18 @@ def format_draft_pack_for_gui(
 
 
 def format_color_emoji(colors: str, for_gui: bool = False) -> str:
-    """
-    Convert color string to emoji or letter codes
+    """Converts a color identity string into a more readable format.
+
+    Depending on the `for_gui` flag, this will return either emoji characters
+    (for terminal output) or simple letter codes (for GUI display where fonts
+    may not support emoji).
 
     Args:
-        colors: Color identity string (e.g., "W", "UR", "GWB")
-        for_gui: If True, use letter codes instead of emoji (for fonts that don't support emoji)
+        colors: The color identity string (e.g., "W", "UR", "GWB").
+        for_gui: If True, returns letter codes; otherwise, returns emoji.
+
+    Returns:
+        A formatted string representing the card's colors.
     """
     if not colors:
         return "C" if for_gui else "⚪"  # Colorless
@@ -503,12 +554,14 @@ def format_color_emoji(colors: str, for_gui: bool = False) -> str:
 
 
 def format_rarity_emoji(rarity: str, for_gui: bool = False) -> str:
-    """
-    Convert rarity to emoji or letter codes
+    """Converts a rarity string into a more readable format.
 
     Args:
-        rarity: Rarity string (e.g., "mythic", "rare", "uncommon", "common")
-        for_gui: If True, use letter codes instead of emoji (for fonts that don't support emoji)
+        rarity: The rarity string (e.g., "mythic", "rare").
+        for_gui: If True, returns a single letter; otherwise, returns an emoji.
+
+    Returns:
+        A formatted string representing the card's rarity.
     """
     if for_gui:
         # Use letter codes for GUI (Consolas font doesn't render emoji)
@@ -531,7 +584,14 @@ def format_rarity_emoji(rarity: str, for_gui: bool = False) -> str:
 
 
 def format_grade(grade: str) -> str:
-    """Return color-coded grade string"""
+    """Applies terminal color codes to a grade string.
+
+    Args:
+        grade: The letter grade string (e.g., "A+", "B-").
+
+    Returns:
+        A color-coded string for terminal display.
+    """
     if not grade:
         return ""
 

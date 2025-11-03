@@ -103,10 +103,16 @@ def clean_card_name(name: str) -> str:
 # Part 1: Arena Log Detection and Path Handling
 # ----------------------------------------------------------------------------------
 
-def detect_player_log_path():
-    """
-    Detect the Arena Player.log file based on OS and installation method.
-    Returns the path as a string, or None if not found.
+def detect_player_log_path() -> Optional[str]:
+    """Detects the Arena Player.log file path based on the operating system.
+
+    This function checks common installation directories for MTG Arena on
+    Windows, macOS, and Linux (including Steam and Bottles installations)
+    to locate the `Player.log` file.
+
+    Returns:
+        The absolute path to the Player.log file as a string, or None if the
+        file cannot be found.
     """
     home = Path.home()
     # Windows
@@ -138,10 +144,16 @@ def detect_player_log_path():
                 return str(path)
     return None
 
-def detect_card_database_path():
-    """
-    Find Arena's card database across platforms.
-    Returns path to Raw_CardDatabase_*.mtga file.
+def detect_card_database_path() -> Optional[str]:
+    """Finds the path to Arena's card database file across different platforms.
+
+    This function searches for the `Raw_CardDatabase_*.mtga` file in common
+    installation locations for MTG Arena on Windows and Linux (Steam/Bottles).
+    This file contains the raw card data used by the game.
+
+    Returns:
+        The absolute path to the card database file as a string, or None
+        if it cannot be found.
     """
     home = Path.home()
 
@@ -177,7 +189,16 @@ def detect_card_database_path():
 # ----------------------------------------------------------------------------------
 
 class LogFollower:
-    """Follows the Arena Player.log file and yields new lines as they're added."""
+    """Monitors the Arena Player.log file and yields new lines as they are added.
+
+    This class continuously watches the log file, handling log rotation
+    (when the game creates a new log file) and file not found errors gracefully.
+    It's designed to be run in a background thread to provide a stream of
+    log lines to the application.
+
+    Attributes:
+        log_path: The file path to the Player.log file.
+    """
     def __init__(self, log_path: str):
         self.log_path = log_path
         self.file = None
@@ -185,8 +206,18 @@ class LogFollower:
         self.offset = 0
         self.first_open = True  # Track if this is first time opening
 
-    def follow(self, callback: Callable[[str], None]):
-        """Follow the log file indefinitely, calling the callback for each new line."""
+    def follow(self, callback: Callable[[str], None]) -> None:
+        """Follows the log file indefinitely, calling a callback for each new line.
+
+        This method starts an infinite loop that watches the log file. It handles
+        cases where the log file is rotated by the game by detecting inode changes
+        and reopening the file. On the first run, it seeks to the end of the file
+        to ignore old log entries.
+
+        Args:
+            callback: A function to be called for each new line read from the
+                log file. The function should accept a single string argument.
+        """
         print(f"[DEBUG] LogFollower.follow() started! Watching: {self.log_path}")
         logging.info(f"LogFollower.follow() started! Watching: {self.log_path}")
         while True:
@@ -253,7 +284,8 @@ class LogFollower:
                 logging.error(f"Error following log file: {e}")
                 time.sleep(1)
 
-    def close(self):
+    def close(self) -> None:
+        """Closes the currently open log file, if one exists."""
         if self.file:
             self.file.close()
 
@@ -263,6 +295,26 @@ class LogFollower:
 
 @dataclasses.dataclass
 class GameObject:
+    """Represents a single in-game object (e.g., card, token, emblem).
+
+    This class holds all the known attributes of an object in the game state,
+    such as its ID, owner, location (zone), and combat status.
+
+    Attributes:
+        instance_id: The unique identifier for this specific object instance.
+        grp_id: The group identifier, linking this object to its card definition.
+        zone_id: The identifier of the zone this object is currently in.
+        owner_seat_id: The seat ID of the player who owns this object.
+        name: The English name of the card.
+        power: The creature's power.
+        toughness: The creature's toughness.
+        is_tapped: True if the object is tapped, False otherwise.
+        is_attacking: True if the object is currently attacking.
+        summoning_sick: True if the creature has summoning sickness.
+        counters: A dictionary of counters on the object (e.g., {'+1/+1': 2}).
+        attached_to: The instance_id of the object this one is attached to (for auras/equipment).
+        visibility: The visibility state of the object (e.g., "public", "private").
+    """
     instance_id: int
     grp_id: int
     zone_id: int
@@ -273,22 +325,51 @@ class GameObject:
     is_tapped: bool = False
     is_attacking: bool = False
     summoning_sick: bool = False
-    counters: Dict[str, int] = dataclasses.field(default_factory=dict)  # {counter_type: count}
-    attached_to: Optional[int] = None  # Instance ID of attached permanent
-    visibility: str = "public"  # "public", "private", "revealed"
+    counters: Dict[str, int] = dataclasses.field(default_factory=dict)
+    attached_to: Optional[int] = None
+    visibility: str = "public"
 
 @dataclasses.dataclass
 class PlayerState:
+    """Represents the state of a single player in the game.
+
+    This includes life total, hand size, priority status, and available mana.
+
+    Attributes:
+        seat_id: The unique identifier for the player's seat.
+        life_total: The player's current life total.
+        hand_count: The number of cards in the player's hand.
+        has_priority: True if the player currently has priority to act.
+        mana_pool: A dictionary representing the player's floating mana.
+        energy: The number of energy counters the player has.
+    """
     seat_id: int
     life_total: int = 20
     hand_count: int = 0
     has_priority: bool = False
-    mana_pool: Dict[str, int] = dataclasses.field(default_factory=dict)  # {"W": 2, "U": 1, etc.}
+    mana_pool: Dict[str, int] = dataclasses.field(default_factory=dict)
     energy: int = 0
 
 @dataclasses.dataclass
 class GameHistory:
-    """Tracks important events from current turn for tactical context"""
+    """Tracks important events that have occurred during the current turn.
+
+    This class provides tactical context to the AI by recording actions like
+    cards played, creatures that attacked or died, and combat assignments.
+    It is reset at the beginning of each turn.
+
+    Attributes:
+        turn_number: The turn number this history object is for.
+        cards_played_this_turn: A list of GameObjects played this turn.
+        attackers_this_turn: A list of GameObjects that attacked this turn.
+        blockers_this_turn: A list of GameObjects that blocked this turn.
+        damage_dealt: A mapping of object instance IDs to damage received.
+        died_this_turn: A list of names of creatures that died this turn.
+        lands_played_this_turn: The count of lands played this turn.
+        current_attackers: A list of instance IDs of creatures currently attacking.
+        current_blockers: A mapping of attacker IDs to their blocker IDs.
+        combat_damage_assignments: A mapping of instance IDs to assigned combat damage.
+    """
     turn_number: int = 0
     cards_played_this_turn: List[GameObject] = dataclasses.field(default_factory=list)
     attackers_this_turn: List[GameObject] = dataclasses.field(default_factory=list)
@@ -296,78 +377,101 @@ class GameHistory:
     damage_dealt: Dict[int, int] = dataclasses.field(default_factory=dict)
     died_this_turn: List[str] = dataclasses.field(default_factory=list)
     lands_played_this_turn: int = 0
-
-    # Current combat state (during combat phase)
-    current_attackers: List[int] = dataclasses.field(default_factory=list)  # Instance IDs
-    current_blockers: Dict[int, int] = dataclasses.field(default_factory=dict)  # {attacker_id: blocker_id}
-    combat_damage_assignments: Dict[int, int] = dataclasses.field(default_factory=dict)  # {instance_id: damage}
+    current_attackers: List[int] = dataclasses.field(default_factory=list)
+    current_blockers: Dict[int, int] = dataclasses.field(default_factory=dict)
+    combat_damage_assignments: Dict[int, int] = dataclasses.field(default_factory=dict)
 
 @dataclasses.dataclass
 class BoardState:
+    """A comprehensive snapshot of the current game state.
+
+    This class aggregates all tracked information about the game, including
+    player states, objects in various zones (battlefield, hand, etc.), turn
+    information, and game history. It is the primary data structure passed to
+    the AI advisor to generate tactical advice.
+
+    Attributes:
+        your_seat_id: The seat ID of the local player.
+        opponent_seat_id: The seat ID of the opponent.
+        your_life: The local player's life total.
+        opponent_life: The opponent's life total.
+        your_mana_pool: The local player's floating mana.
+        your_energy: The local player's energy counters.
+        opponent_energy: The opponent's energy counters.
+        your_hand_count: The number of cards in the local player's hand.
+        your_hand: A list of GameObjects in the local player's hand.
+        opponent_hand_count: The number of cards in the opponent's hand.
+        your_battlefield: A list of GameObjects on the local player's battlefield.
+        opponent_battlefield: A list of GameObjects on the opponent's battlefield.
+        your_graveyard: A list of GameObjects in the local player's graveyard.
+        opponent_graveyard: A list of GameObjects in the opponent's graveyard.
+        your_exile: A list of GameObjects in the local player's exile zone.
+        opponent_exile: A list of GameObjects in the opponent's exile zone.
+        your_library_count: The number of cards in the local player's library.
+        opponent_library_count: The number of cards in the opponent's library.
+        stack: A list of GameObjects currently on the stack.
+        current_turn: The current turn number.
+        current_phase: The current phase of the turn (e.g., "Main1", "Combat").
+        is_your_turn: True if it is the local player's turn.
+        has_priority: True if the local player has priority.
+        history: A GameHistory object tracking events of the current turn.
+        your_decklist: A mapping of card names to their counts in the deck.
+        your_deck_remaining: The number of cards remaining in the library.
+        library_top_known: A list of known card names on top of the library.
+        scry_info: A string describing the result of the last scry action.
+        in_mulligan_phase: True if the game is in the mulligan phase.
+        game_stage: The current stage of the game (e.g., "GameStage_Play").
+    """
     your_seat_id: int
     opponent_seat_id: int
-
-    # Life totals
     your_life: int = 20
     opponent_life: int = 20
-
-    # Mana and energy
     your_mana_pool: Dict[str, int] = dataclasses.field(default_factory=dict)
     your_energy: int = 0
     opponent_energy: int = 0
-
-    # Zone: Hand
     your_hand_count: int = 0
     your_hand: List[GameObject] = dataclasses.field(default_factory=list)
     opponent_hand_count: int = 0
-
-    # Zone: Battlefield
     your_battlefield: List[GameObject] = dataclasses.field(default_factory=list)
     opponent_battlefield: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Zone: Graveyard
     your_graveyard: List[GameObject] = dataclasses.field(default_factory=list)
     opponent_graveyard: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Zone: Exile
     your_exile: List[GameObject] = dataclasses.field(default_factory=list)
     opponent_exile: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Zone: Library
     your_library_count: int = 0
     opponent_library_count: int = 0
-
-    # Zone: Stack
     stack: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Turn tracking
     current_turn: int = 0
     current_phase: str = ""
     is_your_turn: bool = False
     has_priority: bool = False
-
-    # Game history
     history: Optional[GameHistory] = None
-
-    # Deck tracking (Phase 3)
-    your_decklist: Dict[str, int] = dataclasses.field(default_factory=dict)  # {card_name: count}
-    your_deck_remaining: int = 0  # Cards left in library
-
-    # Known cards tracking (Phase 3)
-    library_top_known: List[str] = dataclasses.field(default_factory=list)  # Card names on top of library
-    scry_info: Optional[str] = None  # "Top 2: Lightning Bolt, Forest"
-
-    # Mulligan phase tracking
+    your_decklist: Dict[str, int] = dataclasses.field(default_factory=dict)
+    your_deck_remaining: int = 0
+    library_top_known: List[str] = dataclasses.field(default_factory=list)
+    scry_info: Optional[str] = None
     in_mulligan_phase: bool = False
-    game_stage: str = ""  # "GameStage_Start" or "GameStage_Play"
+    game_stage: str = ""
 
 class MatchScanner:
-    """
-    Parses GRE messages to track game state.
+    """Parses GRE (Game Rules Engine) messages to track and maintain game state.
 
-    Note: Zone IDs are assigned dynamically per match by Arena.
-    We discover them from GameStateMessage zones[] arrays and track them
-    in zone_type_to_ids and zone_id_to_type dictionaries.
+    This class is responsible for interpreting the detailed game state messages
+    from the Arena log. It manages all in-game objects, player states, zones,
+    and turn information. It builds a model of the current match by processing
+    a stream of GRE messages.
+
+    Note:
+        Zone IDs are assigned dynamically per match by Arena. This class
+        discovers them from `GameStateMessage` zone arrays and maintains
+        mappings to track which ID corresponds to which zone type (e.g.,
+        Battlefield, Hand).
+
+    Attributes:
+        game_objects: A dictionary mapping instance IDs to GameObject instances.
+        players: A dictionary mapping seat IDs to PlayerState instances.
+        local_player_seat_id: The seat ID of the user running the application.
+        game_history: A GameHistory object for the current turn.
     """
 
     def __init__(self):
@@ -395,8 +499,15 @@ class MatchScanner:
         self.game_stage: str = ""  # "GameStage_Start" during mulligan, "GameStage_Play" after
         self.in_mulligan_phase: bool = False
 
-    def reset_match_state(self):
-        """Clear all game state when a new match starts"""
+    def reset_match_state(self) -> None:
+        """Clears all game state variables to prepare for a new match.
+
+        This method is called when a new match is detected (e.g., through a
+        deck submission event). It resets all dictionaries and lists tracking
+        objects, players, and zones, ensuring no state from a previous game
+        leaks into the current one. The `local_player_seat_id` is preserved
+        as it typically persists across matches in a single session.
+        """
         logging.info("🔄 NEW MATCH DETECTED - Clearing all previous match state")
         self.game_objects.clear()
         self.players.clear()
@@ -417,6 +528,19 @@ class MatchScanner:
         # Note: submitted_decklist is set by _parse_deck_submission, so don't clear it here
 
     def parse_gre_to_client_event(self, event_data: dict) -> bool:
+        """Parses the main GRE-to-client event structure from the log.
+
+        This method is the entry point for parsing game state updates. It iterates
+        through the messages contained within a `greToClientEvent` and dispatches
+        them to more specific parsing methods based on their type.
+
+        Args:
+            event_data: The parsed JSON dictionary of the log event.
+
+        Returns:
+            True if the game state changed as a result of parsing this event,
+            False otherwise.
+        """
         if "greToClientEvent" not in event_data: return False
         gre_event = event_data["greToClientEvent"]
         logging.info(f"GREToClientEvent received - type: {gre_event.get('type', 'N/A')}")
@@ -835,10 +959,18 @@ class MatchScanner:
 # ----------------------------------------------------------------------------------
 
 def check_and_update_card_database() -> bool:
-    """
-    Check if card database needs update and offer to update it.
+    """Checks if the unified card database exists and is up-to-date.
 
-    Returns True if database is ready to use, False if update failed.
+    This function performs several checks:
+    1. If the database file (`unified_cards.db`) does not exist, it prompts
+       the user to build it by running `build_unified_card_database.py`.
+    2. If the database exists, it checks the timestamp of the last update.
+    3. If the data is more than 7 days old, it prompts the user to update it.
+
+    Returns:
+        True if the database is present and ready to be used (even if the user
+        declines an update). False if the database is missing and the user
+        declines to build it, making it impossible to proceed.
     """
     from datetime import datetime, timedelta
     from pathlib import Path
@@ -914,10 +1046,19 @@ def check_and_update_card_database() -> bool:
 
 
 class ArenaCardDatabase:
-    """
-    Unified card database using unified_cards.db (17,000+ cards with reskin support).
+    """Handles lookups for card data from the unified SQLite database.
 
-    No API fallbacks needed - all MTGA cards are in the database.
+    This class provides a fast, local interface for retrieving card information,
+    such as names, oracle text, mana costs, and types, using the card's `grpId`
+    as a key. It connects to the `unified_cards.db` file and includes an
+    in-memory cache for frequently accessed cards to improve performance.
+
+    Attributes:
+        db_path: The path to the SQLite database file.
+        conn: The database connection object.
+        cache: An in-memory dictionary to cache card data.
+        show_reskin_names: A boolean to toggle the display of special reskin
+            names (e.g., for Spider-Man cards).
     """
     def __init__(self, db_path: str = "data/unified_cards.db", show_reskin_names: bool = False):
         self.db_path = Path(db_path)
@@ -949,7 +1090,19 @@ class ArenaCardDatabase:
             self.conn = None
 
     def get_card_name(self, grp_id: int) -> str:
-        """Get card name from grpId. Shows reskin names if show_reskin_names is True."""
+        """Retrieves the name of a card given its group ID.
+
+        This method queries the database or cache for the card's name. It
+        handles special reskinned cards, showing either the canonical name or
+        the reskin name based on the `show_reskin_names` attribute.
+
+        Args:
+            grp_id: The group ID of the card.
+
+        Returns:
+            The card's name as a string, or a placeholder like "Unknown(grp_id)"
+            if the card is not found.
+        """
         if not grp_id or not self.conn:
             return f"Unknown({grp_id})" if grp_id else "Unknown"
 
@@ -988,7 +1141,18 @@ class ArenaCardDatabase:
             return f"Unknown({grp_id})"
 
     def get_card_data(self, grp_id: int) -> Optional[dict]:
-        """Get full card data from grpId."""
+        """Retrieves all data for a card from its group ID.
+
+        This method fetches the complete record for a card from the database
+        or the in-memory cache.
+
+        Args:
+            grp_id: The group ID of the card.
+
+        Returns:
+            A dictionary containing all the card's data, or None if the card
+            is not found.
+        """
         if not grp_id or not self.conn:
             return None
 
@@ -1014,28 +1178,66 @@ class ArenaCardDatabase:
             return None
 
     def get_oracle_text(self, grp_id: int) -> str:
-        """Get oracle text for a card."""
+        """Retrieves the Oracle text (rules text) for a card.
+
+        Args:
+            grp_id: The group ID of the card.
+
+        Returns:
+            The Oracle text as a string, or an empty string if not found.
+        """
         card = self.get_card_data(grp_id)
         return card.get("oracle_text", "") if card else ""
 
     def get_mana_cost(self, grp_id: int) -> str:
-        """Get mana cost for a card (e.g., '{2}{U}{U}')."""
+        """Retrieves the mana cost for a card.
+
+        Args:
+            grp_id: The group ID of the card.
+
+        Returns:
+            The mana cost as a string (e.g., '{2}{U}{U}'), or an empty string
+            if not found.
+        """
         card = self.get_card_data(grp_id)
         return card.get("mana_cost", "") if card else ""
 
     def get_cmc(self, grp_id: int) -> Optional[float]:
-        """Get converted mana cost for a card."""
+        """Retrieves the converted mana cost (CMC) for a card.
+
+        Args:
+            grp_id: The group ID of the card.
+
+        Returns:
+            The CMC as a float, or None if not found.
+        """
         card = self.get_card_data(grp_id)
         cmc = card.get("cmc") if card else None
         return float(cmc) if cmc is not None else None
 
     def get_type_line(self, grp_id: int) -> str:
-        """Get card type line (e.g., 'Creature - Elf Wizard')."""
+        """Retrieves the full type line for a card.
+
+        Args:
+            grp_id: The group ID of the card.
+
+        Returns:
+            The type line as a string (e.g., 'Creature - Elf Wizard'),
+            or an empty string if not found.
+        """
         card = self.get_card_data(grp_id)
         return card.get("type_line", "") if card else ""
 
     def get_keywords(self, grp_id: int) -> List[str]:
-        """Get ability keywords for a card (e.g., ['Flying', 'Lifelink'])."""
+        """Retrieves a list of ability keywords for a card.
+
+        Args:
+            grp_id: The group ID of the card.
+
+        Returns:
+            A list of strings, where each string is a keyword (e.g.,
+            ['Flying', 'Lifelink']), or an empty list if not found.
+        """
         card = self.get_card_data(grp_id)
         if not card:
             return []
@@ -1045,8 +1247,8 @@ class ArenaCardDatabase:
         # Parse comma-separated keywords
         return [kw.strip() for kw in keywords_str.split(",") if kw.strip()]
 
-    def close(self):
-        """Close the database connection."""
+    def close(self) -> None:
+        """Closes the connection to the SQLite database."""
         if self.conn:
             self.conn.close()
 
@@ -1055,18 +1257,35 @@ class ArenaCardDatabase:
 # ----------------------------------------------------------------------------------
 
 class GameStateManager:
+    """Manages the overall game state by processing log lines.
+
+    This class acts as a higher-level controller that uses a `MatchScanner`
+    to parse detailed game events. It handles the stream-oriented nature of the
+    log, buffering lines to assemble complete JSON objects. It also detects
+    and dispatches draft-related events to registered callbacks.
+
+    Attributes:
+        scanner: An instance of `MatchScanner` to handle detailed GRE parsing.
+        card_lookup: An instance of `ArenaCardDatabase` for card data.
+    """
     def __init__(self, card_lookup: ArenaCardDatabase):
         self.scanner = MatchScanner()
         self.card_lookup = card_lookup
         self._json_buffer: str = ""
         self._json_depth: int = 0
+        self._next_line_event: Optional[str] = None
+        self._draft_callbacks: Dict[str, Callable] = {}
 
-        # Draft event detection
-        self._next_line_event: Optional[str] = None  # For <== events with JSON on next line
-        self._draft_callbacks: Dict[str, Callable] = {}  # Event type -> callback function
+    def register_draft_callback(self, event_type: str, callback: Callable) -> None:
+        """Registers a callback function for a specific draft event type.
 
-    def register_draft_callback(self, event_type: str, callback: Callable):
-        """Register a callback for a specific draft event type"""
+        When a draft-related log event of the given type is detected, the
+        provided callback function will be executed with the parsed event data.
+
+        Args:
+            event_type: The name of the draft event (e.g., "Draft.Notify").
+            callback: The function to call when the event occurs.
+        """
         self._draft_callbacks[event_type] = callback
         logging.info(f"Registered draft callback for event type: {event_type}")
 
@@ -1209,6 +1428,21 @@ class GameStateManager:
         return False
 
     def parse_log_line(self, line: str) -> bool:
+        """Processes a single line from the log file.
+
+        This method handles two main tasks:
+        1. It identifies and parses special draft-related events, dispatching
+           them to registered callbacks.
+        2. It buffers lines to reconstruct potentially multi-line JSON objects,
+           then parses them and passes them to the `MatchScanner`.
+
+        Args:
+            line: A single line of text from the Player.log file.
+
+        Returns:
+            True if the line resulted in a change to the game state,
+            False otherwise.
+        """
         logging.debug(f"Full log line received by GameStateManager: {line}")
 
         # DRAFT EVENTS: Check if this is the JSON line after an end event marker
@@ -1379,6 +1613,18 @@ class GameStateManager:
         return False
 
     def get_current_board_state(self) -> Optional[BoardState]:
+        """Constructs a `BoardState` object from the current scanner data.
+
+        This method aggregates the data parsed by the `MatchScanner` into a
+        structured `BoardState` object. It resolves player and opponent data,
+        categorizes all known `GameObjects` into their respective zones, and
+        attaches the current turn's history.
+
+        Returns:
+            A complete `BoardState` object representing the current game state,
+            or `None` if essential information (like the local player's seat ID)
+            is not yet available.
+        """
         logging.debug("Attempting to get current board state.")
         if not self.scanner.local_player_seat_id:
             logging.debug("No local player seat ID found yet.")
@@ -1524,13 +1770,18 @@ class GameStateManager:
         return board_state
 
     def validate_board_state(self, board_state: BoardState) -> bool:
-        """
-        Validate that board state makes sense before sending to LLM.
-        Returns True if valid, False if something is wrong.
+        """Validates the integrity and consistency of the board state.
 
-        Note: We're lenient with hand count mismatches because:
-        1. Arena's reported hand_count can lag behind actual card detection
-        2. Unknown cards (not in database) are still playable cards
+        This method performs several checks to ensure the board state is logical
+        before it's sent to the AI. This helps prevent the AI from receiving
+        confusing or contradictory information. Key checks include verifying
+        card counts across all zones against the original decklist.
+
+        Args:
+            board_state: The `BoardState` object to validate.
+
+        Returns:
+            True if the board state is considered valid, False otherwise.
         """
         issues = []
         warnings = []
@@ -1585,12 +1836,25 @@ class GameStateManager:
 # ----------------------------------------------------------------------------------
 
 class OllamaClient:
+    """A client for interacting with a local Ollama Large Language Model server.
+
+    This class provides methods to check the server's status, attempt to start
+    the server, and send prompts to a specified model to generate text.
+
+    Attributes:
+        host: The URL of the Ollama server.
+        model: The name of the Ollama model to use for generation.
+    """
     def __init__(self, host: str = "http://localhost:11434", model: str = "mistral:7b"):
         self.host = host
         self.model = model
 
     def is_running(self) -> bool:
-        """Check if Ollama service is running"""
+        """Checks if the Ollama service is running and accessible.
+
+        Returns:
+            True if the service responds successfully, False otherwise.
+        """
         try:
             response = requests.get(f"{self.host}/api/tags", timeout=2)
             return response.status_code == 200
@@ -1598,7 +1862,14 @@ class OllamaClient:
             return False
 
     def start_ollama(self) -> bool:
-        """Try to start Ollama service"""
+        """Attempts to start the Ollama service as a background process.
+
+        This method is designed for convenience, allowing the application to
+        start the Ollama server if it's not already running.
+
+        Returns:
+            True if the service was started successfully, False otherwise.
+        """
         try:
             import subprocess
             # Try to start ollama serve in the background
@@ -1617,6 +1888,14 @@ class OllamaClient:
             return False
 
     def generate(self, prompt: str) -> Optional[str]:
+        """Sends a prompt to the Ollama model and gets a generated response.
+
+        Args:
+            prompt: The text prompt to send to the model.
+
+        Returns:
+            The generated text response as a string, or None if an error occurred.
+        """
         logging.debug(f"Ollama prompt: {prompt[:500]}...")
         try:
             payload = {"model": self.model, "prompt": prompt, "stream": False}
@@ -1634,6 +1913,21 @@ class OllamaClient:
             return None
 
 class AIAdvisor:
+    """The core AI component that generates tactical advice.
+
+    This class constructs detailed prompts based on the current `BoardState`,
+    optionally enhances them with a RAG (Retrieval-Augmented Generation) system
+    for deeper context, and sends them to an Ollama model for advice. It also
+    includes a system prompt to guide the AI's behavior.
+
+    Attributes:
+        client: An `OllamaClient` instance for communicating with the LLM.
+        use_rag: A boolean indicating whether to use the RAG system.
+        rag_system: An instance of the `RAGSystem` if available and enabled.
+        card_db: An `ArenaCardDatabase` instance for card data lookups.
+        last_rag_references: A dictionary caching the last set of references
+            used by the RAG system.
+    """
     SYSTEM_PROMPT = """You are an expert Magic: The Gathering tactical advisor.
 
 CRITICAL RULES:
@@ -1654,8 +1948,8 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
         self.client = OllamaClient(host=ollama_host, model=model)
         self.use_rag = use_rag and RAG_AVAILABLE
         self.rag_system = None
-        self.card_db = card_db  # Store card database for oracle text lookups
-        self.last_rag_references = None  # Track most recent RAG references used
+        self.card_db = card_db
+        self.last_rag_references = None
 
         # Initialize RAG system if enabled
         if self.use_rag:
@@ -1678,6 +1972,18 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                 logging.info("RAG system disabled by configuration")
 
     def get_tactical_advice(self, board_state: BoardState) -> Optional[str]:
+        """Generates tactical advice for the current board state.
+
+        This method builds a prompt from the board state, enhances it with RAG
+        context if enabled, and then queries the LLM for advice.
+
+        Args:
+            board_state: The current `BoardState` of the game.
+
+        Returns:
+            A string containing the AI's tactical advice, or None if no advice
+            was generated.
+        """
         prompt = self._build_prompt(board_state)
 
         # Enhance prompt with RAG context if available
@@ -1706,13 +2012,29 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
         return advice
 
     def get_last_rag_references(self) -> Optional[Dict]:
-        """Get the RAG references from the last tactical advice generation."""
+        """Retrieves the RAG references from the last advice generation.
+
+        Returns:
+            A dictionary containing the rules, stats, and queries used in the
+            last RAG-enhanced prompt, or None if not available.
+        """
         return self.last_rag_references
 
     def check_important_updates(self, board_state: BoardState, previous_board_state: Optional[BoardState]) -> Optional[str]:
-        """
-        Check if there are important changes that warrant immediate notification.
-        Returns advice if important, None if not worth speaking.
+        """Compares the current and previous board states to detect critical changes.
+
+        This method is used for "continuous monitoring" mode. It queries the LLM
+        to determine if a change in the game state (like a significant life
+        total drop or a game-changing card being played) is critical enough
+        to warrant an immediate alert, even during the opponent's turn.
+
+        Args:
+            board_state: The current `BoardState`.
+            previous_board_state: The `BoardState` from the previous check.
+
+        Returns:
+            A string containing an alert message if the change is deemed
+            critical, or None otherwise.
         """
         if not previous_board_state:
             return None
@@ -2114,6 +2436,17 @@ Your response:"""
 # ----------------------------------------------------------------------------------
 
 class TextToSpeech:
+    """Handles text-to-speech generation with automatic fallback.
+
+    This class initializes a primary TTS engine (Kokoro) and a fallback
+    (BarkTTS). If the primary fails, it seamlessly switches to the fallback.
+    It provides a simple `speak` method to generate and play audio from text.
+
+    Attributes:
+        voice: The name of the voice to use.
+        volume: The audio volume, from 0.0 to 1.0.
+        tts_engine: The name of the currently active TTS engine ('kokoro' or 'bark').
+    """
     def __init__(self, voice: str = "adam", volume: float = 1.0, force_engine: str = None):
         """
         Initialize TTS with Kokoro as primary, BarkTTS as fallback.
@@ -2206,18 +2539,34 @@ class TextToSpeech:
             logging.debug(f"BarkTTS initialization failed: {e}")
             return False
 
-    def set_voice(self, voice: str):
-        """Change voice dynamically"""
+    def set_voice(self, voice: str) -> None:
+        """Changes the active voice for TTS generation.
+
+        Args:
+            voice: The name of the new voice to use.
+        """
         self.voice = voice
         logging.info(f"Voice changed to: {voice}")
 
-    def set_volume(self, volume: float):
-        """Set volume (0.0-1.0)"""
+    def set_volume(self, volume: float) -> None:
+        """Sets the audio volume.
+
+        Args:
+            volume: The new volume level, clamped between 0.0 and 1.0.
+        """
         self.volume = max(0.0, min(1.0, volume))
         logging.info(f"Volume changed to: {self.volume}")
 
-    def speak(self, text: str):
-        """Speak text using available TTS engine (Kokoro or Bark)"""
+    def speak(self, text: str) -> None:
+        """Generates and speaks the given text using the active TTS engine.
+
+        This method routes the request to the appropriate engine (Kokoro or Bark)
+        and handles the process of generating audio, saving it to a temporary
+        file, and playing it.
+
+        Args:
+            text: The text to be spoken.
+        """
         if not text:
             logging.debug("No text provided to speak.")
             return
@@ -2326,26 +2675,14 @@ class TextToSpeech:
 # ----------------------------------------------------------------------------------
 
 class AdvisorTUI:
-    """
-    Text User Interface for MTGA Voice Advisor using curses.
+    """A Text User Interface (TUI) for the advisor, built with `curses`.
 
-    Layout:
-    ┌─────────────────────────────────────────────────────────────┐
-    │ Status Bar: Turn 5 | Model: llama3.2 | Voice: am_adam     │
-    ├─────────────────────────────────────────────────────────────┤
-    │                                                             │
-    │ Board State Window (scrollable)                            │
-    │                                                             │
-    ├─────────────────────────────────────────────────────────────┤
-    │                                                             │
-    │ Messages Window (scrollable)                               │
-    │ - Advisor responses                                        │
-    │ - Game events                                              │
-    │ - Command feedback                                         │
-    │                                                             │
-    ├─────────────────────────────────────────────────────────────┤
-    │ You: _                                                      │
-    └─────────────────────────────────────────────────────────────┘
+    This class manages the terminal interface, dividing the screen into sections
+    for status, board state, messages, and user input. It handles rendering,
+    scrolling, and capturing user commands in a non-blocking way.
+
+    Attributes:
+        stdscr: The main `curses` window object.
     """
 
     def __init__(self, stdscr):
@@ -2409,8 +2746,12 @@ class AdvisorTUI:
         self.board_scroll = 0
         self.msg_scroll = 0
 
-    def resize(self):
-        """Handle terminal resize"""
+    def resize(self) -> None:
+        """Handles terminal resize events.
+
+        This method is called when the terminal window is resized. It clears,
+        refreshes, and redraws all the curses windows to fit the new dimensions.
+        """
         try:
             # Update curses internal tracking of terminal size
             curses.update_lines_cols()
@@ -2428,8 +2769,12 @@ class AdvisorTUI:
             # Silently handle resize errors
             pass
 
-    def set_status(self, text: str):
-        """Update status bar"""
+    def set_status(self, text: str) -> None:
+        """Updates the text displayed in the top status bar.
+
+        Args:
+            text: The text to display in the status bar.
+        """
         try:
             self.status_win.clear()
             self.status_win.addstr(0, 0, text[:self.status_win.getmaxyx()[1]-1],
@@ -2438,13 +2783,23 @@ class AdvisorTUI:
         except curses.error:
             pass
 
-    def set_board_state(self, lines: List[str]):
-        """Update board state display"""
+    def set_board_state(self, lines: List[str]) -> None:
+        """Updates the content of the board state window.
+
+        Args:
+            lines: A list of strings to display in the board state window.
+        """
         self.board_state_lines = lines
         self._refresh_board()
 
-    def add_message(self, msg: str, color = 0):
-        """Add message to message log. Color can be string name or int pair ID."""
+    def add_message(self, msg: str, color: any = 0) -> None:
+        """Adds a new message to the message log window.
+
+        Args:
+            msg: The message string to add.
+            color: The color to use for the message. Can be a curses color
+                pair integer or a string key from the `color_map`.
+        """
         timestamp = time.strftime("%H:%M:%S")
         # Convert color string to int if needed
         if isinstance(color, str):
@@ -2528,8 +2883,8 @@ class AdvisorTUI:
         except curses.error:
             pass
 
-    def refresh_all(self):
-        """Refresh all windows"""
+    def refresh_all(self) -> None:
+        """Refreshes all windows in the TUI to redraw their content."""
         try:
             self.status_win.refresh()
         except:
@@ -2538,10 +2893,19 @@ class AdvisorTUI:
         self._refresh_messages()
         self._refresh_input()
 
-    def get_input(self, callback: Callable[[str], None]):
-        """
-        Get user input (non-blocking with callback).
-        Call this in a loop to handle input.
+    def get_input(self, callback: Callable[[str], None]) -> bool:
+        """Handles user input in a non-blocking way.
+
+        This method should be called repeatedly in the main loop. It checks for
+        keyboard input, processes it (e.g., for scrolling, text entry), and
+        invokes the callback when the user submits a command.
+
+        Args:
+            callback: A function to be called when the user presses Enter.
+                It receives the submitted input string.
+
+        Returns:
+            True if the TUI should continue running, False on exit.
         """
         self.input_callback = callback
         self._refresh_input()
@@ -2597,8 +2961,17 @@ class AdvisorTUI:
             self.running = False
             return False
 
-    def show_popup(self, lines: List[str], title: str = ""):
-        """Show a temporary popup overlay (press any key to dismiss)"""
+    def show_popup(self, lines: List[str], title: str = "") -> None:
+        """Displays a temporary popup window in the center of the screen.
+
+        This method creates a modal overlay that displays a list of strings.
+        It waits for the user to press any key before closing the popup and
+        redrawing the main interface.
+
+        Args:
+            lines: A list of strings to display as the content of the popup.
+            title: An optional title to display at the top of the popup.
+        """
         try:
             if not lines:
                 return
@@ -2650,14 +3023,18 @@ class AdvisorTUI:
         except Exception as e:
             pass
 
-    def show_settings_menu(self, settings_callback):
-        """
-        Show interactive settings menu.
+    def show_settings_menu(self, settings_callback: Callable) -> None:
+        """Displays an interactive settings menu.
+
+        This method shows a popup that allows the user to view and change
+        various application settings, such as the AI model, TTS voice, and
+        volume. User interactions are handled via the provided callback.
 
         Args:
-            settings_callback: Function to call with (setting_name, new_value)
-
-        Returns tuple of (models_list, kokoro_voices_list, bark_voices_list, current_model, current_voice, current_volume, current_tts)
+            settings_callback: A function that handles getting and setting
+                the configuration values. It is called with `('get_values', None)`
+                to retrieve the initial state and with `(setting_name, new_value)`
+                when a setting is changed.
         """
         try:
             height, width = self.stdscr.getmaxyx()
@@ -2766,8 +3143,12 @@ class AdvisorTUI:
         except Exception as e:
             pass
 
-    def cleanup(self):
-        """Cleanup curses"""
+    def cleanup(self) -> None:
+        """Restores the terminal to its normal state.
+
+        This method should be called before the application exits to ensure
+        the terminal is not left in the curses mode.
+        """
         curses.nocbreak()
         self.stdscr.keypad(False)
         curses.echo()
@@ -2778,6 +3159,20 @@ class AdvisorTUI:
 # ----------------------------------------------------------------------------------
 
 class AdvisorGUI:
+    """The main class for the Tkinter-based Graphical User Interface.
+
+    This class builds and manages all the widgets for the GUI, including the
+    settings panel, board state display, message log, and RAG references. It
+    communicates with the main `CLIVoiceAdvisor` instance to get data and
+    send user commands. Updates are handled in a thread-safe manner using a
+    message queue.
+
+    Attributes:
+        root: The root Tkinter window.
+        advisor: A reference to the main `CLIVoiceAdvisor` application instance.
+        prefs: An instance of `UserPreferences` for saving and loading settings.
+        message_queue: A thread-safe queue for displaying messages from the backend.
+    """
     def __init__(self, root, advisor_ref):
         self.root = root
         self.advisor = advisor_ref
@@ -3474,17 +3869,42 @@ class AdvisorGUI:
             self.rag_toggle_btn.config(text="[Collapse]")
             self.rag_panel_expanded = True
 
-    def add_message(self, message, color='white'):
-        """Thread-safe message adding"""
+    def add_message(self, message: str, color: str = 'white') -> None:
+        """Adds a message to the GUI's message queue in a thread-safe manner.
+
+        The message will be displayed in the advisor message area during the
+        next GUI update cycle.
+
+        Args:
+            message: The text of the message to display.
+            color: The color to use for the message text.
+        """
         self.message_queue.append((message, color))
 
-    def set_board_state(self, lines):
-        """Thread-safe board state update"""
+    def set_board_state(self, lines: List[str]) -> None:
+        """Updates the board state display in a thread-safe manner.
+
+        The new board state will be rendered during the next GUI update cycle.
+
+        Args:
+            lines: A list of strings representing the board state.
+        """
         self.board_state_lines = lines
         self._pending_board_update = True
 
-    def set_draft_panes(self, pack_lines, picked_lines, picked_count=0, total_needed=45):
-        """Set draft pack in board pane and picked cards in messages pane"""
+    def set_draft_panes(self, pack_lines: List[str], picked_lines: List[str], picked_count: int = 0, total_needed: int = 45) -> None:
+        """Configures the GUI panes for draft mode.
+
+        In draft mode, the main "board state" pane is used to display the
+        current draft pack, while the "advisor" pane shows the list of cards
+        picked so far.
+
+        Args:
+            pack_lines: Lines of text representing the current draft pack.
+            picked_lines: Lines of text for the picked cards display.
+            picked_count: The number of cards currently picked.
+            total_needed: The total number of cards to be picked in the draft.
+        """
         # Update board pane with draft pack
         self.board_state_lines = pack_lines
         self._pending_board_update = True
@@ -3510,18 +3930,39 @@ class AdvisorGUI:
         else:
             self.draft_counter_label.config(text="")
 
-    def reset_pane_labels(self):
-        """Reset pane labels to default (non-draft mode)"""
+    def reset_pane_labels(self) -> None:
+        """Resets the labels of the main panes to their default gameplay state.
+
+        This is called after a draft is complete to revert the UI from
+        "Draft Pool" / "Drafted" back to "Board State" / "Advisor".
+        """
         self.board_label.config(text="═══ BOARD STATE ═══")
         self.advisor_label.config(text="═══ ADVISOR ═══")
         self.draft_counter_label.config(text="")  # Hide counter
 
-    def set_status(self, status_text):
-        """Update status bar"""
+    def set_status(self, status_text: str) -> None:
+        """Updates the text in the top status bar of the GUI.
+
+        Args:
+            status_text: The text to display.
+        """
         self.status_label.config(text=status_text)
 
-    def update_settings(self, models, voices, bark_voices, current_model, current_voice, volume, tts_engine):
-        """Update settings dropdowns"""
+    def update_settings(self, models: List[str], voices: List[str], bark_voices: List[str], current_model: str, current_voice: str, volume: int, tts_engine: str) -> None:
+        """Populates the settings widgets with the current configuration values.
+
+        This is called on initialization and whenever settings are changed
+        programmatically (e.g., when switching TTS engines).
+
+        Args:
+            models: A list of available Ollama model names.
+            voices: A list of available Kokoro voice names.
+            bark_voices: A list of available BarkTTS voice names.
+            current_model: The currently selected AI model.
+            current_voice: The currently selected TTS voice.
+            volume: The current volume level (0-100).
+            tts_engine: The name of the active TTS engine ('kokoro' or 'bark').
+        """
         self.model_dropdown['values'] = models
         self.model_var.set(current_model)
 
@@ -3588,8 +4029,13 @@ class AdvisorGUI:
             self.prefs.always_on_top = state
             self.prefs.save()
 
-    def on_closing(self):
-        """Handle window close event - save preferences before exiting"""
+    def on_closing(self) -> None:
+        """Handles the window close event.
+
+        This method is bound to the window's close button. It saves all current
+        GUI settings and the window's geometry to the user preferences file
+        before destroying the window.
+        """
         # Save all settings to preferences
         if self.prefs:
             self.prefs.opponent_turn_alerts = self.continuous_var.get()
@@ -4256,8 +4702,8 @@ Show Spider-Man Reskins: {self.reskin_var.get()}
             logging.error(f"Error in manual deck suggestion: {e}")
             self.add_message(f"✗ Error generating suggestions: {e}", "red")
 
-    def cleanup(self):
-        """Cleanup GUI"""
+    def cleanup(self) -> None:
+        """Performs cleanup operations for the GUI."""
         self.running = False
 
 # ----------------------------------------------------------------------------------
@@ -4265,6 +4711,18 @@ Show Spider-Man Reskins: {self.reskin_var.get()}
 # ----------------------------------------------------------------------------------
 
 class CLIVoiceAdvisor:
+    """The main application class.
+
+    This class orchestrates all the major components of the application:
+    - Kicks off the log monitoring.
+    - Manages the game state through the `GameStateManager`.
+    - Coordinates with the `AIAdvisor` to get tactical advice.
+    - Handles Text-to-Speech output.
+    - Runs the user interface (CLI, TUI, or GUI).
+    - Manages draft events and deck building suggestions.
+
+    It serves as the central hub connecting all the different modules.
+    """
     # Available voices in Kokoro v1.0
     AVAILABLE_VOICES = ["af_alloy", "af_bella", "af_heart", "af_jessica", "af_kore", "af_nicole",
                         "af_nova", "af_river", "af_sarah", "af_sky", "am_adam", "am_echo",
@@ -5131,8 +5589,12 @@ class CLIVoiceAdvisor:
             import traceback
             traceback.print_exc()
 
-    def run(self):
-        """Start the advisor with background log monitoring and interactive CLI"""
+    def run(self) -> None:
+        """Starts the main application.
+
+        This method determines which user interface to run (GUI, TUI, or CLI)
+        and launches the appropriate main loop.
+        """
         if self.use_gui:
             self.run_gui()
             return
@@ -5160,8 +5622,12 @@ class CLIVoiceAdvisor:
         # Interactive CLI loop
         self._run_cli_loop()
 
-    def run_tui(self):
-        """Start the advisor with TUI interface"""
+    def run_tui(self) -> None:
+        """Starts the application in Text User Interface (TUI) mode.
+
+        This method initializes the `curses`-based TUI, starts the background
+        log monitoring thread, and enters the main TUI event loop.
+        """
         def _tui_main(stdscr):
             # Initialize TUI
             self.tui = AdvisorTUI(stdscr)
@@ -5220,8 +5686,12 @@ class CLIVoiceAdvisor:
 
         curses.wrapper(_tui_main)
 
-    def run_gui(self):
-        """Start the advisor with Tkinter GUI interface"""
+    def run_gui(self) -> None:
+        """Starts the application in Graphical User Interface (GUI) mode.
+
+        This method initializes the Tkinter GUI, starts the background log
+        monitoring thread, and enters the Tkinter main event loop.
+        """
         if not TKINTER_AVAILABLE:
             print("ERROR: Tkinter is not available. Install with: sudo apt-get install python3-tk")
             exit(1)
@@ -5637,8 +6107,16 @@ Provide a concise answer (1-2 sentences) based on the board state.
 
         self.tui.show_settings_menu(settings_callback)
 
-    def on_line(self, line: str):
-        """Parse log line and update game state"""
+    def on_line(self, line: str) -> None:
+        """The callback function for processing new log lines.
+
+        This method is called by the `LogFollower` for each new line detected
+        in the log file. It passes the line to the `GameStateManager` and, if
+        the state changes, triggers a check for a decision point.
+
+        Args:
+            line: The new line from the log file.
+        """
         logging.debug(f"Received line in on_line: {line[:100]}...")
         state_changed = self.game_state_mgr.parse_log_line(line)
         if state_changed:
