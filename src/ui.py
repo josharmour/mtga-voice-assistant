@@ -940,13 +940,91 @@ class AdvisorGUI:
             self.root.quit()
 
     def _capture_bug_report(self):
-        """Capture bug report (F12)."""
-        try:
-            # Simple placeholder for bug report
-            logging.info("Bug report requested")
-            # In a full implementation, this would capture logs and system info
-        except Exception as e:
-            logging.error(f"Error capturing bug report: {e}")
+        """Capture bug report with screenshot, logs, and board state"""
+        import threading
+        import subprocess
+        import os
+        import time
+
+        def capture_in_background():
+            try:
+                # Create bug_reports directory if it doesn't exist
+                bug_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bug_reports")
+                os.makedirs(bug_dir, exist_ok=True)
+
+                # Generate timestamp for this report
+                timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+                report_file = os.path.join(bug_dir, f"bug_report_{timestamp}.txt")
+                screenshot_file = os.path.join(bug_dir, f"screenshot_{timestamp}.png")
+
+                # Take screenshot using gnome-screenshot or scrot
+                try:
+                    subprocess.run(['gnome-screenshot', '-f', screenshot_file],
+                                 timeout=2, check=False, capture_output=True)
+                except:
+                    try:
+                        subprocess.run(['scrot', screenshot_file],
+                                     timeout=2, check=False, capture_output=True)
+                    except:
+                        screenshot_file = "Screenshot failed (install gnome-screenshot or scrot)"
+
+                # Collect current state
+                board_state_text = "\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
+
+                # Read recent logs (last 300 lines)
+                recent_logs = ""
+                log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "advisor.log")
+                try:
+                    with open(log_path, "r") as f:
+                        lines = f.readlines()
+                        recent_logs = "".join(lines[-300:])
+                except Exception as e:
+                    recent_logs = f"Failed to read logs: {e}"
+
+                # Get current settings
+                settings = f"""Model: {self.model_var.get() if hasattr(self, 'model_var') else 'N/A'}
+Voice: {self.voice_var.get() if hasattr(self, 'voice_var') else 'N/A'}
+TTS Engine: {self.tts_engine_var.get() if hasattr(self, 'tts_engine_var') else 'N/A'}
+Volume: {self.volume_var.get() if hasattr(self, 'volume_var') else 'N/A'}%
+Continuous Monitoring: {self.continuous_var.get() if hasattr(self, 'continuous_var') else 'N/A'}
+Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_var') else 'N/A'}
+"""
+
+                # Write bug report
+                with open(report_file, "w") as f:
+                    f.write("="*70 + "\n")
+                    f.write(f"BUG REPORT - {timestamp}\n")
+                    f.write("="*70 + "\n\n")
+
+                    f.write("SCREENSHOT:\n")
+                    f.write(f"{screenshot_file}\n\n")
+
+                    f.write("="*70 + "\n")
+                    f.write("CURRENT SETTINGS:\n")
+                    f.write("="*70 + "\n")
+                    f.write(settings + "\n")
+
+                    f.write("="*70 + "\n")
+                    f.write("CURRENT BOARD STATE:\n")
+                    f.write("="*70 + "\n")
+                    f.write(board_state_text + "\n\n")
+
+                    f.write("="*70 + "\n")
+                    f.write("RECENT LOGS (last 300 lines):\n")
+                    f.write("="*70 + "\n")
+                    f.write(recent_logs + "\n")
+
+                # Show success message
+                self.add_message(f"✓ Bug report saved: {report_file}", "green")
+                logging.info(f"Bug report captured: {report_file}")
+
+            except Exception as e:
+                self.add_message(f"✗ Bug report failed: {e}", "red")
+                logging.error(f"Failed to capture bug report: {e}")
+
+        # Run in background thread so it doesn't freeze the UI
+        threading.Thread(target=capture_in_background, daemon=True).start()
+        self.add_message("📸 Capturing bug report...", "cyan")
 
     def _manual_deck_suggestion(self):
         """Request manual deck suggestion."""
