@@ -3774,6 +3774,40 @@ class AdvisorGUI:
                 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
                 report_file = f"{bug_dir}/bug_report_{timestamp}.txt"
 
+                # Ask user if they want to add a title and description
+                add_details = False
+                issue_title = f"Bug Report: {timestamp}"
+                user_description = "No description provided."
+
+                try:
+                    from tkinter import messagebox, simpledialog
+                    if hasattr(self, 'root') and self.root.winfo_exists():
+                        add_details = messagebox.askyesno(
+                            "Bug Report Details",
+                            "Do you want to add a title and description to this bug report?",
+                            parent=self.root
+                        )
+                        if add_details:
+                            # Prompt for title
+                            title_prompt = simpledialog.askstring(
+                                "Bug Report Title",
+                                "Enter a title for the bug report (or leave blank for default):",
+                                parent=self.root
+                            )
+                            if title_prompt and title_prompt.strip():
+                                issue_title = title_prompt.strip()
+
+                            # Prompt for description
+                            desc_prompt = simpledialog.askstring(
+                                "Bug Report Description",
+                                "Please describe the bug:",
+                                parent=self.root
+                            )
+                            if desc_prompt and desc_prompt.strip():
+                                user_description = desc_prompt.strip()
+                except (ImportError, tk.TclError) as e:
+                    logging.debug(f"GUI not available for bug report details: {e}")
+
                 # Take screenshot using intelligent multi-tool detection
                 screenshot_file = "Screenshot not available"
                 if CONFIG_MANAGER_AVAILABLE:
@@ -3892,8 +3926,11 @@ Show Spider-Man Reskins: {self.reskin_var.get()}
                 # Write bug report
                 with open(report_file, "w") as f:
                     f.write("="*70 + "\n")
-                    f.write(f"BUG REPORT - {timestamp}\n")
+                    f.write(f"BUG REPORT: {issue_title}\n")
                     f.write("="*70 + "\n\n")
+
+                    f.write("USER DESCRIPTION:\n")
+                    f.write(f"{user_description}\n\n")
 
                     f.write("SCREENSHOT:\n")
                     f.write(f"{screenshot_file}\n\n")
@@ -3942,8 +3979,6 @@ Show Spider-Man Reskins: {self.reskin_var.get()}
                 # Attempt GitHub upload if token was provided
                 if github_token:
                     # Create GitHub issue
-                    issue_title = f"Bug Report: {timestamp}"
-
                     # Build issue body
                     issue_body_parts = []
 
@@ -3953,6 +3988,9 @@ Show Spider-Man Reskins: {self.reskin_var.get()}
                         issue_body_parts.append("")
 
                     issue_body_parts.extend([
+                        "**Description:**",
+                        user_description,
+                        "",
                         "**Settings:**",
                         "```",
                         settings,
