@@ -103,6 +103,122 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
             else:
                 logging.info("RAG system disabled by configuration")
 
+    def _build_prompt(self, board_state: "BoardState") -> str:
+        """Build comprehensive prompt with all zones and game history"""
+        lines = [
+            f"== GAME STATE: Turn {board_state.current_turn}, {board_state.current_phase} Phase ==",
+            f"Your life: {board_state.your_life} | Opponent life: {board_state.opponent_life}",
+            f"Your library: {board_state.your_library_count} cards | Opponent library: {board_state.opponent_library_count} cards",
+            "",
+        ]
+
+        # Game History - what happened this turn
+        if board_state.history and board_state.history.turn_number == board_state.current_turn:
+            history = board_state.history
+            if history.cards_played_this_turn or history.died_this_turn or history.lands_played_this_turn:
+                lines.append("== THIS TURN ==")
+                if history.cards_played_this_turn:
+                    played_names = [c.name for c in history.cards_played_this_turn]
+                    lines.append(f"Cards played: {', '.join(played_names)}")
+                if history.lands_played_this_turn > 0:
+                    lines.append(f"Lands played: {history.lands_played_this_turn}")
+                if history.died_this_turn:
+                    lines.append(f"Creatures died: {', '.join(history.died_this_turn)}")
+                lines.append("")
+
+        # Hand - with oracle text
+        if board_state.your_hand:
+            lines.append(f"== YOUR HAND ({len(board_state.your_hand)}) ==")
+            for card in board_state.your_hand:
+                card_info = f"• {card.name}"
+                # Add oracle text if available
+                if self.card_db and card.grp_id:
+                    oracle_text = self.card_db.get_oracle_text(card.grp_id)
+                    if oracle_text:
+                        card_info += f"\n  ({oracle_text})"
+                lines.append(card_info)
+            lines.append("")
+        else:
+            lines.append("== YOUR HAND == (empty)")
+            lines.append("")
+
+        # Battlefield - with tapped/untapped status and oracle text
+        if board_state.your_battlefield:
+            lines.append(f"== YOUR BATTLEFIELD ({len(board_state.your_battlefield)}) ==")
+            for card in board_state.your_battlefield:
+                status_flags = []
+                if card.is_tapped:
+                    status_flags.append("TAPPED")
+                if card.summoning_sick:
+                    status_flags.append("summoning sick")
+                if card.is_attacking:
+                    status_flags.append("ATTACKING")
+                if card.counters:
+                    counter_str = ", ".join([f"{v} {k}" for k, v in card.counters.items()])
+                    status_flags.append(f"counters: {counter_str}")
+                if card.attached_to:
+                    status_flags.append(f"attached to instance {card.attached_to}")
+
+                status_text = f" ({', '.join(status_flags)})" if status_flags else ""
+                power_toughness = f" [{card.power}/{card.toughness}]" if card.power is not None else ""
+                card_line = f"• {card.name}{power_toughness}{status_text}"
+
+                # Add oracle text if available
+                if self.card_db and card.grp_id:
+                    oracle_text = self.card_db.get_oracle_text(card.grp_id)
+                    if oracle_text:
+                        card_line += f"\n  ({oracle_text})"
+
+                lines.append(card_line)
+            lines.append("")
+        else:
+            lines.append("== YOUR BATTLEFIELD == (empty)")
+            lines.append("")
+
+        # Opponent's battlefield
+        if board_state.opponent_battlefield:
+            lines.append(f"== OPPONENT BATTLEFIELD ({len(board_state.opponent_battlefield)}) ==")
+            for card in board_state.opponent_battlefield:
+                status_flags = []
+                if card.is_tapped:
+                    status_flags.append("TAPPED")
+                if card.is_attacking:
+                    status_flags.append("ATTACKING")
+                if card.counters:
+                    counter_str = ", ".join([f"{v} {k}" for k, v in card.counters.items()])
+                    status_flags.append(f"counters: {counter_str}")
+
+                status_text = f" ({', '.join(status_flags)})" if status_flags else ""
+                power_toughness = f" [{card.power}/{card.toughness}]" if card.power is not None else ""
+                card_line = f"• {card.name}{power_toughness}{status_text}"
+
+                # Add oracle text if available
+                if self.card_db and card.grp_id:
+                    oracle_text = self.card_db.get_oracle_text(card.grp_id)
+                    if oracle_text:
+                        card_line += f"\n  ({oracle_text})"
+
+                lines.append(card_line)
+            lines.append("")
+        else:
+            lines.append("== OPPONENT BATTLEFIELD == (empty)")
+            lines.append("")
+
+        # Graveyards
+        if board_state.your_graveyard:
+            graveyard_names = [c.name for c in board_state.your_graveyard]
+            lines.append(f"== YOUR GRAVEYARD ({len(graveyard_names)}) ==")
+            lines.append(", ".join(graveyard_names))
+            lines.append("")
+
+        if board_state.opponent_graveyard:
+            opp_graveyard_names = [c.name for c in board_state.opponent_graveyard]
+            lines.append(f"== OPPONENT GRAVEYARD ({len(opp_graveyard_names)}) ==")
+            lines.append(", ".join(opp_graveyard_names))
+            lines.append("")
+
+        return "\n".join(lines)
+
     def get_tactical_advice(self, board_state: "BoardState") -> Optional[str]:
         prompt = self._build_prompt(board_state)
 
