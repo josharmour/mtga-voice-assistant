@@ -76,7 +76,7 @@ Optional enhancement system (`rag_advisor.py`) with three complementary database
 2. **Card Metadata DB** (`data/card_metadata.db`)
    - Card attributes: colors, mana cost, types, rarity
    - ~22,509 cards from 17lands API
-   - Downloaded via `manage_data.py --update-17lands`
+   - Downloaded via `manage_data.py --update-scryfall`
 
 3. **Rules Vector DB** (`data/chromadb/`)
    - MTG Comprehensive Rules with semantic search

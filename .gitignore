@@ -44,6 +44,7 @@ local-docs/
 
 # Ignore large data files
 data/*.csv
+data/scryfall_cache.db
 
 # Configuration file with credentials
 config.py
