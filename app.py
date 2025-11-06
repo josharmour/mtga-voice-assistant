@@ -192,10 +192,10 @@ class CLIVoiceAdvisor:
         if not use_tui:
             print("Loading card database...")
 
-        card_db = ArenaCardDatabase()
+        self.card_db = ArenaCardDatabase()
         if not use_tui:
-            if card_db.conn:
-                cursor = card_db.conn.cursor()
+            if self.card_db.conn:
+                cursor = self.card_db.conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM cards")
                 total = cursor.fetchone()[0]
                 print(f"✓ Loaded unified card database ({total:,} cards)")
@@ -222,8 +222,8 @@ class CLIVoiceAdvisor:
         elif not use_tui:
             print("✓ Ollama service is running")
 
-        self.game_state_mgr = GameStateManager(card_db)
-        self.ai_advisor = AIAdvisor(card_db=card_db)
+        self.game_state_mgr = GameStateManager(self.card_db)
+        self.ai_advisor = AIAdvisor(card_db=self.card_db)
         self.tts = TextToSpeech(voice="am_adam", volume=1.0)
         self.log_follower = LogFollower(self.log_path)
 
@@ -233,7 +233,7 @@ class CLIVoiceAdvisor:
             try:
                 rag_system = self.ai_advisor.rag_system if hasattr(self.ai_advisor, 'rag_system') else None
                 ollama_client = self.ai_advisor.client if hasattr(self.ai_advisor, 'client') else None
-                self.draft_advisor = DraftAdvisor(card_db, rag_system, ollama_client)
+                self.draft_advisor = DraftAdvisor(self.card_db, rag_system, ollama_client)
 
                 # Register draft event callbacks with GameStateManager
                 self.game_state_mgr.register_draft_callback("EventGetCoursesV2", self._on_draft_pool)
@@ -987,6 +987,10 @@ class CLIVoiceAdvisor:
         self.tk_root = tk.Tk()
         self.gui = AdvisorGUI(self.tk_root, self)
 
+        # Set card database for log highlighting
+        if hasattr(self.gui, 'set_card_database'):
+            self.gui.set_card_database(self.card_db)
+
         # Initialize settings
         self.gui.update_settings(
             self.available_models,
@@ -1378,6 +1382,20 @@ Provide a concise answer (1-2 sentences) based on the board state.
     def on_line(self, line: str):
         """Parse log line and update game state"""
         logging.debug(f"Received line in on_line: {line[:100]}...")
+
+        # Display log line in GUI with color-coding
+        if self.use_gui and self.gui and hasattr(self.gui, 'add_log_line'):
+            try:
+                # Detect items in the log line using log highlighter
+                detected_items = []
+                if hasattr(self.gui, 'log_highlighter'):
+                    detected_items = self.gui.log_highlighter.get_detected_items(line)
+
+                # Add log line to GUI logs pane
+                self.gui.add_log_line(line, detected_items)
+            except Exception as e:
+                logging.debug(f"Error adding log line to GUI: {e}")
+
         state_changed = self.game_state_mgr.parse_log_line(line)
         if state_changed:
             logging.debug("Game state changed. Checking for decision point.")

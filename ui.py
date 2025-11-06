@@ -684,6 +684,117 @@ class AdvisorTUI:
         curses.echo()
         curses.endwin()
 
+
+class LogHighlighter:
+    """Highlights and color-codes MTGA log lines based on detected game items."""
+
+    def __init__(self, card_db=None):
+        """Initialize log highlighter with optional card database."""
+        self.card_db = card_db
+
+        # Color scheme
+        self.colors = {
+            "card_detected": "#00ff88",      # Green - card found and resolved
+            "grpid": "#55aaff",               # Blue - grpId/Arena ID detected
+            "draft_event": "#ffff00",         # Yellow - draft-related event
+            "game_event": "#88ffff",          # Cyan - game event
+            "error": "#ff5555",               # Red - error or unknown
+            "default": "#ffffff",             # White - normal text
+        }
+
+        # Pattern detection
+        self.patterns = {
+            "grpid": r"\b(\d{6})\b",         # 6-digit grpId
+            "arena_id": r"ArenaID:(\d+)",    # ArenaID:NNNN format
+            "card_name": r"name:([^,\]]+)",  # name:CardName format
+        }
+
+    def get_detected_items(self, log_line: str) -> List[dict]:
+        """
+        Extract and resolve detected items from a log line.
+
+        Returns list of dicts with: {text, type, resolved_name, color, position}
+        """
+        import re
+        detected = []
+
+        # Check for grpIds (6-digit numbers)
+        for match in re.finditer(r'\b(\d{6})\b', log_line):
+            grp_id = int(match.group(1))
+            resolved_name = None
+            color = self.colors["grpid"]
+
+            # Try to resolve using card database
+            if self.card_db:
+                try:
+                    resolved_name = self.card_db.get_card_name(grp_id)
+                    color = self.colors["card_detected"]
+                except Exception:
+                    pass
+
+            detected.append({
+                "text": match.group(1),
+                "type": "grpid",
+                "resolved_name": resolved_name,
+                "color": color,
+                "position": (match.start(), match.end()),
+            })
+
+        # Check for arena IDs
+        for match in re.finditer(r'ArenaID:(\d+)', log_line):
+            detected.append({
+                "text": match.group(0),
+                "type": "arena_id",
+                "resolved_name": None,
+                "color": self.colors["grpid"],
+                "position": (match.start(), match.end()),
+            })
+
+        # Detect draft events
+        draft_keywords = ["Draft", "PackNumber", "PickNumber", "DraftId", "DraftPack"]
+        if any(keyword in log_line for keyword in draft_keywords):
+            detected.append({
+                "text": "DRAFT_EVENT",
+                "type": "draft_event",
+                "resolved_name": None,
+                "color": self.colors["draft_event"],
+                "position": (0, 0),  # Metadata only, not positioned
+            })
+
+        # Detect game events
+        game_keywords = ["GameStage", "GRE_", "Zone", "PlayerState", "Turn"]
+        if any(keyword in log_line for keyword in game_keywords):
+            detected.append({
+                "text": "GAME_EVENT",
+                "type": "game_event",
+                "resolved_name": None,
+                "color": self.colors["game_event"],
+                "position": (0, 0),  # Metadata only, not positioned
+            })
+
+        return detected
+
+    def get_event_summary(self, log_line: str, detected: List[dict]) -> str:
+        """Generate a summary of detected events for status display."""
+        summary_parts = []
+
+        if any(d["type"] == "draft_event" for d in detected):
+            summary_parts.append("📦 Draft")
+
+        if any(d["type"] == "game_event" for d in detected):
+            summary_parts.append("🎮 Game")
+
+        cards_found = [d for d in detected if d["resolved_name"]]
+        if cards_found:
+            summary_parts.append(f"🃏 {len(cards_found)} card(s)")
+
+        grpids_found = [d for d in detected if d["type"] == "grpid"]
+        if grpids_found and not cards_found:
+            summary_parts.append(f"🔍 {len(grpids_found)} ID(s)")
+
+        return " | ".join(summary_parts) if summary_parts else ""
+
+
 class AdvisorGUI:
     def __init__(self, root, advisor_ref):
         self.root = root
@@ -716,6 +827,7 @@ class AdvisorGUI:
         self.bg_color = '#2b2b2b'
         self.fg_color = '#ffffff'
         self.accent_color = '#00ff88'
+        self.success_color = '#00ff88'    # Green for success/logs
         self.warning_color = '#ff5555'
         self.info_color = '#55aaff'
 
@@ -1042,6 +1154,55 @@ class AdvisorGUI:
         self.messages_text.tag_config('red', foreground='#ff5555')
         self.messages_text.tag_config('white', foreground='#ffffff')
 
+        # MTGA Logs panel
+        logs_header_frame = tk.Frame(content_frame, bg=self.bg_color)
+        logs_header_frame.pack(pady=(10, 5), fill=tk.X)
+
+        self.logs_label = tk.Label(
+            logs_header_frame,
+            text="═══ MTGA LOGS (COLOR-CODED) ═══",
+            bg=self.bg_color,
+            fg=self.success_color,
+            font=('Consolas', 10, 'bold')
+        )
+        self.logs_label.pack(side=tk.LEFT, expand=True)
+
+        # Toggle button for logs
+        self.logs_toggle_btn = tk.Button(
+            logs_header_frame,
+            text="[Collapse]",
+            bg='#1a1a1a',
+            fg=self.success_color,
+            font=('Consolas', 8),
+            relief=tk.FLAT,
+            command=self._toggle_logs_panel
+        )
+        self.logs_toggle_btn.pack(side=tk.RIGHT, padx=5)
+
+        self.logs_text = scrolledtext.ScrolledText(
+            content_frame,
+            height=8,
+            bg='#1a1a1a',
+            fg=self.fg_color,
+            font=('Consolas', 8),
+            relief=tk.FLAT,
+            padx=10,
+            pady=10
+        )
+        self.logs_text.pack(fill=tk.BOTH, expand=True)
+        self.logs_text.config(state=tk.DISABLED)
+
+        # Configure color tags for logs
+        self.logs_text.tag_config('card_detected', foreground='#00ff88')  # Green
+        self.logs_text.tag_config('grpid', foreground='#55aaff')         # Blue
+        self.logs_text.tag_config('draft_event', foreground='#ffff00')    # Yellow
+        self.logs_text.tag_config('game_event', foreground='#88ffff')     # Cyan
+        self.logs_text.tag_config('error', foreground='#ff5555')          # Red
+        self.logs_text.tag_config('default', foreground='#ffffff')        # White
+
+        # Initialize log highlighter
+        self.log_highlighter = LogHighlighter(card_db=None)  # Will be set in __init__
+
         # RAG References panel (bottom)
         rag_header_frame = tk.Frame(content_frame, bg=self.bg_color)
         rag_header_frame.pack(pady=(10, 5), fill=tk.X)
@@ -1117,6 +1278,18 @@ class AdvisorGUI:
                 self.rag_toggle_btn.config(text="[Collapse]")
         except Exception as e:
             logging.error(f"Error toggling RAG panel: {e}")
+
+    def _toggle_logs_panel(self):
+        """Toggle MTGA logs panel visibility."""
+        try:
+            if self.logs_text.winfo_viewable():
+                self.logs_text.pack_forget()
+                self.logs_toggle_btn.config(text="[Expand]")
+            else:
+                self.logs_text.pack(fill=tk.BOTH, expand=True)
+                self.logs_toggle_btn.config(text="[Collapse]")
+        except Exception as e:
+            logging.error(f"Error toggling logs panel: {e}")
 
     def _on_exit(self):
         """Handle exit button click."""
@@ -1724,6 +1897,14 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
         except Exception as e:
             logging.error(f"Error updating GUI settings: {e}")
 
+    def set_card_database(self, card_db):
+        """Set the card database for log highlighting."""
+        try:
+            if hasattr(self, 'log_highlighter'):
+                self.log_highlighter.card_db = card_db
+        except Exception as e:
+            logging.error(f"Error setting card database: {e}")
+
     def set_status(self, text: str):
         """Update status display (currently a no-op for GUI, but required for compatibility)."""
         try:
@@ -1783,3 +1964,74 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
 
         except Exception as e:
             logging.error(f"Error adding message: {e}")
+
+    def add_log_line(self, log_line: str, detected_items: List = None):
+        """
+        Add a log line to the logs display with color-coded detected items.
+
+        Args:
+            log_line: The raw log line text
+            detected_items: List of detected items with color/type info (from LogHighlighter)
+        """
+        try:
+            if not hasattr(self, 'logs_text'):
+                return
+
+            import time
+            timestamp = time.strftime("%H:%M:%S")
+
+            self.logs_text.config(state=tk.NORMAL)
+
+            # Add timestamp
+            self.logs_text.insert(tk.END, f"[{timestamp}] ")
+
+            # If no detected items, just add the line normally
+            if not detected_items:
+                self.logs_text.insert(tk.END, log_line + '\n')
+                self.logs_text.config(state=tk.DISABLED)
+                self.logs_text.see(tk.END)
+                return
+
+            # Process detected items - need to add text with color tags intelligently
+            # For now, add the full line with a summary tag if items were detected
+            has_card = any(d.get("resolved_name") for d in detected_items)
+            has_draft = any(d.get("type") == "draft_event" for d in detected_items)
+            has_game = any(d.get("type") == "game_event" for d in detected_items)
+
+            # Determine the primary tag based on what was detected
+            tag = None
+            if has_card:
+                tag = "card_detected"
+            elif has_draft:
+                tag = "draft_event"
+            elif has_game:
+                tag = "game_event"
+            elif detected_items:
+                tag = "grpid"
+
+            # Add the log line with appropriate tag
+            if tag:
+                self.logs_text.insert(tk.END, log_line + '\n', tag)
+            else:
+                self.logs_text.insert(tk.END, log_line + '\n')
+
+            # Add summary of what was detected (as a comment)
+            if detected_items:
+                summary = self.log_highlighter.get_event_summary(log_line, detected_items)
+                if summary:
+                    self.logs_text.insert(tk.END, f"  └─ {summary}\n", "default")
+
+            self.logs_text.config(state=tk.DISABLED)
+
+            # Auto-scroll to bottom
+            self.logs_text.see(tk.END)
+
+            # Keep only last 500 lines to prevent memory issues
+            line_count = int(self.logs_text.index(tk.END).split('.')[0])
+            if line_count > 500:
+                self.logs_text.config(state=tk.NORMAL)
+                self.logs_text.delete("1.0", "50.0")
+                self.logs_text.config(state=tk.DISABLED)
+
+        except Exception as e:
+            logging.error(f"Error adding log line: {e}")
