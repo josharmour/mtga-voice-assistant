@@ -783,13 +783,17 @@ class RAGSystem:
                     # Tactical Annotation
                     win_rate = stats.get('gih_win_rate') or 0.0
                     tactical_note = "A key performer; prioritize it." if win_rate > 0.58 else "A solid role-player." if win_rate > 0.53 else "Below average performer."
-                    
+
                     enhanced_prompt += (
                         f"- **{card_name}**: "
                         f"GIH Win Rate: {win_rate:.1%} ({stats.get('games_played', 0)} games). "
                         f"*Tactical Note: {tactical_note}*\n"
                     )
-        
+
+        # CRITICAL: Always include the base_prompt with actual board state
+        # This ensures opponent life, board state details, and all game information is preserved
+        enhanced_prompt += f"\n## Game State and Board Information\n{base_prompt}"
+
         return enhanced_prompt
 
     def _detect_situation(self, board_state: Dict[str, any]) -> List[str]:
