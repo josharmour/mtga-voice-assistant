@@ -845,7 +845,24 @@ class AdvisorGUI:
 
         # Message queue for thread-safe updates
         self.message_queue = deque(maxlen=100)
-        self.board_state_lines = []
+        # Initialize with a helpful message
+        self.board_state_lines = [
+            "=" * 70,
+            "⏳ WAITING FOR MATCH...",
+            "=" * 70,
+            "",
+            "Board state will appear here when you:",
+            "  1. Start a new game in MTGA",
+            "  2. Are in mulligan phase or during gameplay",
+            "  3. Game events are being captured",
+            "",
+            "The advisor will display:",
+            "  • Your cards in hand",
+            "  • Cards on the battlefield",
+            "  • Opponent's board state",
+            "  • Stack (spells being cast)",
+            "  • Life totals and library counts",
+        ]
         self.rag_panel_expanded = False  # Track RAG panel expansion state
 
         # Bind F12 for bug reports
