@@ -1761,13 +1761,22 @@ class AdvisorGUI:
                 if not log_found:
                     recent_logs = "(No logs found - this is normal for first run or if logs haven't been written yet)"
 
-                # Get current settings
-                settings = f"""Model: {self.model_var.get() if hasattr(self, 'model_var') else 'N/A'}
-Voice: {self.voice_var.get() if hasattr(self, 'voice_var') else 'N/A'}
-TTS Engine: {self.tts_engine_var.get() if hasattr(self, 'tts_engine_var') else 'N/A'}
-Volume: {self.volume_var.get() if hasattr(self, 'volume_var') else 'N/A'}%
-Continuous Monitoring: {self.continuous_var.get() if hasattr(self, 'continuous_var') else 'N/A'}
-Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_var') else 'N/A'}
+                # Get current settings (safely from background thread)
+                def safe_get_var(var_obj):
+                    """Safely get tkinter variable value from background thread"""
+                    try:
+                        if hasattr(var_obj, 'get'):
+                            return str(var_obj.get())
+                    except Exception as e:
+                        logging.debug(f"Could not get variable value: {e}")
+                    return "N/A"
+
+                settings = f"""Model: {safe_get_var(self.model_var) if hasattr(self, 'model_var') else 'N/A'}
+Voice: {safe_get_var(self.voice_var) if hasattr(self, 'voice_var') else 'N/A'}
+TTS Engine: {safe_get_var(self.tts_engine_var) if hasattr(self, 'tts_engine_var') else 'N/A'}
+Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'}%
+Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'continuous_var') else 'N/A'}
+Show AI Thinking: {safe_get_var(self.show_thinking_var) if hasattr(self, 'show_thinking_var') else 'N/A'}
 """
 
                 # Write bug report to local file
