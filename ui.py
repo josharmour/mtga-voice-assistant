@@ -718,17 +718,27 @@ class LogHighlighter:
         import re
         detected = []
 
-        # Check for grpIds (6-digit numbers)
-        for match in re.finditer(r'\b(\d{6})\b', log_line):
+        # Check for grpIds (4-6 digit numbers - Arena card IDs)
+        # Most cards are 5-digit (10035-99795), some 4-digit (6873-9475), few 6-digit (100069-102112)
+        for match in re.finditer(r'\b(\d{4,6})\b', log_line):
             grp_id = int(match.group(1))
+
+            # Validate this looks like a card ID (skip small numbers like counts, turns, seats)
+            # Valid card IDs: 6+ (minimum), 4873-102112 (practical range)
+            if grp_id < 6873 and grp_id > 9:
+                continue  # Skip numbers that are too small to be card IDs but too large to ignore
+
             resolved_name = None
             color = self.colors["grpid"]
 
             # Try to resolve using card database
             if self.card_db:
                 try:
-                    resolved_name = self.card_db.get_card_name(grp_id)
-                    color = self.colors["card_detected"]
+                    card_name = self.card_db.get_card_name(grp_id)
+                    # Only set resolved_name if it's NOT an "Unknown()" response
+                    if card_name and not card_name.startswith("Unknown("):
+                        resolved_name = card_name
+                        color = self.colors["card_detected"]  # Green only if found
                 except Exception:
                     pass
 
