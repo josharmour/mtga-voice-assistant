@@ -343,3 +343,132 @@ class DeckBuilder:
     def _get_color_pair_name(self, colors: str) -> str:
         """Get human-readable color pair name"""
         return self.COLOR_PAIR_NAMES.get(colors, colors)
+
+
+def display_deck_suggestion(suggestion: DeckSuggestion) -> None:
+    """Displays a deck suggestion in a clean, readable table format for the terminal.
+
+    Args:
+        suggestion: The `DeckSuggestion` object to display.
+    """
+    from tabulate import tabulate
+    from termcolor import colored
+
+    print("\n" + "="*80)
+    print(f"Suggested Deck: {suggestion.color_pair_name} ({suggestion.main_colors})")
+    print("="*80 + "\n")
+
+    print(f"Based on {suggestion.num_source_decks} winning decks")
+    print(f"Similarity to your draft: {suggestion.similarity_score*100:.1f}%")
+    print()
+
+    # Maindeck
+    if suggestion.maindeck:
+        print("MAINDECK (Spells):")
+        print("-" * 40)
+
+        # Sort by count (descending) then name
+        sorted_cards = sorted(suggestion.maindeck.items(),
+                            key=lambda x: (-x[1], x[0]))
+
+        table = []
+        for card_name, count in sorted_cards:
+            table.append([count, card_name])
+
+        print(tabulate(table, tablefmt="plain"))
+        print()
+
+    # Lands
+    if suggestion.lands:
+        print("LANDS:")
+        print("-" * 40)
+        for land_name, count in sorted(suggestion.lands.items()):
+            print(f"{count:2} {land_name}")
+        print()
+
+    # Deck totals
+    total_spells = sum(suggestion.maindeck.values())
+    total_lands = sum(suggestion.lands.values())
+    print(f"Total: {total_spells + total_lands} cards ({total_spells} spells + {total_lands} lands)")
+
+    # Sideboard
+    if suggestion.sideboard:
+        print("\nSIDEBOARD:")
+        print("-" * 40)
+
+        sorted_sb = sorted(suggestion.sideboard.items(),
+                          key=lambda x: (-x[1], x[0]))
+
+        for card_name, count in sorted_sb[:10]:  # Show top 10
+            print(f"{count:2} {card_name}")
+
+        if len(suggestion.sideboard) > 10:
+            print(f"   ... and {len(suggestion.sideboard) - 10} more cards")
+
+    print()
+
+
+def format_deck_suggestion_for_gui(suggestion: DeckSuggestion) -> List[str]:
+    """
+    Format deck suggestion as list of strings for GUI display
+
+    Args:
+        suggestion: DeckSuggestion object
+
+    Returns:
+        List of formatted strings ready for GUI display
+    """
+    lines = []
+    lines.append("="*80)
+    lines.append(f"DECK SUGGESTION: {suggestion.color_pair_name} ({suggestion.main_colors})")
+    lines.append("="*80)
+    lines.append("")
+
+    lines.append(f"Based on {suggestion.num_source_decks} winning decks")
+    lines.append(f"Similarity to your draft: {suggestion.similarity_score*100:.1f}%")
+    lines.append("")
+
+    # Maindeck
+    if suggestion.maindeck:
+        lines.append("MAINDECK (Spells):")
+        lines.append("-" * 40)
+
+        # Sort by count (descending) then name
+        sorted_cards = sorted(suggestion.maindeck.items(),
+                            key=lambda x: (-x[1], x[0]))
+
+        for card_name, count in sorted_cards:
+            lines.append(f"{count:2} {card_name}")
+
+        lines.append("")
+
+    # Lands
+    if suggestion.lands:
+        lines.append("LANDS:")
+        lines.append("-" * 40)
+        for land_name, count in sorted(suggestion.lands.items()):
+            lines.append(f"{count:2} {land_name}")
+        lines.append("")
+
+    # Deck totals
+    total_spells = sum(suggestion.maindeck.values())
+    total_lands = sum(suggestion.lands.values())
+    lines.append(f"Total: {total_spells + total_lands} cards ({total_spells} spells + {total_lands} lands)")
+    lines.append("")
+
+    # Sideboard
+    if suggestion.sideboard:
+        lines.append("SIDEBOARD:")
+        lines.append("-" * 40)
+
+        sorted_sb = sorted(suggestion.sideboard.items(),
+                          key=lambda x: (-x[1], x[0]))
+
+        for card_name, count in sorted_sb[:10]:  # Show top 10
+            lines.append(f"{count:2} {card_name}")
+
+        if len(suggestion.sideboard) > 10:
+            lines.append(f"   ... and {len(suggestion.sideboard) - 10} more cards")
+        lines.append("")
+
+    return lines
