@@ -1709,15 +1709,33 @@ class AdvisorGUI:
                 final_description = user_description if user_description else "No description provided (click F12 again to add one later)."
 
                 # Take screenshot using gnome-screenshot or scrot
+                screenshot_captured = False
                 try:
-                    subprocess.run(['gnome-screenshot', '-f', screenshot_file],
-                                 timeout=2, check=False, capture_output=True)
-                except:
+                    result = subprocess.run(['gnome-screenshot', '-f', screenshot_file],
+                                          timeout=2, check=False, capture_output=True)
+                    if result.returncode == 0 and os.path.exists(screenshot_file):
+                        screenshot_captured = True
+                        logging.info(f"Screenshot captured: {screenshot_file}")
+                    else:
+                        logging.warning(f"gnome-screenshot failed with code {result.returncode}")
+                except Exception as e:
+                    logging.warning(f"gnome-screenshot not available: {e}")
+
+                if not screenshot_captured:
                     try:
-                        subprocess.run(['scrot', screenshot_file],
-                                     timeout=2, check=False, capture_output=True)
-                    except:
-                        screenshot_file = "Screenshot failed (install gnome-screenshot or scrot)"
+                        result = subprocess.run(['scrot', screenshot_file],
+                                             timeout=2, check=False, capture_output=True)
+                        if result.returncode == 0 and os.path.exists(screenshot_file):
+                            screenshot_captured = True
+                            logging.info(f"Screenshot captured with scrot: {screenshot_file}")
+                        else:
+                            logging.warning(f"scrot failed with code {result.returncode}")
+                    except Exception as e:
+                        logging.warning(f"scrot not available: {e}")
+
+                if not screenshot_captured:
+                    screenshot_file = None  # Will handle missing screenshot gracefully
+                    self.add_message("⚠ Screenshot not captured (gnome-screenshot or scrot not available)", "yellow")
 
                 # Collect current state
                 board_state_text = "\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
@@ -1798,27 +1816,35 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                     self.add_message("⚠ Upload cancelled - credentials not configured", "yellow")
                     return
 
-                # Upload screenshot to Imgbb
-                screenshot_url, error = upload_to_imgbb(screenshot_file)
-                if error:
-                    self.add_message(f"⚠ Screenshot upload failed: {error}", "yellow")
-                    logging.warning(f"Screenshot upload failed: {error}")
+                # Upload screenshot to ImgBB if we have one
+                screenshot_url = None
+                if screenshot_file and os.path.exists(screenshot_file):
+                    screenshot_url, error = upload_to_imgbb(screenshot_file)
+                    if error:
+                        self.add_message(f"⚠ Screenshot upload failed: {error}", "yellow")
+                        logging.warning(f"Screenshot upload failed: {error}")
 
-                    # If ImgBB API key is invalid, suggest re-entering credentials
-                    if "Invalid API" in str(error) or "Bad" in str(error):
-                        self.add_message("💡 Tip: Your ImgBB API key may be invalid. Delete ~/.mtga_advisor/preferences.json to re-enter credentials.", "cyan")
-
-                    # Continue without screenshot URL
-                    screenshot_url = screenshot_file
+                        # If ImgBB API key is invalid, suggest re-entering credentials
+                        if "Invalid API" in str(error) or "Bad" in str(error):
+                            self.add_message("💡 Tip: Your ImgBB API key may be invalid. Delete ~/.mtga_advisor/preferences.json to re-enter credentials.", "cyan")
+                    else:
+                        self.add_message(f"✓ Screenshot uploaded to ImgBB", "green")
+                else:
+                    logging.warning("No screenshot file available to upload")
+                    self.add_message("ℹ No screenshot captured (continuing without screenshot)", "cyan")
 
                 # Create GitHub issue
+                screenshot_section = ""
+                if screenshot_url:
+                    screenshot_section = f"""**Screenshot:**
+![Screenshot]({screenshot_url})
+
+"""
+
                 issue_body = f"""**Description:**
 {final_description}
 
-**Screenshot:**
-![Screenshot]({screenshot_url})
-
-**Settings:**
+{screenshot_section}**Settings:**
 ```
 {settings}
 ```
