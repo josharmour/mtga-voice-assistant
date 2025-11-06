@@ -51,7 +51,6 @@ class UserPreferences:
     show_win_rates: bool = True
     show_rules_context: bool = True
     opponent_turn_alerts: bool = True
-    reskin_names: bool = False
     show_thinking: bool = True
 
     # API Keys (stored securely in user preferences)
@@ -117,14 +116,12 @@ class UserPreferences:
         self.current_voice = voice
         self.save()
 
-    def set_game_preferences(self, opponent_alerts: bool = None, show_thinking: bool = None, reskin_names: bool = None):
+    def set_game_preferences(self, opponent_alerts: bool = None, show_thinking: bool = None):
         """Update game preferences."""
         if opponent_alerts is not None:
             self.opponent_turn_alerts = opponent_alerts
         if show_thinking is not None:
             self.show_thinking = show_thinking
-        if reskin_names is not None:
-            self.reskin_names = reskin_names
         self.save()
 
     def set_api_keys(self, github_token: str = None, github_owner: str = None,

@@ -1,9 +1,224 @@
-import curses
+
 import logging
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+import curses
 import time
 from collections import deque
 from typing import List, Callable
 
+# Content of src/tts.py
+class TextToSpeech:
+    def __init__(self, voice: str = "adam", volume: float = 1.0, force_engine: str = None):
+        """
+        Initialize TTS with Kokoro as primary, BarkTTS as fallback.
+
+        Args:
+            voice: Voice name
+            volume: Volume (0.0-1.0)
+            force_engine: Force specific engine ("kokoro" or "bark"), or None for auto-fallback
+        """
+        self.voice = voice
+        self.volume = max(0.0, min(1.0, volume))  # Clamp volume to 0.0-1.0
+        self.tts_engine = None  # Will be "kokoro" or "bark"
+        self.tts = None
+        self.bark_processor = None
+        self.bark_model = None
+
+        if force_engine == "bark":
+            # Force BarkTTS
+            logging.info(f"Forcing BarkTTS engine")
+            if self._init_bark():
+                logging.info(f"✓ BarkTTS initialized successfully")
+                return
+            logging.error("❌ Failed to initialize BarkTTS")
+        elif force_engine == "kokoro":
+            # Force Kokoro
+            logging.info(f"Forcing Kokoro engine with voice: {voice}, volume: {self.volume}")
+            if self._init_kokoro():
+                logging.info(f"✓ Kokoro TTS initialized successfully")
+                return
+            logging.error("❌ Failed to initialize Kokoro TTS")
+        else:
+            # Try Kokoro first (primary), then fall back
+            logging.info(f"Attempting to initialize Kokoro TTS (primary) with voice: {voice}, volume: {self.volume}")
+            if self._init_kokoro():
+                logging.info(f"✓ Kokoro TTS initialized successfully")
+                return
+
+            # Fall back to BarkTTS
+            logging.warning("Kokoro TTS failed, falling back to BarkTTS (secondary)")
+            if self._init_bark():
+                logging.info(f"✓ BarkTTS initialized successfully")
+                return
+
+            # No TTS available
+            logging.error("❌ Failed to initialize any TTS engine (Kokoro and Bark both failed)")
+
+    def _init_kokoro(self) -> bool:
+        """Try to initialize Kokoro TTS. Returns True on success."""
+        try:
+            from kokoro_onnx import Kokoro
+            import numpy as np
+            from pathlib import Path
+            self.np = np
+
+            # Use downloaded models from ~/.local/share/kokoro/
+            models_dir = Path.home() / '.local' / 'share' / 'kokoro'
+            model_path = str(models_dir / 'kokoro-v1.0.onnx')
+            voices_path = str(models_dir / 'voices-v1.0.bin')
+
+            self.tts = Kokoro(model_path=model_path, voices_path=voices_path)
+            self.tts_engine = "kokoro"
+            return True
+        except Exception as e:
+            logging.debug(f"Kokoro initialization failed: {e}")
+            return False
+
+    def _init_bark(self) -> bool:
+        """Try to initialize BarkTTS. Returns True on success."""
+        try:
+            from transformers import AutoProcessor, BarkModel
+            import numpy as np
+            import torch
+
+            self.np = np
+            self.torch = torch
+
+            # Load Bark model and processor
+            logging.info("Loading BarkTTS model (this may take a moment)...")
+            self.bark_processor = AutoProcessor.from_pretrained("suno/bark-small")
+            self.bark_model = BarkModel.from_pretrained("suno/bark-small")
+
+            # Move to GPU if available
+            if torch.cuda.is_available():
+                self.bark_model = self.bark_model.to("cuda")
+                logging.info("BarkTTS using GPU acceleration")
+
+            self.tts_engine = "bark"
+            return True
+        except Exception as e:
+            logging.debug(f"BarkTTS initialization failed: {e}")
+            return False
+
+    def set_voice(self, voice: str):
+        """Change voice dynamically"""
+        self.voice = voice
+        logging.info(f"Voice changed to: {voice}")
+
+    def set_volume(self, volume: float):
+        """Set volume (0.0-1.0)"""
+        self.volume = max(0.0, min(1.0, volume))
+        logging.info(f"Volume changed to: {self.volume}")
+
+    def speak(self, text: str):
+        """Speak text using available TTS engine (Kokoro or Bark)"""
+        if not text:
+            logging.debug("No text provided to speak.")
+            return
+
+        if not self.tts_engine:
+            logging.error("No TTS engine initialized, cannot speak.")
+            return
+
+        # Route to appropriate TTS engine
+        if self.tts_engine == "kokoro":
+            self._speak_kokoro(text)
+        elif self.tts_engine == "bark":
+            self._speak_bark(text)
+
+    def _speak_kokoro(self, text: str):
+        """Speak using Kokoro TTS"""
+        logging.info(f"Speaking with Kokoro ({self.voice}): {text[:100]}...")
+        try:
+            # Generate audio using Kokoro
+            audio_array, sample_rate = self.tts.create(text, voice=self.voice, speed=1.0)
+
+            # Apply volume adjustment
+            audio_array = audio_array * self.volume
+
+            # Save and play
+            self._save_and_play_audio(audio_array, sample_rate, "Kokoro")
+            logging.debug("Successfully spoke text with Kokoro.")
+        except Exception as e:
+            logging.error(f"Kokoro TTS error: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+
+    def _speak_bark(self, text: str):
+        """Speak using BarkTTS"""
+        logging.info(f"Speaking with BarkTTS ({self.voice}): {text[:100]}...")
+        try:
+            # Process text input
+            inputs = self.bark_processor(text, voice_preset=self.voice)
+
+            # Move inputs to same device as model
+            if self.torch.cuda.is_available():
+                inputs = {k: v.to("cuda") if hasattr(v, 'to') else v for k, v in inputs.items()}
+
+            # Generate audio
+            with self.torch.no_grad():
+                audio_array = self.bark_model.generate(**inputs)
+
+            # Convert to numpy and get sample rate
+            audio_array = audio_array.cpu().numpy().squeeze()
+            sample_rate = self.bark_model.generation_config.sample_rate
+
+            # Apply volume adjustment
+            audio_array = audio_array * self.volume
+
+            # Save and play
+            self._save_and_play_audio(audio_array, sample_rate, "BarkTTS")
+            logging.debug("Successfully spoke text with BarkTTS.")
+        except Exception as e:
+            logging.error(f"BarkTTS error: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+
+    def _save_and_play_audio(self, audio_array, sample_rate: int, engine_name: str):
+        """Save audio to temp file and play it"""
+        import scipy.io.wavfile as wavfile
+
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+            wavfile.write(tmp_path, sample_rate, (audio_array * 32767).astype(self.np.int16))
+
+        logging.info(f"Generated audio saved to {tmp_path}, playing...")
+
+        # Try different audio players
+        played = False
+        players = [
+            (["aplay", tmp_path], "aplay"),
+            (["paplay", tmp_path], "paplay"),
+            (["ffplay", "-nodisp", "-autoexit", tmp_path], "ffplay")
+        ]
+
+        for cmd, player_name in players:
+            try:
+                subprocess.run(cmd, check=True, timeout=120,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                played = True
+                logging.info(f"Audio played with {player_name}")
+                break
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                logging.debug(f"{player_name} error: {e}")
+                continue
+
+        if not played:
+            logging.error("No audio player found (aplay, paplay, or ffplay). Cannot play audio.")
+
+        # Clean up temp file
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+
+# Content of src/ui.py
 # Import Tkinter (optional - for GUI mode)
 try:
     import tkinter as tk
@@ -648,21 +863,6 @@ class AdvisorGUI:
             activeforeground=self.fg_color
         ).pack(anchor=tk.W, pady=5)
 
-        # Show Spider-Man Reskins checkbox
-        reskin_default = self.prefs.reskin_names if self.prefs else False
-        self.reskin_var = tk.BooleanVar(value=reskin_default)
-        tk.Checkbutton(
-            settings_frame,
-            text="Show Spider-Man Reskins",
-            variable=self.reskin_var,
-            command=self._on_reskin_toggle,
-            bg=self.bg_color,
-            fg=self.fg_color,
-            selectcolor='#1a1a1a',
-            activebackground=self.bg_color,
-            activeforeground=self.fg_color
-        ).pack(anchor=tk.W, pady=5)
-
         # Always on top checkbox
         always_on_top_default = self.prefs.always_on_top if self.prefs else True
         self.always_on_top_var = tk.BooleanVar(value=always_on_top_default)
@@ -708,17 +908,6 @@ class AdvisorGUI:
             text="🐛 Bug Report (F12)",
             command=self._capture_bug_report,
             bg='#5555ff',
-            fg=self.fg_color,
-            relief=tk.FLAT,
-            padx=10,
-            pady=5
-        ).pack(pady=5, fill=tk.X)
-
-        tk.Button(
-            settings_frame,
-            text="🏗️ Make Deck Suggestion",
-            command=self._manual_deck_suggestion,
-            bg='#3a3a3a',
             fg=self.fg_color,
             relief=tk.FLAT,
             padx=10,
@@ -1383,16 +1572,6 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
         threading.Thread(target=capture_in_background, daemon=True).start()
         self.add_message("📸 Capturing bug report...", "cyan")
 
-    def _manual_deck_suggestion(self):
-        """Request manual deck suggestion."""
-        try:
-            if self.advisor_ref:
-                # Trigger a manual deck suggestion through the advisor
-                logging.info("Manual deck suggestion requested")
-                # This would be passed to the advisor to generate a deck suggestion
-        except Exception as e:
-            logging.error(f"Error requesting deck suggestion: {e}")
-
     def _on_tts_engine_change(self):
         """Handle TTS engine selection change."""
         try:
@@ -1425,16 +1604,6 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                 logging.debug(f"Opponent turn alerts: {'enabled' if enabled else 'disabled'}")
         except Exception as e:
             logging.error(f"Error toggling opponent alerts: {e}")
-
-    def _on_reskin_toggle(self):
-        """Handle reskin names toggle."""
-        try:
-            enabled = self.reskin_var.get()
-            if CONFIG_MANAGER_AVAILABLE and self.prefs:
-                self.prefs.set_game_preferences(reskin_names=enabled)
-                logging.debug(f"Reskin names: {'enabled' if enabled else 'disabled'}")
-        except Exception as e:
-            logging.error(f"Error toggling reskin names: {e}")
 
     def _on_always_on_top_toggle(self):
         """Handle always on top toggle."""
@@ -1501,6 +1670,11 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
             logging.error(f"Error during window close: {e}")
             if self.root:
                 self.root.destroy()
+
+    def cleanup(self):
+        """Placeholder cleanup method for GUI. Actual cleanup is handled by on_closing and Tkinter's destruction."""
+        logging.debug("AdvisorGUI cleanup method called.")
+        # No specific cleanup needed here as on_closing handles window destruction
 
     def _update_loop(self):
         """Main GUI update loop."""

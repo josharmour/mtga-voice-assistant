@@ -11,4 +11,4 @@ cd /home/joshu/logparser
 source venv/bin/activate
 
 # Launch the advisor (GUI is default)
-python3 advisor.py
+python3 app.py

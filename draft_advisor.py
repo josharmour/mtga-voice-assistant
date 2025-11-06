@@ -15,7 +15,7 @@ from scipy.stats import norm
 from tabulate import tabulate
 from termcolor import colored
 
-from rag_advisor import clean_card_name
+from ai import clean_card_name
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class DraftAdvisor:
         else:
             # Fallback if RAG system not available
             try:
-                from rag_advisor import CardStatsDB
+                from data_management import CardStatsDB
                 self.metadata_db = CardStatsDB('data/card_stats.db')
                 logger.info("RAG not present. Using CardStatsDB directly for metadata.")
             except Exception as e:

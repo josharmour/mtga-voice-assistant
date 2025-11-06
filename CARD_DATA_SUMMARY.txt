@@ -1,0 +1,193 @@
+================================================================================
+CARD DATA ARCHITECTURE SUMMARY
+================================================================================
+
+CURRENT SETUP: 3 data sources + 1 optional system
+
+1. UNIFIED_CARDS.DB (~100MB)
+   - Built from Scryfall
+   - grpId → card details (name, oracle text, mana cost, colors, rarity, keywords)
+   - Used for: Game state tracking (CRITICAL)
+   - How: python build_unified_card_database.py
+   - Update frequency: Weekly (optional)
+
+2. CARD_STATS.DB (~50MB)
+   - Downloaded from 17lands.com API
+   - Card name → win rates (overall, GIH, drawn, etc.)
+   - Used for: Draft recommendations + tactical AI context
+   - How: python manage_data.py --update-17lands
+   - Update frequency: Quarterly (new set releases)
+   - Unique value: ✅ Only source for win rate data
+
+3. CARD_METADATA.DB (~50MB) [REDUNDANT]
+   - Downloaded from 17lands (but originally from Scryfall)
+   - Card name → color, rarity, types (3 fields only)
+   - Used for: Draft display
+   - Status: ❌ DUPLICATE of unified_cards.db
+   - Can be removed with 1-2 hour migration
+
+4. CHROMADB (~5MB)
+   - Parsed from MTG Comprehensive Rules
+   - Rules text → semantic embeddings
+   - Used for: Tactical prompt context (rules references)
+   - Update frequency: Annually
+
+================================================================================
+WHERE CARD DATA IS USED
+================================================================================
+
+GAME STATE TRACKING (src/game_state.py):
+  ✓ grpId → card name [CRITICAL]
+  ✓ Card name → oracle text (optional, for future enhancement)
+  ✓ Card name → mana cost (optional, for future validation)
+
+DRAFT ADVISOR (draft_advisor.py):
+  ✓ Arena ID → card name [REQUIRED]
+  ✓ Card name → color, rarity, types [REQUIRED]
+  ✓ Card name → win rates, ATA, IWD [REQUIRED]
+
+TACTICAL AI PROMPT (rag_advisor.py):
+  ✓ Board state cards → win rates for context [USED]
+  ✓ Situation detection → relevant rules [USED]
+  ✓ Card name → oracle text (FUTURE enhancement)
+
+================================================================================
+DATA DEPENDENCIES
+================================================================================
+
+ESSENTIAL (system won't work without):
+  ✓ unified_cards.db - Need grpId→name to parse game log
+  ✓ card_stats.db - Draft advisor needs win rates
+
+IMPORTANT (features won't work fully):
+  ⚠ chromadb - Rules context is nice but not critical
+
+REDUNDANT (can be replaced):
+  ❌ card_metadata.db - Duplicate of unified_cards.db
+
+================================================================================
+CONSOLIDATION PLAN
+================================================================================
+
+Remove: card_metadata.db
+Reason: All 3 fields used (colors, rarity, types) are in unified_cards.db
+
+Migration steps:
+1. Add name→grpId lookup to ArenaCardDatabase class (~20 lines)
+2. Update draft_advisor.py to use unified_cards.db instead (~30 lines)
+3. Delete download_card_metadata.py
+4. Remove --update-scryfall from manage_data.py
+5. Delete card_metadata.db from repo
+
+Time estimate: 1-2 hours
+Savings: 50MB disk, 1 redundant pipeline, 0 lost functionality
+Risk: Low (just replacing one DB call with another)
+
+================================================================================
+FIELD-BY-FIELD USAGE
+================================================================================
+
+UNIFIED_CARDS.DB FIELDS:
+  grpId                 → Game state tracking [CRITICAL]
+  name                  → All components [CRITICAL]
+  printed_name          → Reskin display [OPTIONAL]
+  type_line             → Draft filtering [NICE-TO-HAVE]
+  mana_cost             → Prompt enhancement [NICE-TO-HAVE]
+  oracle_text           → Prompt enhancement [NICE-TO-HAVE]
+  color_identity        → Draft display [USED]
+  rarity                → Draft display [USED]
+  keywords              → Unused [DEAD-WEIGHT]
+  cmc                   → Unused [DEAD-WEIGHT]
+  power/toughness       → Unused [DEAD-WEIGHT]
+
+CARD_STATS.DB FIELDS:
+  card_name             → Lookup key [CRITICAL]
+  gih_win_rate          → Draft grading + AI context [CRITICAL]
+  ata                   → Draft display [USED]
+  iwd                   → Draft display [USED]
+  games_played          → Data quality gate [USED]
+  win_rate              → Fallback metric [USED]
+  set_code              → API targeting [USED]
+  Other fields          → Unused [DEAD-WEIGHT]
+
+CARD_METADATA.DB FIELDS:
+  color_identity        → Draft display [USED - but in unified_cards.db]
+  rarity                → Draft display [USED - but in unified_cards.db]
+  types                 → Draft display [USED - but in unified_cards.db]
+  ALL OTHERS            → Unused
+
+================================================================================
+SCRYFALL MCP SERVER COMPARISON
+================================================================================
+
+Scryfall MCP can provide:
+  ✓ Card name → all metadata (colors, types, rarity, mana cost, oracle text)
+  ✓ Real-time, always current
+  ✓ Zero disk space needed
+  ✓ Rich search capabilities
+
+But:
+  ❌ Cannot replace grpId lookup (no Arena IDs in public API)
+  ❌ Cannot replace win rates (17lands data is exclusive)
+  ❌ Network-dependent (slower for repeated lookups)
+
+Best use: Fallback for drafting/metadata when offline data missing
+Current: Not needed if using unified_cards.db
+
+================================================================================
+WIN RATES - THE UNIQUE DATA
+================================================================================
+
+What is 17lands data?
+- Statistics from tens of thousands of casual Magic players
+- Tracks: win rate, games in hand, pick position, etc.
+- Per card, per set, per format (Premier Draft, Sealed, etc.)
+- Updated quarterly when new sets release
+
+Why it's irreplaceable:
+  ✓ Scryfall has card info, not performance statistics
+  ✓ 17lands is the only free public source for draft win rates
+  ✓ Enables informed pick recommendations
+  ✓ Provides LLM context about card value
+
+Keep this forever: ✓✓✓ card_stats.db is genuinely unique
+
+================================================================================
+QUICK REFERENCE: WHAT TO KEEP/CHANGE
+================================================================================
+
+KEEP (Essential):
+  ✓ unified_cards.db - grpId resolution + full card data
+  ✓ card_stats.db - 17lands win rates (ONLY source)
+  ✓ chromadb - MTG rules
+
+REMOVE (Redundant):
+  ❌ card_metadata.db - replace with unified_cards.db queries
+  ❌ download_card_metadata.py - no longer needed
+  ❌ manage_data.py --update-scryfall - covered by build script
+
+CONSIDER (Future):
+  ⚠ Add oracle_text to tactical prompts (helps LLM)
+  ⚠ Add mana_cost checking for casting validation
+  ⚠ Use Scryfall MCP as fallback for missing cards
+
+================================================================================
+IMPLEMENTATION CHECKLIST
+================================================================================
+
+[ ] Read CARD_DATA_ARCHITECTURE.md for full overview
+[ ] Read CARD_DATA_DETAILED_USAGE.md for field-by-field breakdown
+[ ] Add name→grpId reverse lookup to database.py:ArenaCardDatabase
+[ ] Update draft_advisor.py to use unified_cards.db instead of card_metadata_db
+[ ] Test draft recommendations with new data source
+[ ] Delete download_card_metadata.py
+[ ] Update manage_data.py (remove --update-scryfall)
+[ ] Remove card_metadata.db from repository
+[ ] Update documentation (CLAUDE.md, setup guides)
+[ ] Commit: "refactor: Remove redundant card_metadata.db, consolidate to unified_cards.db"
+
+Estimated effort: 1-2 hours
+Risk level: Low
+Benefit: 50MB disk savings, cleaner pipeline, better maintainability
+
+================================================================================
