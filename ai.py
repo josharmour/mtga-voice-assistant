@@ -1353,6 +1353,7 @@ CRITICAL RULES:
 4. Creatures can attack if they've been on battlefield since your last turn
 5. If you see "Unknown" cards, say "Wait for card identification"
 6. For cards with "⚠ ability text not available in database": DO NOT invent or guess their abilities. Ask for the actual abilities or skip analysis of that card.
+7. ALWAYS CHECK AVAILABLE MANA before suggesting any spell casts. If a spell costs more mana than available, DO NOT suggest casting it.
 
 FORBIDDEN ACTIONS:
 - Do NOT mention cards not listed in the board state
@@ -1360,6 +1361,10 @@ FORBIDDEN ACTIONS:
 - Do NOT invent card names
 - Do NOT guess/invent card abilities when text is marked as unavailable
 - Do NOT reference abilities not explicitly stated in the prompt
+- Do NOT suggest casting spells you don't have enough mana for
+- Do NOT suggest paying for abilities you can't afford with available mana
+
+IMPORTANT: Always factor in available mana when suggesting plays.
 
 Give ONLY tactical advice in 1-2 short sentences. Start directly with your recommendation."""
 
@@ -1392,10 +1397,16 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
 
     def _build_prompt(self, board_state: "BoardState") -> str:
         """Build comprehensive prompt with all zones and game history"""
+        # Format mana pool for display
+        mana_display = ""
+        if board_state.your_mana_pool:
+            mana_counts = [f"{count}{color}" for color, count in sorted(board_state.your_mana_pool.items())]
+            mana_display = f" | Available mana: {', '.join(mana_counts)}"
+
         lines = [
             f"== GAME STATE: Turn {board_state.current_turn}, {board_state.current_phase} Phase ==",
             f"Your life: {board_state.your_life} | Opponent life: {board_state.opponent_life}",
-            f"Your library: {board_state.your_library_count} cards | Opponent library: {board_state.opponent_library_count} cards",
+            f"Your library: {board_state.your_library_count} cards | Opponent library: {board_state.opponent_library_count} cards{mana_display}",
             "",
         ]
 
