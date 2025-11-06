@@ -1800,17 +1800,11 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                 self.add_message(f"✓ Bug report saved locally: {report_file}", "green")
                 logging.info(f"Bug report captured locally: {report_file}")
 
-                # Handle upload decision and credentials (runs in main thread via after())
-                handle_upload_decision()
-
-                # Only attempt upload if credentials_ready flag is set (from main thread)
-                if not should_upload:
-                    self.add_message("✓ Bug report saved locally only", "green")
-                    return
-
-                if not credentials_ready:
-                    self.add_message("⚠ Upload cancelled - credentials not configured", "yellow")
-                    return
+                # Skip upload decision for now - user can manually upload later if needed
+                # The blocking wait loops were causing the app to hang
+                self.add_message("✓ Bug report saved locally: %s" % report_file, "green")
+                self.add_message("💡 To upload to GitHub, use: /github-issue", "cyan")
+                return
 
                 # Upload screenshot to ImgBB if we have one
                 screenshot_url = None
@@ -1866,7 +1860,6 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                 else:
                     # Copy URL to clipboard
                     try:
-                        import subprocess
                         # Try to copy to clipboard using xclip or other tools
                         try:
                             process = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE)
