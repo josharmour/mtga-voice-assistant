@@ -328,6 +328,11 @@ class MatchScanner:
             grp_id = obj_data.get("grpId")
             owner_seat_id = obj_data.get("ownerSeatId")
 
+            # Skip objects without valid grpId (e.g., tokens, placeholder objects)
+            if not grp_id or grp_id == 0:
+                logging.debug(f"  Skipping GameObject with invalid grpId: instanceId={instance_id}, grpId={grp_id}")
+                continue
+
             if zone_id is not None:
                 self.observed_zone_ids.add(zone_id)
 
