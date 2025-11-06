@@ -826,14 +826,24 @@ class ArenaCardDatabase:
 
     def get_card_name(self, grp_id: int) -> str:
         """Get card name from grpId."""
+        # Validate input
+        if not grp_id or grp_id == 0:
+            logging.warning(f"get_card_name called with invalid grpId: {grp_id}")
+            return f"Unknown({grp_id})"
+
         # Check cache
         if grp_id in self.cache:
             card = self.cache[grp_id]
-            return card.get("printed_name") or card.get("name", f"Unknown({grp_id})")
+            name = card.get("printed_name") or card.get("name", f"Unknown({grp_id})")
+            return name
 
         # Query database
         try:
             conn = self._get_conn()
+            if not conn:
+                logging.error(f"No database connection available for grpId {grp_id}")
+                return f"Unknown({grp_id})"
+
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM cards WHERE grpId = ?", (grp_id,))
             row = cursor.fetchone()
@@ -841,9 +851,10 @@ class ArenaCardDatabase:
             if row:
                 card = dict(row)
                 self.cache[grp_id] = card
-                return card.get("printed_name") or card.get("name", f"Unknown({grp_id})")
+                name = card.get("printed_name") or card.get("name", f"Unknown({grp_id})")
+                return name
             else:
-                logging.debug(f"Card {grp_id} not in database")
+                logging.debug(f"Card {grp_id} not found in database")
                 return f"Unknown({grp_id})"
 
         except Exception as e:
