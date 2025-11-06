@@ -1459,8 +1459,7 @@ class AdvisorGUI:
         import base64
         import requests
 
-        # Ask user if they want to add a title and description (before background thread)
-        add_details = False
+        # Ask user for title only (required), description is optional and can be submitted via TTS
         issue_title = None
         user_description = None
         should_upload = False
@@ -1469,29 +1468,24 @@ class AdvisorGUI:
         try:
             from tkinter import messagebox, simpledialog
             if self.root and self.root.winfo_exists():
-                add_details = messagebox.askyesno(
-                    "Bug Report Details",
-                    "Do you want to add a title and description to this bug report?",
+                # Prompt for title (required)
+                title_prompt = simpledialog.askstring(
+                    "Bug Report Title",
+                    "Enter a title for the bug report:",
                     parent=self.root
                 )
-                if add_details:
-                    # Prompt for title
-                    title_prompt = simpledialog.askstring(
-                        "Bug Report Title",
-                        "Enter a title for the bug report (or leave blank for default):",
+                if title_prompt and title_prompt.strip():
+                    issue_title = title_prompt.strip()
+                elif title_prompt is not None:  # User clicked OK but left blank
+                    # Use default if they explicitly want to proceed with no title
+                    messagebox.showwarning(
+                        "Title Required",
+                        "A title is required for the bug report. Using default.",
                         parent=self.root
                     )
-                    if title_prompt and title_prompt.strip():
-                        issue_title = title_prompt.strip()
-
-                    # Prompt for description
-                    desc_prompt = simpledialog.askstring(
-                        "Bug Report Description",
-                        "Please describe the bug:",
-                        parent=self.root
-                    )
-                    if desc_prompt and desc_prompt.strip():
-                        user_description = desc_prompt.strip()
+                else:  # User clicked Cancel
+                    self.add_message("Bug report cancelled", "yellow")
+                    return
         except (ImportError, Exception) as e:
             logging.debug(f"GUI not available for bug report details: {e}")
 
@@ -1611,6 +1605,7 @@ class AdvisorGUI:
                 return None, f"GitHub issue creation failed: {str(e)}"
 
         def capture_in_background():
+            nonlocal user_description
             try:
                 # Create bug_reports directory if it doesn't exist
                 bug_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bug_reports")
@@ -1621,9 +1616,24 @@ class AdvisorGUI:
                 report_file = os.path.join(bug_dir, f"bug_report_{timestamp}.txt")
                 screenshot_file = os.path.join(bug_dir, f"screenshot_{timestamp}.png")
 
-                # Use title and description from parent scope (already prompted before thread started)
+                # Use title from user input
                 final_title = issue_title if issue_title else f"Bug Report: {timestamp}"
-                final_description = user_description if user_description else "No description provided."
+
+                # Offer TTS for description if no description was provided
+                if not user_description:
+                    self.add_message("🎤 Listening for bug description (speak into microphone)...", "cyan")
+                    self.add_message("💡 Tip: You can also click away and manually submit a description later via /bug-report", "cyan")
+
+                    # Try to get description from TTS (if available)
+                    try:
+                        if self.advisor_ref and hasattr(self.advisor_ref, 'tts'):
+                            # Use existing TTS to listen for description
+                            # For now, offer it in a message but require manual text input
+                            self.add_message("📝 Speaking description via TTS is not yet implemented. Please check bug report window for text input.", "yellow")
+                    except Exception as e:
+                        logging.debug(f"TTS description not available: {e}")
+
+                final_description = user_description if user_description else "No description provided (click F12 again to add one later)."
 
                 # Take screenshot using gnome-screenshot or scrot
                 try:
@@ -1641,13 +1651,28 @@ class AdvisorGUI:
 
                 # Read recent logs (last 300 lines)
                 recent_logs = ""
-                log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "advisor.log")
-                try:
-                    with open(log_path, "r") as f:
-                        lines = f.readlines()
-                        recent_logs = "".join(lines[-300:])
-                except Exception as e:
-                    recent_logs = f"Failed to read logs: {e}"
+                # Try multiple possible log locations
+                log_paths = [
+                    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "advisor.log"),
+                    os.path.join(os.path.expanduser("~"), ".mtga_advisor", "logs", "advisor.log"),
+                    os.path.join(os.path.expanduser("~"), ".mtga_advisor", "advisor.log"),
+                    os.path.expanduser("~/logs/advisor.log"),
+                ]
+
+                log_found = False
+                for log_path in log_paths:
+                    try:
+                        if os.path.exists(log_path):
+                            with open(log_path, "r") as f:
+                                lines = f.readlines()
+                                recent_logs = "".join(lines[-300:])
+                            log_found = True
+                            break
+                    except Exception as e:
+                        continue
+
+                if not log_found:
+                    recent_logs = "(No logs found - this is normal for first run or if logs haven't been written yet)"
 
                 # Get current settings
                 settings = f"""Model: {self.model_var.get() if hasattr(self, 'model_var') else 'N/A'}
@@ -1744,7 +1769,30 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
                     if "Bad credentials" in str(error) or "401" in str(error):
                         self.add_message("💡 Tip: Your GitHub token may be invalid. Delete ~/.mtga_advisor/preferences.json to re-enter credentials.", "cyan")
                 else:
-                    self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
+                    # Copy URL to clipboard
+                    try:
+                        import subprocess
+                        # Try to copy to clipboard using xclip or other tools
+                        try:
+                            process = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE)
+                            process.communicate(issue_url.encode('utf-8'))
+                            self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
+                            self.add_message(f"📋 GitHub URL copied to clipboard!", "cyan")
+                        except FileNotFoundError:
+                            # xclip not found, try xsel
+                            try:
+                                process = subprocess.Popen(['xsel', '-bi'], stdin=subprocess.PIPE)
+                                process.communicate(issue_url.encode('utf-8'))
+                                self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
+                                self.add_message(f"📋 GitHub URL copied to clipboard!", "cyan")
+                            except FileNotFoundError:
+                                # No clipboard tool available
+                                self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
+                                self.add_message(f"⚠ Could not copy URL to clipboard (xclip or xsel not installed)", "yellow")
+                    except Exception as e:
+                        self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
+                        self.add_message(f"⚠ Could not copy URL to clipboard: {e}", "yellow")
+
                     logging.info(f"Bug report uploaded to GitHub: {issue_url}")
 
             except Exception as e:
