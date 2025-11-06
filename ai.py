@@ -1258,11 +1258,14 @@ CRITICAL RULES:
 3. You can only cast spells from YOUR HAND during your main phase
 4. Creatures can attack if they've been on battlefield since your last turn
 5. If you see "Unknown" cards, say "Wait for card identification"
+6. For cards with "⚠ ability text not available in database": DO NOT invent or guess their abilities. Ask for the actual abilities or skip analysis of that card.
 
 FORBIDDEN ACTIONS:
 - Do NOT mention cards not listed in the board state
 - Do NOT suggest destroying/removing lands
 - Do NOT invent card names
+- Do NOT guess/invent card abilities when text is marked as unavailable
+- Do NOT reference abilities not explicitly stated in the prompt
 
 Give ONLY tactical advice in 1-2 short sentences. Start directly with your recommendation."""
 
@@ -1326,6 +1329,9 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                     oracle_text = self.card_db.get_oracle_text(card.grp_id)
                     if oracle_text:
                         card_info += f"\n  ({oracle_text})"
+                    else:
+                        logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        card_info += f"\n  (⚠ ability text not available in database)"
                 lines.append(card_info)
             lines.append("")
         else:
@@ -1358,6 +1364,9 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                     oracle_text = self.card_db.get_oracle_text(card.grp_id)
                     if oracle_text:
                         card_line += f"\n  ({oracle_text})"
+                    else:
+                        logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        card_line += f"\n  (⚠ ability text not available in database)"
 
                 lines.append(card_line)
             lines.append("")
@@ -1387,6 +1396,9 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                     oracle_text = self.card_db.get_oracle_text(card.grp_id)
                     if oracle_text:
                         card_line += f"\n  ({oracle_text})"
+                    else:
+                        logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        card_line += f"\n  (⚠ ability text not available in database)"
 
                 lines.append(card_line)
             lines.append("")
