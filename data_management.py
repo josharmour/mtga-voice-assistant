@@ -817,6 +817,8 @@ class ArenaCardDatabase:
     def _get_conn(self):
         if not hasattr(self.thread_local, "conn"):
             self.thread_local.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            # Set row factory so dict(row) works properly
+            self.thread_local.conn.row_factory = sqlite3.Row
         return self.thread_local.conn
 
     @property
