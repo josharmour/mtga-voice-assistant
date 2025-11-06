@@ -1408,6 +1408,15 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
     def get_tactical_advice(self, board_state: "BoardState") -> Optional[str]:
         prompt = self._build_prompt(board_state)
 
+        # Debug: Log the board state values being used
+        logging.debug(f"[TACTICAL ADVICE] Board state: Your life={board_state.your_life}, Opponent life={board_state.opponent_life}")
+        logging.debug(f"[TACTICAL ADVICE] Your battlefield: {len(board_state.your_battlefield)} cards")
+        logging.debug(f"[TACTICAL ADVICE] Opponent battlefield: {len(board_state.opponent_battlefield)} cards")
+        logging.debug(f"[TACTICAL ADVICE] Your hand: {len(board_state.your_hand)} cards")
+
+        # Debug: Log the prompt before RAG enhancement
+        logging.debug(f"[TACTICAL ADVICE] Prompt before RAG:\n{prompt[:1000]}...")
+
         # Enhance prompt with RAG context if available
         if self.use_rag and self.rag_system:
             try:
@@ -1425,6 +1434,9 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
             except Exception as e:
                 logging.warning(f"Failed to enhance prompt with RAG: {e}")
                 self.last_rag_references = None
+
+        # Debug: Log the full prompt that will be sent to AI
+        logging.info(f"[TACTICAL ADVICE] FULL PROMPT BEING SENT TO AI:\n{self.SYSTEM_PROMPT}\n\n{prompt}")
 
         advice = self.client.generate(f"{self.SYSTEM_PROMPT}\n\n{prompt}")
         if advice:
