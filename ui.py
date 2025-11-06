@@ -1036,8 +1036,24 @@ class AdvisorGUI:
             pady=5
         ).pack(pady=5, fill=tk.X)
 
+        # Button frame for restart and exit side by side
+        button_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        button_frame.pack(pady=5, fill=tk.X)
+
         tk.Button(
-            settings_frame,
+            button_frame,
+            text="🔄 Restart App",
+            command=self._on_restart,
+            bg=self.info_color,
+            fg='#1a1a1a',
+            relief=tk.FLAT,
+            padx=10,
+            pady=5,
+            font=('Consolas', 9, 'bold')
+        ).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+        tk.Button(
+            button_frame,
             text="Exit",
             command=self._on_exit,
             bg=self.warning_color,
@@ -1045,7 +1061,7 @@ class AdvisorGUI:
             relief=tk.FLAT,
             padx=10,
             pady=5
-        ).pack(pady=5, fill=tk.X)
+        ).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         # Chat/Prompt input area
         chat_label = tk.Label(
@@ -1300,6 +1316,46 @@ class AdvisorGUI:
                 self.logs_toggle_btn.config(text="[Collapse]")
         except Exception as e:
             logging.error(f"Error toggling logs panel: {e}")
+
+    def _on_restart(self):
+        """Handle restart button click - restarts the application."""
+        import subprocess
+        import sys
+        import os
+
+        try:
+            # Save preferences before restarting
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.save()
+
+            # Show restart message
+            self.add_message("🔄 Restarting application...", "cyan")
+            logging.info("User initiated application restart")
+
+            # Close the current app
+            self.root.quit()
+
+            # Restart the application by re-executing the same Python script
+            # Get the original command that started this app
+            if hasattr(self, 'advisor_ref') and self.advisor_ref:
+                # If we have access to the advisor, we could potentially preserve state
+                # For now, just cleanly restart
+                pass
+
+            # Re-execute the current Python process
+            # This will restart the app with the same arguments
+            python_executable = sys.executable
+            script_path = os.path.abspath(sys.argv[0])
+
+            # Pass through any original arguments (excluding the script name)
+            args = [python_executable, script_path] + sys.argv[1:]
+
+            logging.info(f"Restarting with: {' '.join(args)}")
+            subprocess.Popen(args)
+
+        except Exception as e:
+            logging.error(f"Error restarting app: {e}")
+            self.add_message(f"❌ Failed to restart: {e}", "red")
 
     def _on_exit(self):
         """Handle exit button click."""
