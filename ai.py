@@ -1399,9 +1399,13 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
         """Build comprehensive prompt with all zones and game history"""
         # Format mana pool for display
         mana_display = ""
-        if board_state.your_mana_pool:
-            mana_counts = [f"{count}{color}" for color, count in sorted(board_state.your_mana_pool.items())]
-            mana_display = f" | Available mana: {', '.join(mana_counts)}"
+        try:
+            if board_state.your_mana_pool:
+                mana_counts = [f"{count}{color}" for color, count in sorted(board_state.your_mana_pool.items())]
+                mana_display = f" | Available mana: {', '.join(mana_counts)}"
+        except Exception as e:
+            logging.warning(f"Error formatting mana pool: {e}")
+            mana_display = ""
 
         lines = [
             f"== GAME STATE: Turn {board_state.current_turn}, {board_state.current_phase} Phase ==",
@@ -1435,7 +1439,7 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                     if oracle_text:
                         card_info += f"\n  ({oracle_text})"
                     else:
-                        logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        # Temporarily disabled: logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
                         card_info += f"\n  (⚠ ability text not available in database)"
                 lines.append(card_info)
             lines.append("")
@@ -1470,7 +1474,7 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                     if oracle_text:
                         card_line += f"\n  ({oracle_text})"
                     else:
-                        logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        # Temporarily disabled: logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
                         card_line += f"\n  (⚠ ability text not available in database)"
 
                 lines.append(card_line)
@@ -1502,7 +1506,7 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                     if oracle_text:
                         card_line += f"\n  ({oracle_text})"
                     else:
-                        logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        # Temporarily disabled: logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
                         card_line += f"\n  (⚠ ability text not available in database)"
 
                 lines.append(card_line)
