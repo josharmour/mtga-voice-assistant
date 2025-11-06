@@ -98,6 +98,7 @@ class GameObject:
     zone_id: int
     owner_seat_id: int
     name: str = ""
+    color_identity: str = ""  # Card color(s): W, U, B, R, G, or combinations
     power: Optional[int] = None
     toughness: Optional[int] = None
     is_tapped: bool = False
@@ -1054,7 +1055,16 @@ class GameStateManager:
 
         for obj in self.scanner.game_objects.values():
             obj.name = self.card_lookup.get_card_name(obj.grp_id)
-            logging.debug(f"Card {obj.grp_id} ({obj.name}), zone={obj.zone_id}, owner={obj.owner_seat_id}")
+
+            # Look up card color for display
+            try:
+                card_data = self.card_lookup.get_card_data(obj.grp_id)
+                if card_data:
+                    obj.color_identity = card_data.get("color_identity", "")
+            except Exception as e:
+                logging.debug(f"Could not fetch color for {obj.grp_id}: {e}")
+
+            logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={obj.zone_id}, owner={obj.owner_seat_id}")
 
             if obj.owner_seat_id == your_seat_id:
                 if hand_zone_id and obj.zone_id == hand_zone_id:

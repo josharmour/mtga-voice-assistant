@@ -1924,7 +1924,7 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
             logging.error(f"Error setting status: {e}")
 
     def set_board_state(self, lines: list):
-        """Update board state display."""
+        """Update board state display with color tagging for Magic colors."""
         try:
             if not hasattr(self, 'board_text'):
                 return
@@ -1932,9 +1932,30 @@ Show AI Thinking: {self.show_thinking_var.get() if hasattr(self, 'show_thinking_
             self.board_text.config(state=tk.NORMAL)
             self.board_text.delete(1.0, tk.END)
 
-            # Add each line to the board display
+            # Add each line to the board display with appropriate color tagging
             for line in lines:
-                self.board_text.insert(tk.END, line + '\n')
+                # Try to detect color emojis and apply appropriate tag
+                tag = None
+
+                # Check for color emojis to apply color tags
+                if "⚪" in line:
+                    tag = "color_w"
+                elif "🔵" in line:
+                    tag = "color_u"
+                elif "⚫" in line:
+                    tag = "color_b"
+                elif "🔴" in line:
+                    tag = "color_r"
+                elif "🟢" in line:
+                    tag = "color_g"
+                elif "🌈" in line:
+                    tag = "color_multi"
+
+                # Add line with tag if found
+                if tag:
+                    self.board_text.insert(tk.END, line + '\n', tag)
+                else:
+                    self.board_text.insert(tk.END, line + '\n')
 
             self.board_text.config(state=tk.DISABLED)
             # Auto-scroll to bottom
