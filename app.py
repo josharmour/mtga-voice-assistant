@@ -1502,8 +1502,32 @@ Provide a concise answer (1-2 sentences) based on the board state.
             self.advice_thread = threading.Thread(target=self._generate_and_speak_advice, args=(board_state,))
             self.advice_thread.start()
 
+    def _get_color_emoji(self, color_identity: str) -> str:
+        """Convert color_identity string to color emoji indicator"""
+        if not color_identity:
+            return ""
+
+        # Map colors to emojis
+        color_map = {
+            "W": "⚪",  # White
+            "U": "🔵",  # Blue
+            "B": "⚫",  # Black
+            "R": "🔴",  # Red
+            "G": "🟢",  # Green
+        }
+
+        # If single color, return its emoji
+        if len(color_identity) == 1 and color_identity in color_map:
+            return color_map[color_identity]
+
+        # If multiple colors, return multicolor indicator
+        if len(color_identity) > 1:
+            return "🌈"  # Multicolor
+
+        return ""
+
     def _format_card_display(self, card: "GameObject") -> str:
-        """Format card display with name, type, P/T, and status indicators"""
+        """Format card display with name, type, P/T, status indicators, and color"""
         # Check if card is unknown
         if "Unknown" in card.name:
             return f"{card.name} ⚠️"
@@ -1535,11 +1559,20 @@ Provide a concise answer (1-2 sentences) based on the board state.
             counter_str = ", ".join([f"{count}x {ctype}" for ctype, count in card.counters.items()])
             status_parts.append(f"[{counter_str}]")
 
+        # Build card display string with color indicator if available
+        card_display = card.name
+
+        # Add color indicator emoji based on color_identity
+        if hasattr(card, 'color_identity') and card.color_identity:
+            color_emoji = self._get_color_emoji(card.color_identity)
+            if color_emoji:
+                card_display = f"{card_display} {color_emoji}"
+
         # Combine all parts
         if status_parts:
-            return f"{card.name} ({', '.join(status_parts)})"
+            return f"{card_display} ({', '.join(status_parts)})"
         else:
-            return card.name
+            return card_display
 
     def _display_board_state(self, board_state: "BoardState"):
         """Display a comprehensive visual representation of the current board state"""
