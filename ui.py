@@ -1526,9 +1526,6 @@ class AdvisorGUI:
     def _capture_bug_report(self):
         """Capture bug report with screenshot, logs, and board state"""
         import threading
-        import subprocess
-        import os
-        import time
         import base64
         import requests
 
@@ -1584,7 +1581,6 @@ class AdvisorGUI:
                         ))
                     self.root.after(0, ask_upload)
                     # Wait for result
-                    import time
                     timeout = 30  # 30 second timeout
                     elapsed = 0
                     while not result and elapsed < timeout:
