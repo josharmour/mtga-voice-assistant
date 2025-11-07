@@ -18,6 +18,9 @@ from pathlib import Path
 from typing import Dict, Optional, List, Tuple
 import glob
 import logging
+import requests
+import zipfile
+import io
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -121,59 +124,77 @@ def extract_arena_cards(raw_db_path: Path) -> Dict[int, Dict]:
     logger.info(f"Extracted {len(cards)} cards from Arena database")
     return cards
 
-def load_scryfall_cache() -> Dict[str, Dict]:
-    """Load Scryfall data from cache if available."""
+def download_and_parse_mtgjson() -> Dict:
+    """
+    Downloads and parses AllPrintings.json from MTGJSON.
+    """
+    url = "https://mtgjson.com/api/v5/AllPrintings.json.zip"
+    logger.info(f"Downloading MTGJSON data from {url}")
 
-    cache_path = Path("card_cache.json")
-    if not cache_path.exists():
-        logger.info("No Scryfall cache found, will use Arena data only")
-        return {}
-
-    logger.info("Loading Scryfall cache...")
     try:
-        with open(cache_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            # Index by name for easy lookup
-            scryfall_by_name = {}
-            for card_data in data:
-                if isinstance(card_data, dict) and 'name' in card_data:
-                    scryfall_by_name[card_data['name'].lower()] = card_data
-            logger.info(f"Loaded {len(scryfall_by_name)} cards from Scryfall cache")
-            return scryfall_by_name
-    except Exception as e:
-        logger.error(f"Failed to load Scryfall cache: {e}")
+        # Stream the download to avoid high memory usage
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+
+        # Use io.BytesIO to treat the downloaded bytes as a file
+        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+            # Find the AllPrintings.json file in the zip
+            for filename in z.namelist():
+                if filename.lower() == "allprintings.json":
+                    with z.open(filename) as f:
+                        logger.info("Parsing MTGJSON data...")
+                        data = json.load(f)
+                        logger.info("MTGJSON data parsed successfully")
+                        return data['data']
+            logger.error("AllPrintings.json not found in the zip file")
+            return {}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to download MTGJSON data: {e}")
+        return {}
+    except zipfile.BadZipFile:
+        logger.error("Failed to unzip the downloaded file. It might be corrupted.")
+        return {}
+    except json.JSONDecodeError:
+        logger.error("Failed to parse the JSON data from AllPrintings.json.")
         return {}
 
-def enrich_with_scryfall(arena_cards: Dict[int, Dict], scryfall_data: Dict[str, Dict]) -> Dict[int, Dict]:
-    """Enrich Arena cards with Scryfall data where available."""
+def enrich_with_mtgjson(arena_cards: Dict[int, Dict], mtgjson_data: Dict) -> Dict[int, Dict]:
+    """Enrich Arena cards with MTGJSON data where available."""
 
-    if not scryfall_data:
+    if not mtgjson_data:
         return arena_cards
 
-    logger.info("Enriching cards with Scryfall data...")
+    logger.info("Enriching cards with MTGJSON data...")
     enriched_count = 0
 
+    # Create a lookup table from card name to MTGJSON card data
+    mtgjson_by_name = {}
+    for set_code, set_data in mtgjson_data.items():
+        for card in set_data.get('cards', []):
+            name = card.get('name')
+            if name:
+                # Prioritize non-digital sets for cleaner data
+                if set_code.upper() not in ('MTGA', 'ANA', 'ANB'):
+                    if name.lower() not in mtgjson_by_name:
+                         mtgjson_by_name[name.lower()] = card
+
     for grp_id, card in arena_cards.items():
-        card_name_lower = card['name'].lower()
+        card_name_lower = card['name'].lower().split(" // ")[0] # Handle split cards
 
-        if card_name_lower in scryfall_data:
-            scryfall_card = scryfall_data[card_name_lower]
+        if card_name_lower in mtgjson_by_name:
+            mtgjson_card = mtgjson_by_name[card_name_lower]
 
-            # Add Scryfall fields that Arena doesn't have
-            if 'oracle_text' in scryfall_card:
-                card['oracle_text'] = scryfall_card['oracle_text']
-            if 'mana_cost' in scryfall_card:
-                card['mana_cost'] = scryfall_card['mana_cost']
-            if 'cmc' in scryfall_card:
-                card['cmc'] = scryfall_card['cmc']
-            if 'type_line' in scryfall_card:
-                card['type_line'] = scryfall_card['type_line']
-            if 'keywords' in scryfall_card:
-                card['keywords'] = ','.join(scryfall_card['keywords'])
+            # Add fields that Arena doesn't have or are better from MTGJSON
+            card['oracle_text'] = mtgjson_card.get('text', card.get('oracle_text', ''))
+            card['mana_cost'] = mtgjson_card.get('manaCost', card.get('mana_cost', ''))
+            card['cmc'] = mtgjson_card.get('convertedManaCost', card.get('cmc', 0))
+            card['type_line'] = mtgjson_card.get('type', card.get('type_line', ''))
+            card['keywords'] = ','.join(mtgjson_card.get('keywords', []))
 
             enriched_count += 1
 
-    logger.info(f"Enriched {enriched_count} cards with Scryfall data")
+    logger.info(f"Enriched {enriched_count} cards with MTGJSON data")
     return arena_cards
 
 def convert_rarity(rarity_num: Optional[int]) -> str:
@@ -352,14 +373,14 @@ def build_database():
     arena_cards = extract_arena_cards(raw_db_path)
     print(f"✅ Extracted {len(arena_cards)} cards")
 
-    # Step 3: Load and apply Scryfall data (optional)
-    print("\nStep 3: Loading Scryfall enrichment data...")
-    scryfall_data = load_scryfall_cache()
-    if scryfall_data:
-        arena_cards = enrich_with_scryfall(arena_cards, scryfall_data)
-        print(f"✅ Enriched with Scryfall data")
+    # Step 3: Load and apply MTGJSON data
+    print("\nStep 3: Downloading and parsing MTGJSON data...")
+    mtgjson_data = download_and_parse_mtgjson()
+    if mtgjson_data:
+        arena_cards = enrich_with_mtgjson(arena_cards, mtgjson_data)
+        print(f"✅ Enriched with MTGJSON data")
     else:
-        print("⚠️  No Scryfall cache found, using Arena data only")
+        print("⚠️  Could not download or parse MTGJSON data, using Arena data only")
 
     # Step 4: Create unified database
     print("\nStep 4: Creating unified database...")
