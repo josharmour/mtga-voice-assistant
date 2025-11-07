@@ -818,6 +818,22 @@ python3 manage_data.py --update-scryfall
 
 # Show status
 python3 manage_data.py --status
+
+### Downloading 17Lands Data
+To download raw data from 17Lands, use the `download` command. This data is saved in a versioned directory structure to facilitate analysis of specific sets and time periods. You can specify the data type to download using the `--data-type` argument.
+
+```bash
+# Download replay data for a single set
+python3 data_management.py download --set-codes MKM --data-type replay_data
+
+# Download draft data for multiple sets
+python3 data_management.py download --set-codes MKM LCI --data-type draft_data
+
+# Download game data for a single set
+python3 data_management.py download --set-codes MKM --data-type game_data
+```
+
+**Data Versioning:** The downloaded data is organized in the `data/17lands` directory, with subdirectories for each set and the date of download (e.g., `data/17lands/MKM/2025-11-06`). For more advanced data versioning and management, consider using tools like [DVC](https://dvc.org/) or [Git LFS](https://git-lfs.github.com/).
 ```
 
 ### Testing Components

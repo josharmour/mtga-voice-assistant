@@ -1141,3 +1141,41 @@ def check_and_update_card_database() -> bool:
         logging.error(f"Failed to verify card database: {e}")
         return False
 
+if __name__ == "__main__":
+    from constants import ALL_SETS, CURRENT_STANDARD
+    from tools.download_17lands_data import download_17lands_data
+
+    logging.basicConfig(level=logging.INFO)
+
+    parser = argparse.ArgumentParser(description="Manage MTGA Advisor data.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Status command
+    parser_status = subparsers.add_parser("status", help="Show data status")
+
+    # 17lands command
+    parser_17lands = subparsers.add_parser("update-17lands", help="Update 17lands data")
+    parser_17lands.add_argument("--all-sets", action="store_true", help="Download all sets, not just current standard")
+    parser_17lands.add_argument("--max-age", type=int, default=30, help="Max age of data in days before re-downloading")
+
+    # Scryfall command
+    parser_scryfall = subparsers.add_parser("update-scryfall", help="Update Scryfall cache")
+
+    # Download command
+    parser_download = subparsers.add_parser("download", help="Download 17lands data")
+    parser_download.add_argument("--set-codes", type=str, nargs='+', required=True, help="One or more MTG set codes (e.g., 'MKM' 'LCI')")
+    parser_download.add_argument("--draft-type", type=str, default="PremierDraft", help="Draft type (e.g., 'PremierDraft')")
+    parser_download.add_argument("--data-type", type=str, default="replay_data", help="Data type to download (e.g., 'draft_data', 'game_data', 'replay_data')")
+    parser_download.add_argument("--output-dir", type=Path, default=Path("data/17lands"), help="Directory to save the data")
+
+    args = parser.parse_args()
+
+    if args.command == "status":
+        show_status()
+    elif args.command == "update-17lands":
+        update_17lands_data(args.all_sets, args.max_age)
+    elif args.command == "update-scryfall":
+        update_scryfall_data()
+    elif args.command == "download":
+        for set_code in args.set_codes:
+            download_17lands_data(set_code, args.draft_type, args.data_type, args.output_dir)
