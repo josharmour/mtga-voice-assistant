@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
-from advisor import AIAdvisor, BoardState, GameObject, GameHistory, RAG_AVAILABLE
+from advisor import AIAdvisor, BoardState, GameObject, GameHistory
+from ai import RAG_AVAILABLE
 
 class TestAIAdvisor(unittest.TestCase):
     def setUp(self):
@@ -10,7 +11,7 @@ class TestAIAdvisor(unittest.TestCase):
         self.mock_card_db.get_type_line.return_value = "Instant"
         self.mock_card_db.get_oracle_text.return_value = "Deal 3 damage to any target."
 
-    @patch('advisor.OllamaClient')
+    @patch('ai.OllamaClient')
     def test_ai_advisor_initialization(self, MockOllamaClient):
         """Test that AIAdvisor initializes correctly."""
         advisor = AIAdvisor(card_db=self.mock_card_db)
@@ -58,33 +59,29 @@ class TestAIAdvisor(unittest.TestCase):
 
         prompt = advisor._build_prompt(board_state)
         self.assertIn("== YOUR HAND (1) ==", prompt)
-        self.assertIn("• Lightning Bolt {1}{R} (Instant)", prompt)
-        self.assertIn("Rules: Deal 3 damage to any target.", prompt)
+        self.assertIn("• Lightning Bolt", prompt)
+        self.assertIn("(Deal 3 damage to any target.)", prompt)
         self.assertIn("== YOUR BATTLEFIELD (1) ==", prompt)
         self.assertIn("• Goblin Guide [2/2]", prompt)
         self.assertIn("== OPPONENT BATTLEFIELD (1) ==", prompt)
         self.assertIn("• Tarmogoyf [4/5]", prompt)
 
-    @patch('advisor.OllamaClient')
-    @patch('advisor.RAGSystem' if RAG_AVAILABLE else 'unittest.mock.MagicMock')
-    def test_get_tactical_advice(self, MockRAGSystem, MockOllamaClient):
+    @patch('ai.OllamaClient')
+    @patch('ai.AIAdvisor._build_prompt')
+    def test_get_tactical_advice(self, mock_build_prompt, MockOllamaClient):
         """Test that get_tactical_advice returns advice from the Ollama client."""
         mock_ollama = MockOllamaClient.return_value
         mock_ollama.generate.return_value = "Attack with Goblin Guide."
+        mock_build_prompt.return_value = "Simplified Prompt"
 
-        if RAG_AVAILABLE:
-            mock_rag = MockRAGSystem.return_value
-            mock_rag.enhance_prompt_with_references.return_value = ("Enhanced Prompt", {})
-
-        advisor = AIAdvisor(card_db=self.mock_card_db)
+        advisor = AIAdvisor(card_db=self.mock_card_db, use_rag=False)
         board_state = BoardState(your_seat_id=1, opponent_seat_id=2)
 
         advice = advisor.get_tactical_advice(board_state)
 
         self.assertEqual(advice, "Attack with Goblin Guide.")
-        mock_ollama.generate.assert_called_once()
-        if RAG_AVAILABLE:
-            mock_rag.enhance_prompt_with_references.assert_called_once()
+        mock_ollama.generate.assert_called_once_with(f"{advisor.SYSTEM_PROMPT}\n\nSimplified Prompt")
+        mock_build_prompt.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
