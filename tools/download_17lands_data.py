@@ -57,7 +57,7 @@ def download_17lands_data(set_code: str, data_type: str, output_dir: Path, retri
 
     # Construct the URL based on the data type
     if data_type == "replay_data":
-        url = f"https://17lands-public.s3.amazonaws.com/replay_data/replay_data_public.{set_code}.PremierDraft.csv.gz"
+        url = f"https://17lands-public.s3.amazonaws.com/analysis_data/replay_data/replay_data_public.{set_code}.PremierDraft.csv.gz"
     else:
         url = f"https://17lands-public.s3.amazonaws.com/analysis_data/{data_type}/{data_type}_public.{set_code}.PremierDraft.csv.gz"
 
