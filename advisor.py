@@ -16,17 +16,18 @@ import curses
 from collections import deque
 import sys
 
-# Add src directory to path for refactored modules
-sys.path.append(str(Path(__file__).parent / "src"))
-
-from log_parser import LogFollower
-from game_state import (
-    GameObject, PlayerState, GameHistory, BoardState, MatchScanner, GameStateManager
+from mtga import (
+    LogFollower,
+    GameObject,
+    PlayerState,
+    GameHistory,
+    BoardState,
+    MatchScanner,
+    GameStateManager,
 )
-from ai_advisor import OllamaClient, AIAdvisor
-from tts import TextToSpeech
-from ui import AdvisorTUI, AdvisorGUI
-from database import ArenaCardDatabase, check_and_update_card_database
+from ai import OllamaClient, AIAdvisor
+from ui import TextToSpeech, AdvisorTUI, AdvisorGUI
+from card_rag import CardRagDatabase as ArenaCardDatabase
 
 # Import configuration manager for user preferences
 try:
