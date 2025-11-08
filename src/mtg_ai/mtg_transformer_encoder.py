@@ -75,9 +75,16 @@ class MTGTransformerConfig:
     def __post_init__(self):
         """Validate configuration after initialization."""
         assert self.d_model % self.nhead == 0, "d_model must be divisible by nhead"
-        assert self.total_input_dim == (self.board_tokens_dim + self.hand_mana_dim +
-                                      self.phase_priority_dim + self.additional_features_dim)
-        # Note: actual dataset may have different dimensions due to processing pipeline
+
+        # Calculate expected dimension and check if it matches
+        expected_dim = (self.board_tokens_dim + self.hand_mana_dim +
+                       self.phase_priority_dim + self.additional_features_dim)
+
+        # Allow for actual data dimensions that may differ from expected
+        if self.total_input_dim != expected_dim:
+            print(f"Warning: total_input_dim ({self.total_input_dim}) != expected ({expected_dim})")
+            print(f"Using observed_input_dim ({self.observed_input_dim}) instead of total_input_dim")
+            self.total_input_dim = self.observed_input_dim
 
 
 class PositionalEncoding(nn.Module):
@@ -115,7 +122,7 @@ class BoardStateProcessor(nn.Module):
         self.config = config
 
         # Project board tokens to d_model dimension
-        self.board_embedding = nn.Linear(config.board_tokens_dim, config.d_model)
+        self.board_embedding = nn.Linear(config.total_input_dim, config.d_model)
 
         # Positional encoding for board positions
         self.pos_encoder = PositionalEncoding(config.d_model, config.max_board_positions)

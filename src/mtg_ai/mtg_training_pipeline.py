@@ -32,13 +32,20 @@ import itertools
 from pathlib import Path
 
 # Import existing components
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from .mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig
-    from .mtg_action_space import MTGActionSpace, ActionType, Phase
+    from mtg_ai.mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig
+    from mtg_ai.mtg_action_space import MTGActionSpace, ActionType, Phase
 except ImportError as e:
     logging.warning(f"Could not import some components: {e}")
+    logging.warning("Trying relative imports...")
+    try:
+        from .mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig
+        from .mtg_action_space import MTGActionSpace, ActionType, Phase
+    except ImportError as e2:
+        logging.error(f"Could not import components with relative imports either: {e2}")
+        raise ImportError(f"Failed to import MTG components: {e} | {e2}")
 
 # Configure logging
 logging.basicConfig(
@@ -56,12 +63,20 @@ logger = logging.getLogger(__name__)
 class TrainingConfig:
     """Configuration for training pipeline."""
 
-    # Model architecture
-    d_model: int = 256
-    nhead: int = 8
-    num_encoder_layers: int = 6
-    dim_feedforward: int = 512
+    # Model architecture (adjusted for actual data dimensions)
+    d_model: int = 128
+    nhead: int = 4
+    num_encoder_layers: int = 3
+    dim_feedforward: int = 256
     dropout: float = 0.1
+
+    # Data dimensions (matching actual dataset)
+    board_tokens_dim: int = 64
+    hand_mana_dim: int = 128
+    phase_priority_dim: int = 64
+    additional_features_dim: int = 10
+    total_input_dim: int = 282
+    observed_input_dim: int = 23  # Actual dimension in dataset
 
     # Training parameters
     batch_size: int = 32
@@ -390,10 +405,12 @@ class MTGTrainingDataset(Dataset):
                 data = json.load(f)
 
             # Extract training samples
-            if 'samples' in data:
+            if 'training_samples' in data:
+                samples = data['training_samples']
+            elif 'samples' in data:
                 samples = data['samples']
             else:
-                # If no 'samples' key, assume the whole file contains samples
+                # If no specific key, assume the whole file contains samples
                 samples = data
 
             # Filter by curriculum stage
@@ -577,7 +594,14 @@ class MTGTrainer:
             nhead=self.config.nhead,
             num_encoder_layers=self.config.num_encoder_layers,
             dim_feedforward=self.config.dim_feedforward,
-            dropout=self.config.dropout
+            dropout=self.config.dropout,
+            # Data dimensions
+            board_tokens_dim=self.config.board_tokens_dim,
+            hand_mana_dim=self.config.hand_mana_dim,
+            phase_priority_dim=self.config.phase_priority_dim,
+            additional_features_dim=self.config.additional_features_dim,
+            total_input_dim=self.config.total_input_dim,
+            observed_input_dim=self.config.observed_input_dim
         )
 
         # Initialize encoder and decision head
@@ -885,7 +909,7 @@ def main():
     trainer = MTGTrainer(config)
 
     # Start training
-    data_path = "/home/joshu/logparser/complete_training_dataset_task2_4.json"
+    data_path = "/home/joshu/logparser/data/complete_training_dataset_task2_4.json"
     train_metrics, val_metrics = trainer.train(data_path)
 
     # Final checkpoint
