@@ -35,8 +35,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig
-    from mtg_action_space import MTGActionSpace, ActionType, Phase
+    from .mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig
+    from .mtg_action_space import MTGActionSpace, ActionType, Phase
 except ImportError as e:
     logging.warning(f"Could not import some components: {e}")
 

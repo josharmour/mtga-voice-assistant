@@ -48,8 +48,8 @@ except ImportError:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from mtg_training_pipeline import MTGTrainer, TrainingConfig
-    from mtg_evaluation_metrics import MTGEvaluator, EvaluationConfig
+    from .mtg_training_pipeline import MTGTrainer, TrainingConfig
+    from .mtg_evaluation_metrics import MTGEvaluator, EvaluationConfig
 except ImportError as e:
     logging.warning(f"Could not import training components: {e}")
 

@@ -38,8 +38,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import existing components
 try:
-    from mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig, MTGDataset
-    from mtg_action_space import MTGActionSpace, Action, ActionType, Phase
+    from .mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig, MTGDataset
+    from .mtg_action_space import MTGActionSpace, Action, ActionType, Phase
 except ImportError as e:
     logging.warning(f"Could not import existing components: {e}")
     # Define placeholders for testing

@@ -6,26 +6,24 @@ from pathlib import Path
 import re
 import requests
 import urllib.request
-import urllib.request
 import sqlite3
 import time
 import os
 import threading
 from typing import Dict, List, Optional, Callable
 import subprocess
-import tempfile
 import curses
 from collections import deque
 import sys
 
-from mtga import LogFollower, GameStateManager
-from ai import AIAdvisor, OllamaClient
-from ui import TextToSpeech, AdvisorTUI, AdvisorGUI
-from data_management import ArenaCardDatabase, check_and_update_card_database
+from .mtga import LogFollower, GameStateManager
+from .ai import AIAdvisor, OllamaClient
+from .ui import TextToSpeech, AdvisorTUI, AdvisorGUI
+from ..data.data_management import ArenaCardDatabase, check_and_update_card_database
 
 # Import configuration manager for user preferences
 try:
-    from config_manager import UserPreferences
+    from ..config.config_manager import UserPreferences
     CONFIG_MANAGER_AVAILABLE = True
 except ImportError:
     CONFIG_MANAGER_AVAILABLE = False
@@ -33,7 +31,7 @@ except ImportError:
 
 # Import RAG system (optional - will gracefully degrade if not available)
 try:
-    from ai import RAGSystem
+    from .ai import RAGSystem
     RAG_AVAILABLE = True
 except ImportError:
     RAG_AVAILABLE = False
@@ -41,7 +39,7 @@ except ImportError:
 
 # Import draft advisor (requires tabulate, termcolor, scipy)
 try:
-    from draft_advisor import DraftAdvisor, display_draft_pack, format_draft_pack_for_gui
+    from .draft_advisor import DraftAdvisor, display_draft_pack, format_draft_pack_for_gui
     DRAFT_ADVISOR_AVAILABLE = True
 except ImportError as e:
     DRAFT_ADVISOR_AVAILABLE = False
@@ -480,7 +478,7 @@ class CLIVoiceAdvisor:
 
             if self.use_gui and self.gui:
                 # Format for GUI with split panes (draft pool in board, picked cards in advisor)
-                from draft_advisor import format_draft_pack_for_gui
+                from .draft_advisor import format_draft_pack_for_gui
                 pack_lines, picked_lines = format_draft_pack_for_gui(
                     pack_cards, pack_num, pick_num, recommendation,
                     picked_cards=self.draft_advisor.picked_cards,
@@ -499,7 +497,7 @@ class CLIVoiceAdvisor:
                 self.gui.add_message(f"Pack {pack_num}, Pick {pick_num}: {recommendation}", "cyan")
             elif self.use_tui and self.tui:
                 # TUI display
-                from draft_advisor import format_draft_pack_for_gui
+                from .draft_advisor import format_draft_pack_for_gui
                 lines = format_draft_pack_for_gui(
                     pack_cards, pack_num, pick_num, recommendation,
                     picked_cards=self.draft_advisor.picked_cards,
@@ -508,7 +506,7 @@ class CLIVoiceAdvisor:
                 self.tui.set_board_state(lines)
             else:
                 # Terminal display
-                from draft_advisor import display_draft_pack
+                from .draft_advisor import display_draft_pack
                 display_draft_pack(pack_cards, pack_num, pick_num, recommendation)
 
             # Speak recommendation if TTS enabled
@@ -1848,7 +1846,8 @@ Based on all this information, should the player mulligan? Respond with:
         else:
             logging.warning("No advice was generated.")
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the MTGA Voice Advisor application."""
     import argparse
     import dataclasses
 
@@ -1870,3 +1869,7 @@ if __name__ == "__main__":
     # Create and run advisor
     advisor = CLIVoiceAdvisor(use_tui=use_tui, use_gui=use_gui)
     advisor.run()
+
+
+if __name__ == "__main__":
+    main()

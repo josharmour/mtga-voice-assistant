@@ -1,0 +1,1 @@
+# MTG Arena Voice Advisor - Main Application Package

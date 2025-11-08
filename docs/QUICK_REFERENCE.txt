@@ -1,0 +1,75 @@
+================================================================================
+MTGA VOICE ADVISOR - DATA COVERAGE QUICK REFERENCE
+================================================================================
+
+DATABASE STATUS (as of Oct 30, 2025)
+------------------------------------
+✅ 29 sets with complete data
+✅ 7,917 cards total
+✅ 383+ million games analyzed
+✅ 48,443 average games per card
+✅ 100% Standard coverage
+✅ 100% Flashback coverage
+✅ 1 day average data age (FRESH)
+
+CURRENT STANDARD SETS (All Present ✅)
+--------------------------------------
+FDN - Foundations
+DFT - Aetherdrift
+TDM - Tarkir: Dragonstorm
+FIN - Final Fantasy
+EOE - Edge of Eternities
+BLB - Bloomburrow
+OTJ - Outlaws of Thunder Junction
+MKM - Murders at Karlov Manor
+LCI - The Lost Caverns of Ixalan
+
+QUICK COMMANDS
+--------------
+# Check coverage
+python analyze_data_coverage.py
+
+# Check database status
+python update_card_data.py --status
+
+# Update outdated sets (>90 days)
+python update_card_data.py --auto --max-age 90
+
+# Test draft detection
+python auto_draft_detector.py --test
+
+# Check specific set
+python auto_draft_detector.py --check BLB
+
+# Download specific set
+python auto_draft_detector.py --download OTJ
+
+DATA QUALITY TIERS
+------------------
+A+ Tier (60k+ games): DMU, DSK, MOM, LTR, OTJ, WOE, BLB, SNC, MKM, DFT
+A  Tier (40k+ games): LCI, FDN, MH3, FIN, NEO, MID, TDM, ONE
+B+ Tier (20k+ games): EOE, KHM, VOW, BRO, STX, AFR
+B  Tier (10k+ games): PIO, KTK, OM1, SIR, HBG
+
+All tiers have adequate data for reliable recommendations.
+
+FILES CREATED
+-------------
+✅ DATA_COVERAGE_REPORT.md       - Complete 10-section analysis
+✅ VERIFICATION_SUMMARY.md       - Executive summary
+✅ INTEGRATION_GUIDE.md          - Auto-download integration
+✅ analyze_data_coverage.py      - Coverage analyzer tool
+✅ auto_draft_detector.py        - Draft detection tool
+✅ QUICK_REFERENCE.txt           - This file
+
+RECOMMENDATIONS
+---------------
+✅ No immediate action needed - database is complete and current
+🚀 Optional: Integrate auto_draft_detector.py (see INTEGRATION_GUIDE.md)
+📅 Next update: January 2026 (90 days from now)
+
+MISSING SETS: NONE
+-----------------
+All draftable Arena formats have complete data coverage.
+
+================================================================================

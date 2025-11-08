@@ -28,7 +28,7 @@ from pathlib import Path
 import logging
 from collections import defaultdict
 
-from mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig
+from .mtg_transformer_encoder import MTGTransformerEncoder, MTGTransformerConfig
 
 logger = logging.getLogger(__name__)
 

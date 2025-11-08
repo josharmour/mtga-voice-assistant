@@ -230,7 +230,7 @@ except ImportError:
 
 # Import config manager (optional)
 try:
-    from config_manager import UserPreferences
+    from ..config.config_manager import UserPreferences
     CONFIG_MANAGER_AVAILABLE = True
 except ImportError:
     CONFIG_MANAGER_AVAILABLE = False

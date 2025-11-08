@@ -33,13 +33,16 @@ python3 manage_data.py --update-scryfall
 ### Running the Application
 ```bash
 # GUI mode (recommended)
-python3 app.py
+python3 main.py
 
 # TUI mode (terminal)
-python3 app.py --tui
+python3 main.py --tui
 
 # CLI mode (simple output)
-python3 app.py --cli
+python3 main.py --cli
+
+# Alternative: Run from source directly
+python3 src/core/app.py --tui
 
 # Test AI components
 python3 demo_training_pipeline.py
@@ -50,19 +53,31 @@ python3 test_mtg_transformer.py
 
 ### Core System Components
 
-#### 1. MTGA Voice Advisor (Production System)
-- **app.py** (1,963 lines) - Main orchestrator
+#### 1. MTGA Voice Advisor (Production System) - `src/core/`
+- **app.py** (1,875 lines) - Main orchestrator and entry point
 - **mtga.py** (1,187 lines) - Log parsing and game state management
-- **ai.py** (1,537 lines) - LLM integration with RAG
-- **ui.py** (1,831 lines) - GUI/TUI/CLI interfaces
-- **data_management.py** (1,141 lines) - Thread-safe database operations
+- **ai.py** (1,583 lines) - LLM integration with RAG
+- **ui.py** (2,213 lines) - GUI/TUI/CLI interfaces
+- **draft_advisor.py** (543 lines) - Draft pick recommendations
+- **deck_builder.py** (345 lines) - Deck building utilities
 
-#### 2. MTG Gameplay AI (Research System)
+#### 2. MTG Gameplay AI (Research System) - `src/mtg_ai/`
 - **mtg_transformer_encoder.py** - Neural network for game state encoding
 - **mtg_action_space.py** - Action representation and scoring
 - **mtg_decision_head.py** - Actor-critic decision making
 - **mtg_training_pipeline.py** - Complete training infrastructure
 - **mtg_evaluation_metrics.py** - Performance evaluation
+- **mtg_hyperparameter_optimization.py** - Model optimization
+- **mtg_training_monitor.py** - Training monitoring
+- **mtg_model_versioning.py** - Model management
+
+#### 3. Data Management - `src/data/`
+- **data_management.py** - Thread-safe database operations
+- **card_rag.py** - Card RAG database system
+
+#### 4. Configuration - `src/config/`
+- **config_manager.py** - User preferences and settings
+- **constants.py** - Application constants
 
 ### Data Pipeline Architecture
 
