@@ -817,13 +817,31 @@ python3 manage_data.py --update-17lands --all-sets
 python3 manage_data.py --update-scryfall
 
 # Show status
-python3 manage_data.py --status
-```
-
-### Testing Components
-
-```bash
-# Test card database
+ python3 manage_data.py --status
+ ```
+ 
++### Downloading Replay Data
++
++To download 17Lands replay data for a specific set and format, use the `download_replays.py` script. The script supports downloading multiple sets and formats in a single command.
++
++```bash
++# Download replay data for a single set (e.g., MKM) and format (PremierDraft)
++python3 download_replays.py --set MKM
++
++# Download replay data for multiple sets and formats
++python3 download_replays.py --set MKM,WOE --format PremierDraft,QuickDraft
++
++# Download all available formats for a set
++python3 download_replays.py --set MKM --format all
++```
++
++#### Data Versioning
++
++The `download_replays.py` script automatically versions the downloaded data. A `registry.json` file is created in the `data/replay_data` directory, which stores metadata about each downloaded file, including the download date, file size, and a version number based on the download date. This allows for tracking of data provenance and ensures that analysis can be reproduced.
++
+ ### Testing Components
+ 
+  ```bash# Test card database
 python3 -c "from data_management import ArenaCardDatabase; db = ArenaCardDatabase(); print(db.get_card_name(1))"
 
 # Test Ollama connection

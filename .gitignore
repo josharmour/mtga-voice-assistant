@@ -1,6 +1,7 @@
 # Python virtual environment
 venv/
 .venv/
+mtg_env/
 
 # Python cache
 __pycache__/
@@ -30,11 +31,6 @@ pyghidra_mcp_projects/
 *.swo
 *.swp
 
-# Ignore all markdown files
-*.md
-
-# Except for README.md
-!README.md
 
 # Local documentation
 local-docs/
@@ -43,9 +39,8 @@ local-docs/
 .claude/
 .gemini/
 
-# Ignore large data files
-data/*.csv
-data/scryfall_cache.db
+# Ignore data folder file
+data/
 
 # Configuration files with credentials
 config.py
@@ -55,3 +50,4 @@ config.json
 scryfall_cache.db
 unified_cards.db
 data/scryfall_default_cards.json
+chat_backup/

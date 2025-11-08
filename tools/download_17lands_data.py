@@ -40,13 +40,14 @@ def get_set_codes() -> List[str]:
         logging.error(f"Failed to fetch or parse set codes: {e}")
         return []
 
-def download_17lands_data(set_code: str, data_type: str, output_dir: Path, retries: int = 3, backoff_factor: float = 0.5):
+def download_17lands_data(set_code: str, data_type: str, format_type: str, output_dir: Path, retries: int = 3, backoff_factor: float = 0.5):
     """
     Downloads a single 17Lands dataset with retry logic.
 
     Args:
         set_code: The set code to download (e.g., "NEO").
         data_type: The type of data to download (e.g., "draft_data").
+        format_type: The format of the data to download (e.g., "PremierDraft").
         output_dir: The directory to save the file in.
         retries: The number of times to retry the download.
         backoff_factor: The factor to use for exponential backoff.
@@ -55,17 +56,17 @@ def download_17lands_data(set_code: str, data_type: str, output_dir: Path, retri
         logging.error(f"Invalid data type: {data_type}. Must be one of {DATA_TYPES}")
         return
 
-    # Construct the URL based on the data type
+    # Construct the URL based on the data type and format
     if data_type == "replay_data":
-        url = f"https://17lands-public.s3.amazonaws.com/analysis_data/replay_data/replay_data_public.{set_code}.PremierDraft.csv.gz"
+        url = f"https://17lands-public.s3.amazonaws.com/analysis_data/replay_data/replay_data_public.{set_code}.{format_type}.csv.gz"
     else:
-        url = f"https://17lands-public.s3.amazonaws.com/analysis_data/{data_type}/{data_type}_public.{set_code}.PremierDraft.csv.gz"
+        url = f"https://17lands-public.s3.amazonaws.com/analysis_data/{data_type}/{data_type}_public.{set_code}.{format_type}.csv.gz"
 
-    output_path = output_dir / f"{set_code}_{data_type}.csv.gz"
+    output_path = output_dir / f"{data_type}_public.{set_code}.{format_type}.csv.gz"
 
     # Skip download if the file already exists
     if output_path.exists():
-        logging.info(f"Skipping download for {set_code} {data_type}, file already exists.")
+        logging.info(f"Skipping download for {set_code} {data_type} ({format_type}), file already exists.")
         return
 
     for i in range(retries):
@@ -93,6 +94,7 @@ def main():
     parser = argparse.ArgumentParser(description="Download 17Lands public datasets.")
     parser.add_argument("--set", type=str, help="Specific set code to download (e.g., 'NEO'). If not provided, all sets will be downloaded.")
     parser.add_argument("--data_types", nargs="+", default=DATA_TYPES, help=f"A list of data types to download. Defaults to all: {', '.join(DATA_TYPES)}")
+    parser.add_argument("--format_types", nargs="+", default=["PremierDraft"], help="A list of format types to download. Defaults to PremierDraft.")
     parser.add_argument("--output_dir", type=Path, default=Path("data/17lands_data"), help="Directory to save the downloaded files.")
     parser.add_argument("--max_workers", type=int, default=4, help="Maximum number of concurrent downloads.")
     args = parser.parse_args()
@@ -115,7 +117,8 @@ def main():
         futures = []
         for set_code in sets_to_download:
             for data_type in args.data_types:
-                futures.append(executor.submit(download_17lands_data, set_code, data_type, args.output_dir))
+                for format_type in args.format_types:
+                    futures.append(executor.submit(download_17lands_data, set_code, data_type, format_type, args.output_dir))
 
         for future in as_completed(futures):
             try:
