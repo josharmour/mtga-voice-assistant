@@ -35,6 +35,9 @@ pyghidra_mcp_projects/
 # Local documentation
 local-docs/
 
+# Task scripts and one-off files
+task_scripts/
+
 # AI assistant directories
 .claude/
 .gemini/
@@ -47,7 +50,5 @@ config.py
 config.json
 
 # Generated database files
-scryfall_cache.db
-unified_cards.db
 data/scryfall_default_cards.json
 chat_backup/
