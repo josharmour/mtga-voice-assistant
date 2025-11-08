@@ -46,6 +46,15 @@ except ImportError:
 # RAG system is available if both ChromaDB and sentence-transformers are available
 RAG_AVAILABLE = CHROMADB_AVAILABLE and SENTENCE_TRANSFORMERS_AVAILABLE
 
+# Import MTG AI client (optional - will gracefully degrade if not available)
+try:
+    from ..mtg_ai.mtg_ai_client import MTGAClient
+    MTG_AI_AVAILABLE = True
+    logging.info("MTG AI client available")
+except ImportError as e:
+    MTG_AI_AVAILABLE = False
+    logging.warning(f"MTG AI client not available: {e}. Install PyTorch if needed: pip install torch")
+
 
 class RulesParser:
     """Parses the MTG Comprehensive Rules text file into structured chunks.
@@ -1258,21 +1267,27 @@ CRITICAL RULES:
 3. You can only cast spells from YOUR HAND during your main phase
 4. Creatures can attack if they've been on battlefield since your last turn
 5. If you see "Unknown" cards, say "Wait for card identification"
-6. For cards with "⚠ ability text not available in database": DO NOT invent or guess their abilities. Ask for the actual abilities or skip analysis of that card.
-7. ALWAYS CHECK AVAILABLE MANA before suggesting any spell casts. If a spell costs more mana than available, DO NOT suggest casting it.
+6. For cards with "⚠ ability text not available in database": Provide advice based on the card name, mana cost, and type line. DO NOT invent specific abilities, but you can give general tactical advice about playing such cards.
+7. For well-known cards (basic lands, common creatures), you can provide reasonable tactical advice even without full oracle text.
+8. ALWAYS CHECK AVAILABLE MANA before suggesting any spell casts. If a spell costs more mana than available, DO NOT suggest casting it.
 
 FORBIDDEN ACTIONS:
 - Do NOT mention cards not listed in the board state
 - Do NOT suggest destroying/removing lands
 - Do NOT invent card names
-- Do NOT guess/invent card abilities when text is marked as unavailable
+- Do NOT guess/invent specific card abilities when text is marked as unavailable
 - Do NOT reference abilities not explicitly stated in the prompt
 - Do NOT suggest casting spells you don't have enough mana for
 - Do NOT suggest paying for abilities you can't afford with available mana
+- Do NOT wait for card identification unless the card is literally marked as "Unknown"
 
 IMPORTANT: Always factor in available mana when suggesting plays.
 
-Give ONLY tactical advice in 1-2 short sentences. Start directly with your recommendation."""
+RESPONSE FORMAT:
+THINKING: [Your detailed reasoning and analysis here]
+ANSWER: [Single short sentence with your final recommendation]
+
+The ANSWER should be ONLY what gets spoken by text-to-speech. The THINKING section provides detailed context for the user to read. Keep your ANSWER to one clear, actionable sentence."""
 
     def __init__(self, ollama_host: str = "http://localhost:11434", model: str = "mistral:7b", use_rag: bool = True, card_db: Optional["ArenaCardDatabase"] = None):
         self.client = OllamaClient(host=ollama_host, model=model)
@@ -1280,6 +1295,18 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
         self.rag_system = None
         self.card_db = card_db  # Store card database for oracle text lookups
         self.last_rag_references = None  # Track most recent RAG references used
+
+        # Initialize MTG AI client (graceful degradation)
+        self.mtg_ai_client = None
+        self.use_mtg_ai = MTG_AI_AVAILABLE
+        if self.use_mtg_ai:
+            try:
+                self.mtg_ai_client = MTGAClient()
+                logging.info("🤖 MTG AI client initialized successfully")
+            except Exception as e:
+                logging.error(f"Failed to initialize MTG AI client: {e}")
+                self.mtg_ai_client = None
+                self.use_mtg_ai = False
 
         # Initialize RAG system if enabled
         if self.use_rag:
@@ -1340,13 +1367,42 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
             for card in board_state.your_hand:
                 card_info = f"• {card.name}"
                 # Add oracle text if available
-                if self.card_db and card.grp_id:
+                if self.card_db and hasattr(card, 'grp_id') and card.grp_id:
                     oracle_text = self.card_db.get_oracle_text(card.grp_id)
                     if oracle_text:
                         card_info += f"\n  ({oracle_text})"
                     else:
-                        # Temporarily disabled: logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
-                        card_info += f"\n  (⚠ ability text not available in database)"
+                        logging.debug(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        # Try to get mana cost and type line for better context
+                        card_data = self.card_db.get_card_data(card.grp_id)
+                        if card_data:
+                            mana_cost = card_data.get('mana_cost', '')
+                            type_line = card_data.get('type_line', '')
+                            context = []
+                            if mana_cost:
+                                context.append(mana_cost)
+                            if type_line:
+                                context.append(type_line)
+                            if context:
+                                card_info += f"\n  ({' | '.join(context)})"
+                            else:
+                                card_info += f"\n  (⚠ ability text not available)"
+                        else:
+                            card_info += f"\n  (⚠ ability text not available)"
+                elif self.card_db and hasattr(card, 'name'):
+                    # Try to get oracle text by name if grp_id is not available
+                    try:
+                        card_data = self.card_db.get_card_by_name(card.name)
+                        if card_data and hasattr(card_data, 'oracle_id') and card_data.oracle_id:
+                            oracle_text = self.card_db.get_oracle_text(card_data.oracle_id)
+                            if oracle_text:
+                                card_info += f"\n  ({oracle_text})"
+                            else:
+                                card_info += f"\n  (⚠ ability text not available)"
+                        else:
+                            card_info += f"\n  (⚠ card not found in database)"
+                    except:
+                        card_info += f"\n  (⚠ unable to retrieve card data)"
                 lines.append(card_info)
             lines.append("")
         else:
@@ -1375,13 +1431,42 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                 card_line = f"• {card.name}{power_toughness}{status_text}"
 
                 # Add oracle text if available
-                if self.card_db and card.grp_id:
+                if self.card_db and hasattr(card, 'grp_id') and card.grp_id:
                     oracle_text = self.card_db.get_oracle_text(card.grp_id)
                     if oracle_text:
                         card_line += f"\n  ({oracle_text})"
                     else:
-                        # Temporarily disabled: logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
-                        card_line += f"\n  (⚠ ability text not available in database)"
+                        logging.debug(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        # Try to get mana cost and type line for better context
+                        card_data = self.card_db.get_card_data(card.grp_id)
+                        if card_data:
+                            mana_cost = card_data.get('mana_cost', '')
+                            type_line = card_data.get('type_line', '')
+                            context = []
+                            if mana_cost:
+                                context.append(mana_cost)
+                            if type_line:
+                                context.append(type_line)
+                            if context:
+                                card_line += f"\n  ({' | '.join(context)})"
+                            else:
+                                card_line += f"\n  (⚠ ability text not available)"
+                        else:
+                            card_line += f"\n  (⚠ ability text not available)"
+                elif self.card_db and hasattr(card, 'name'):
+                    # Try to get oracle text by name if grp_id is not available
+                    try:
+                        card_data = self.card_db.get_card_by_name(card.name)
+                        if card_data and hasattr(card_data, 'oracle_id') and card_data.oracle_id:
+                            oracle_text = self.card_db.get_oracle_text(card_data.oracle_id)
+                            if oracle_text:
+                                card_line += f"\n  ({oracle_text})"
+                            else:
+                                card_line += f"\n  (⚠ ability text not available)"
+                        else:
+                            card_line += f"\n  (⚠ card not found in database)"
+                    except:
+                        card_line += f"\n  (⚠ unable to retrieve card data)"
 
                 lines.append(card_line)
             lines.append("")
@@ -1407,13 +1492,42 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                 card_line = f"• {card.name}{power_toughness}{status_text}"
 
                 # Add oracle text if available
-                if self.card_db and card.grp_id:
+                if self.card_db and hasattr(card, 'grp_id') and card.grp_id:
                     oracle_text = self.card_db.get_oracle_text(card.grp_id)
                     if oracle_text:
                         card_line += f"\n  ({oracle_text})"
                     else:
-                        # Temporarily disabled: logging.warning(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
-                        card_line += f"\n  (⚠ ability text not available in database)"
+                        logging.debug(f"[ORACLE TEXT MISSING] Card '{card.name}' (grpId: {card.grp_id}) has no oracle text in database")
+                        # Try to get mana cost and type line for better context
+                        card_data = self.card_db.get_card_data(card.grp_id)
+                        if card_data:
+                            mana_cost = card_data.get('mana_cost', '')
+                            type_line = card_data.get('type_line', '')
+                            context = []
+                            if mana_cost:
+                                context.append(mana_cost)
+                            if type_line:
+                                context.append(type_line)
+                            if context:
+                                card_line += f"\n  ({' | '.join(context)})"
+                            else:
+                                card_line += f"\n  (⚠ ability text not available)"
+                        else:
+                            card_line += f"\n  (⚠ ability text not available)"
+                elif self.card_db and hasattr(card, 'name'):
+                    # Try to get oracle text by name if grp_id is not available
+                    try:
+                        card_data = self.card_db.get_card_by_name(card.name)
+                        if card_data and hasattr(card_data, 'oracle_id') and card_data.oracle_id:
+                            oracle_text = self.card_db.get_oracle_text(card_data.oracle_id)
+                            if oracle_text:
+                                card_line += f"\n  ({oracle_text})"
+                            else:
+                                card_line += f"\n  (⚠ ability text not available)"
+                        else:
+                            card_line += f"\n  (⚠ card not found in database)"
+                    except:
+                        card_line += f"\n  (⚠ unable to retrieve card data)"
 
                 lines.append(card_line)
             lines.append("")
@@ -1445,8 +1559,20 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
         logging.debug(f"[TACTICAL ADVICE] Opponent battlefield: {len(board_state.opponent_battlefield)} cards")
         logging.debug(f"[TACTICAL ADVICE] Your hand: {len(board_state.your_hand)} cards")
 
-        # Debug: Log the prompt before RAG enhancement
-        logging.debug(f"[TACTICAL ADVICE] Prompt before RAG:\n{prompt[:1000]}...")
+        # Get MTG AI insight if available
+        mtg_ai_insight = ""
+        if self.use_mtg_ai and self.mtg_ai_client:
+            try:
+                mtg_game_state = self._board_state_to_mtg_ai_format(board_state)
+                mtg_result = self.mtg_ai_client.get_recommendation(mtg_game_state)
+
+                if mtg_result['success']:
+                    mtg_ai_insight = f"\n\n🤖 MTG AI Recommendation: {mtg_result['recommendation']['action'].replace('_', ' ').title()} (confidence: {mtg_result['recommendation']['confidence']:.2f})"
+                    logging.info(f"[MTG AI] Recommendation: {mtg_result['recommendation']['action']} (confidence: {mtg_result['recommendation']['confidence']:.3f})")
+                else:
+                    logging.warning(f"[MTG AI] Failed to get recommendation: {mtg_result.get('error', 'Unknown error')}")
+            except Exception as e:
+                logging.error(f"[MTG AI] Error getting recommendation: {e}")
 
         # Enhance prompt with RAG context if available
         if self.use_rag and self.rag_system:
@@ -1466,7 +1592,12 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
                 logging.warning(f"Failed to enhance prompt with RAG: {e}")
                 self.last_rag_references = None
 
+        # Add MTG AI insight to the prompt
+        if mtg_ai_insight:
+            prompt += mtg_ai_insight
+
         # Debug: Log the full prompt that will be sent to AI
+        logging.debug(f"[TACTICAL ADVICE] Prompt before RAG:\n{prompt[:1000]}...")
         logging.info(f"[TACTICAL ADVICE] FULL PROMPT BEING SENT TO AI:\n{self.SYSTEM_PROMPT}\n\n{prompt}")
 
         advice = self.client.generate(f"{self.SYSTEM_PROMPT}\n\n{prompt}")
@@ -1483,9 +1614,262 @@ Give ONLY tactical advice in 1-2 short sentences. Start directly with your recom
             return {}
         return dataclasses.asdict(board_state)
 
+    def _board_state_to_mtg_ai_format(self, board_state: "BoardState") -> dict:
+        """Converts BoardState to MTG AI client format."""
+        if not board_state:
+            return {}
+
+        # Get basic game info
+        current_phase = getattr(board_state, 'current_phase', '').lower()
+        turn_number = getattr(board_state, 'current_turn', getattr(board_state, 'turn_number', 1))
+
+        # Calculate board composition
+        your_creatures = len([c for c in getattr(board_state, 'your_battlefield', []) if 'Creature' in getattr(c, 'type_line', '')])
+        opponent_creatures = len([c for c in getattr(board_state, 'opponent_battlefield', []) if 'Creature' in getattr(c, 'type_line', '')])
+        your_lands = len([c for c in getattr(board_state, 'your_battlefield', []) if 'Land' in getattr(c, 'type_line', '')])
+        hand_size = len(getattr(board_state, 'your_hand', []))
+
+        # Dynamic turn action estimation based on game state
+        lands_played_this_turn = 1 if your_lands > 0 and turn_number <= 3 else 0
+        creatures_cast_this_turn = min(your_creatures, 3) if turn_number <= 5 else 0
+        spells_cast_this_turn = max(0, hand_size - 3) if turn_number > 1 else 0
+
+        # Phase-specific actions - more accurate combat detection
+        # In MTGA, we need to determine if combat is actually happening, not just that we're in combat phase
+        creatures_attacking = 0  # Default: no attack happening
+        creatures_blocking = 0
+        creatures_unblocked = 0
+
+        if 'combat' in current_phase and opponent_creatures > 0:
+            # Only consider an attack if opponent has creatures AND it's their turn to attack
+            # Since we don't have clear turn indicator, assume opponent attacks only if they have advantage
+            opponent_advantage = opponent_creatures > your_creatures or (20 - getattr(board_state, 'opponent_life', 20)) < (20 - getattr(board_state, 'your_life', 20))
+            if opponent_advantage:
+                creatures_attacking = min(opponent_creatures, 2)  # Assume at most 2 attackers
+                creatures_blocking = min(your_creatures, creatures_attacking)  # We can block with available creatures
+                creatures_unblocked = max(0, creatures_attacking - creatures_blocking)
+
+        # Mana and damage estimation
+        mana_spent_this_turn = lands_played_this_turn + creatures_cast_this_turn + spells_cast_this_turn
+        damage_taken_this_turn = max(0, 20 - getattr(board_state, 'your_life', 20))
+        damage_dealt_this_turn = max(0, 20 - getattr(board_state, 'opponent_life', 20))
+
+        # Extract relevant information for MTG AI
+        return {
+            # Core game info
+            'turn_number': turn_number,
+            'on_play': True,  # Assume on play for now
+            'player_life': getattr(board_state, 'your_life', 20),
+            'opponent_life': getattr(board_state, 'opponent_life', 20),
+            'hand_size': len(getattr(board_state, 'your_hand', [])),
+            'opponent_hand_size': max(0, len(getattr(board_state, 'your_hand', [])) - 1),
+
+            # Board state
+            'lands_in_play': len([c for c in getattr(board_state, 'your_battlefield', []) if 'Land' in getattr(c, 'type_line', '')]),
+            'opponent_lands_in_play': len([c for c in getattr(board_state, 'opponent_battlefield', []) if 'Land' in getattr(c, 'type_line', '')]),
+            'creatures_in_play': len([c for c in getattr(board_state, 'your_battlefield', []) if 'Creature' in getattr(c, 'type_line', '')]),
+            'opponent_creatures_in_play': len([c for c in getattr(board_state, 'opponent_battlefield', []) if 'Creature' in getattr(c, 'type_line', '')]),
+            'non_creatures_in_play': len([c for c in getattr(board_state, 'your_battlefield', []) if 'Creature' not in getattr(c, 'type_line', '') and 'Land' not in getattr(c, 'type_line', '')]),
+            'opponent_non_creatures_in_play': len([c for c in getattr(board_state, 'opponent_battlefield', []) if 'Creature' not in getattr(c, 'type_line', '') and 'Land' not in getattr(c, 'type_line', '')]),
+
+            # Turn actions (dynamically calculated)
+            'lands_played_this_turn': lands_played_this_turn,
+            'creatures_cast_this_turn': creatures_cast_this_turn,
+            'spells_cast_this_turn': spells_cast_this_turn,
+            'instants_cast_this_turn': 1 if 'combat' in current_phase and spells_cast_this_turn > 0 else 0,
+            'abilities_used_this_turn': your_lands if turn_number > 1 else 0,
+            'creatures_attacking': creatures_attacking,
+            'creatures_blocking': creatures_blocking,
+            'creatures_unblocked': creatures_unblocked,
+            'mana_spent_this_turn': mana_spent_this_turn,
+            'damage_taken_this_turn': damage_taken_this_turn,
+            'damage_dealt_this_turn': damage_dealt_this_turn,
+
+            # Game metadata (more dynamic)
+            'game_id': getattr(board_state, 'game_id', 'mtga_game'),
+            'expansion': 'STX',  # Default, could be extracted from board state
+            'total_turns': max(10, turn_number + 3),  # More realistic estimate
+            'won': getattr(board_state, 'your_life', 20) > getattr(board_state, 'opponent_life', 20)  # Dynamic outcome based on life
+        }
+
     def get_last_rag_references(self) -> Optional[Dict]:
         """Get the RAG references from the last tactical advice generation."""
         return self.last_rag_references
+
+    def get_mtg_ai_advice(self, board_state: "BoardState") -> Optional[Dict]:
+        """
+        Get direct advice from the MTG AI model.
+
+        Args:
+            board_state: Current game board state
+
+        Returns:
+            Dictionary with MTG AI recommendation or None if unavailable
+        """
+        if not self.use_mtg_ai or not self.mtg_ai_client:
+            return None
+
+        try:
+            mtg_game_state = self._board_state_to_mtg_ai_format(board_state)
+            result = self.mtg_ai_client.get_recommendation(mtg_game_state)
+
+            if result['success']:
+                return {
+                    'action': result['recommendation']['action'],
+                    'confidence': result['recommendation']['confidence'],
+                    'value_score': result.get('value_score', 0.0),
+                    'explanation': result.get('explanation', ''),
+                    'top_3_actions': result.get('top_3_actions', [])
+                }
+            else:
+                logging.warning(f"MTG AI failed: {result.get('error', 'Unknown error')}")
+                return None
+
+        except Exception as e:
+            logging.error(f"Error getting MTG AI advice: {e}")
+            return None
+
+    def translate_mtg_ai_action(self, action: str) -> str:
+        """
+        Translate MTG AI action into plain English.
+
+        Args:
+            action: MTG AI action string (e.g., "block_creatures")
+
+        Returns:
+            Human-readable English explanation
+        """
+        action_translations = {
+            'play_creature': 'Play a creature spell',
+            'attack_creatures': 'Attack with your creatures',
+            'defensive_play': 'Make a defensive play',
+            'cast_spell': 'Cast a non-creature spell',
+            'use_ability': 'Activate an ability',
+            'pass_priority': 'Pass priority without doing anything',
+            'block_creatures': 'Block incoming creatures',
+            'play_land': 'Play a land card',
+            'hold_priority': 'Hold priority to wait for responses',
+            'draw_card': 'Draw cards (use tutors or card draw)',
+            'combat_trick': 'Use instant-speed combat effects',
+            'board_wipe': 'Use board clearing effects',
+            'counter_spell': 'Counter opponent\'s spell',
+            'resource_accel': 'Use resource acceleration',
+            'positioning': 'Improve your board positioning'
+        }
+
+        return action_translations.get(action, action.replace('_', ' ').title())
+
+    def _get_contextual_insights(self, board_state: "BoardState") -> Optional[str]:
+        """
+        Get contextual insights when neural network is unavailable.
+        Provides analysis based on game state for actions like scry, etc.
+
+        Args:
+            board_state: Current game board state
+
+        Returns:
+            Contextual analysis string
+        """
+        if not board_state:
+            return None
+
+        insights = []
+
+        # Analyze current game state
+        turn_number = getattr(board_state, 'current_turn', 1)
+        current_phase = getattr(board_state, 'current_phase', '').lower()
+        your_life = getattr(board_state, 'your_life', 20)
+        opponent_life = getattr(board_state, 'opponent_life', 20)
+        hand_size = len(getattr(board_state, 'your_hand', []))
+        your_creatures = len([c for c in getattr(board_state, 'your_battlefield', []) if 'Creature' in getattr(c, 'type_line', '')])
+        opponent_creatures = len([c for c in getattr(board_state, 'opponent_battlefield', []) if 'Creature' in getattr(c, 'type_line', '')])
+
+        # Provide analysis based on game context
+        insights.append(f"🧠 **Contextual Analysis**")
+        insights.append(f"📊 **Game State:** Turn {turn_number}, {current_phase.title()} Phase")
+        insights.append(f"❤️ **Life:** {your_life} vs {opponent_life}")
+        insights.append(f"🃏 **Hand:** {hand_size} cards")
+        insights.append(f"⚔️ **Creatures:** {your_creatures} vs {opponent_creatures}")
+
+        # Strategic advice based on situation
+        if 'scry' in current_phase.lower() or any(hasattr(c, 'name') and 'scry' in getattr(c, 'name', '').lower() for c in getattr(board_state, 'your_hand', [])):
+            insights.append(f"🎯 **Scry Analysis:** Look for cards that match your current board needs")
+            if your_creatures < 2:
+                insights.append(f"   Prioritize creatures to build your board")
+            elif opponent_creatures > your_creatures + 1:
+                insights.append(f"   Consider removal or defensive options")
+            else:
+                insights.append(f"   Look for threats or card advantage")
+
+        # Phase-specific advice
+        if 'main' in current_phase:
+            if hand_size > 4 and your_creatures < 2:
+                insights.append(f"💡 **Strategy:** Consider playing a creature to develop your board")
+            elif your_life < opponent_life - 5:
+                insights.append(f"💡 **Strategy:** Focus on defense and stabilization")
+            else:
+                insights.append(f"💡 **Strategy:** Maintain tempo and pressure")
+
+        elif 'combat' in current_phase:
+            if your_creatures > opponent_creatures:
+                insights.append(f"⚔️ **Combat:** You have board advantage - consider attacking")
+            elif opponent_creatures > your_creatures:
+                insights.append(f"🛡️ **Combat:** Opponent has advantage - careful with attacks")
+
+        return "\n".join(insights)
+
+    def get_mtg_ai_english_insights(self, board_state: "BoardState") -> Optional[str]:
+        """
+        Get MTG AI insights formatted in plain English.
+
+        Args:
+            board_state: Current game board state
+
+        Returns:
+            Formatted English insights string or contextual analysis if NN unavailable
+        """
+        mtg_advice = self.get_mtg_ai_advice(board_state)
+
+        # If neural network is not available, provide contextual analysis
+        if not mtg_advice:
+            return self._get_contextual_insights(board_state)
+
+        try:
+            # Build English explanation
+            insights = []
+
+            # Primary recommendation
+            action_english = self.translate_mtg_ai_action(mtg_advice['action'])
+            confidence = mtg_advice['confidence']
+            value_score = mtg_advice['value_score']
+
+            insights.append(f"🤖 **Neural Network Recommendation:** {action_english}")
+            insights.append(f"💯 **Confidence:** {confidence:.1%} (very confident)")
+            insights.append(f"📈 **Position Score:** {value_score:.2f}/1.00")
+
+            # Context based on score
+            if value_score > 0.85:
+                insights.append(f"🎯 **Analysis:** Excellent position - this play maximizes your advantage")
+            elif value_score > 0.75:
+                insights.append(f"🎯 **Analysis:** Strong position - this play solidifies your board state")
+            elif value_score > 0.65:
+                insights.append(f"🎯 **Analysis:** Good position - this play maintains momentum")
+            else:
+                insights.append(f"🎯 **Analysis:** Cautious play needed - position is challenging")
+
+            # Top alternative actions
+            if mtg_advice.get('top_3_actions') and len(mtg_advice['top_3_actions']) > 1:
+                insights.append(f"🏆 **Alternative Options:**")
+                for i, alt_action in enumerate(mtg_advice['top_3_actions'][1:3], 1):
+                    alt_english = self.translate_mtg_ai_action(alt_action['action_type'])
+                    alt_confidence = alt_action['confidence']
+                    insights.append(f"   {i}. {alt_english} (confidence: {alt_confidence:.1%})")
+
+            return "\n".join(insights)
+
+        except Exception as e:
+            logging.error(f"Error formatting MTG AI insights: {e}")
+            return None
 
     def check_important_updates(self, board_state: "BoardState", previous_board_state: Optional["BoardState"]) -> Optional[str]:
         """

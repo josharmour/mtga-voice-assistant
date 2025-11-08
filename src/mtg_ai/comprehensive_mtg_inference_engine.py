@@ -164,6 +164,64 @@ class ComprehensiveMTGInferenceEngine:
             # Return default tensor
             return torch.zeros(282, dtype=torch.float32)
 
+    def _validate_action_in_context(self, action_type: str, game_state: Dict[str, Any]) -> bool:
+        """
+        Validate if an action type makes sense in the current game context.
+        This prevents logically impossible actions like blocking when there are no attackers.
+
+        Args:
+            action_type: The action type to validate
+            game_state: Current game state dictionary
+
+        Returns:
+            True if action is valid in this context, False otherwise
+        """
+        turn_number = game_state.get('turn_number', 1)
+        player_creatures = game_state.get('creatures_in_play', 0)
+        opponent_creatures = game_state.get('opponent_creatures_in_play', 0)
+        creatures_attacking = game_state.get('creatures_attacking', 0)
+        lands_in_play = game_state.get('lands_in_play', 0)
+        hand_size = game_state.get('hand_size', 0)
+        creatures_cast_this_turn = game_state.get('creatures_cast_this_turn', 0)
+        lands_played_this_turn = game_state.get('lands_played_this_turn', 0)
+
+        # Action-specific validation rules
+        if action_type == "block_creatures":
+            # Blocking is only valid if opponent has creatures that can attack
+            # and we have reason to believe they're attacking
+            return opponent_creatures > 0 and creatures_attacking > 0
+
+        elif action_type == "attack_creatures":
+            # Attacking is only valid if we have untapped creatures
+            # and it's not the first turn (no summoning sickness)
+            return player_creatures > 0 and turn_number > 1
+
+        elif action_type == "play_creature":
+            # Can only play creature if we have creatures in hand
+            # and haven't exceeded reasonable creature limits for turn
+            return hand_size > 0 and creatures_cast_this_turn < 3
+
+        elif action_type == "cast_spell":
+            # Can only cast spells if we have cards in hand and mana
+            return hand_size > 0 and lands_in_play > 0
+
+        elif action_type == "use_ability":
+            # Can only use abilities if we have permanents on board
+            return (player_creatures > 0 or lands_in_play > 0)
+
+        elif action_type == "pass_priority":
+            # Passing priority is always valid
+            return True
+
+        elif action_type == "defensive_play":
+            # Defensive play is valid if we're behind or opponent has threats
+            player_life = game_state.get('player_life', 20)
+            opponent_life = game_state.get('opponent_life', 20)
+            return (player_life < opponent_life or opponent_creatures > player_creatures)
+
+        # Default: allow action
+        return True
+
     def predict_comprehensive_actions(self, game_state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Predict optimal actions for current game state using comprehensive model.
@@ -192,18 +250,26 @@ class ComprehensiveMTGInferenceEngine:
             # Convert to numpy for easier handling
             probs = action_probs.cpu().numpy()
 
-            # Create action predictions
+            # Create action predictions with context validation
             predictions = []
             for i, (action_type, prob) in enumerate(zip(self.action_types, probs)):
+                # Validate action in current game context
+                is_valid_in_context = self._validate_action_in_context(action_type, game_state)
+
+                # Adjust confidence based on validity
+                adjusted_confidence = float(prob) if is_valid_in_context else 0.0
+
                 predictions.append({
                     'action_type': action_type,
                     'action_index': i,
                     'confidence': float(prob),
-                    'recommended': prob > 0.5  # Binary decision threshold
+                    'adjusted_confidence': adjusted_confidence,
+                    'valid_in_context': is_valid_in_context,
+                    'recommended': is_valid_in_context and prob > 0.5  # Only recommend if valid and confident
                 })
 
-            # Sort by confidence
-            predictions.sort(key=lambda x: x['confidence'], reverse=True)
+            # Sort by adjusted confidence (invalid actions go to bottom)
+            predictions.sort(key=lambda x: x['adjusted_confidence'], reverse=True)
 
             # Calculate inference time
             inference_time = time.time() - start_time

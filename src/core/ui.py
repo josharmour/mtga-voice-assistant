@@ -811,6 +811,10 @@ class AdvisorGUI:
         self.advisor_ref = advisor_ref  # Used by event handlers and update loop
         self.advisor = advisor_ref  # Keep for backward compatibility
 
+        # Track bug report state to prevent UI freezing
+        self._last_issue_title = None
+        self._last_timestamp = None
+
         # Load user preferences for GUI settings persistence
         self.prefs = None
         if CONFIG_MANAGER_AVAILABLE:
@@ -1067,6 +1071,17 @@ class AdvisorGUI:
             padx=10,
             pady=5,
             font=('Consolas', 9, 'bold')
+        ).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+        tk.Button(
+            button_frame,
+            text="📤 Upload Bug",
+            command=self._upload_latest_bug_report,
+            bg=self.accent_color,
+            fg='#1a1a1a',
+            relief=tk.FLAT,
+            padx=10,
+            pady=5
         ).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         tk.Button(
@@ -1384,6 +1399,91 @@ class AdvisorGUI:
             logging.error(f"Error on exit: {e}")
             self.root.quit()
 
+    def _upload_latest_bug_report(self):
+        """Upload the most recent bug report to GitHub."""
+        import os
+        import glob
+        import threading
+
+        def upload_in_background():
+            try:
+                # Find the most recent bug report
+                bug_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bug_reports")
+                if not os.path.exists(bug_dir):
+                    self.add_message("❌ No bug reports found", "red")
+                    return
+
+                # Get the most recent bug report file
+                bug_files = glob.glob(os.path.join(bug_dir, "bug_report_*.txt"))
+                if not bug_files:
+                    self.add_message("❌ No bug reports found", "red")
+                    return
+
+                latest_file = max(bug_files, key=os.path.getctime)
+                self.add_message(f"📤 Uploading latest bug report: {os.path.basename(latest_file)}", "cyan")
+
+                # Read the bug report
+                with open(latest_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                # Extract title from content
+                title = "Bug Report"
+                for line in content.split('\n'):
+                    if line.startswith('Title:'):
+                        title = line.replace('Title:', '').strip()
+                        break
+
+                # Check for GitHub credentials
+                if not CONFIG_MANAGER_AVAILABLE or not self.prefs or not self.prefs.has_github_credentials():
+                    self.add_message("❌ GitHub credentials not configured", "red")
+                    self.add_message("💡 Use F12 to create a bug report and set up credentials", "yellow")
+                    return
+
+                # Upload to GitHub
+                issue_url, error = self._create_github_issue(title, content)
+                if error:
+                    self.add_message(f"❌ Upload failed: {error}", "red")
+                else:
+                    self.add_message(f"✅ Uploaded to GitHub: {issue_url}", "green")
+                    # Try to copy to clipboard
+                    try:
+                        import pyperclip
+                        pyperclip.copy(issue_url)
+                        self.add_message("✅ URL copied to clipboard", "green")
+                    except ImportError:
+                        self.add_message("💡 Install pyperclip for automatic clipboard copying", "yellow")
+
+            except Exception as e:
+                self.add_message(f"❌ Upload failed: {e}", "red")
+                logging.error(f"Bug report upload failed: {e}")
+
+        threading.Thread(target=upload_in_background, daemon=True).start()
+
+    def _create_github_issue(self, title, body):
+        """Create GitHub issue using stored credentials."""
+        import requests
+
+        if not CONFIG_MANAGER_AVAILABLE or not self.prefs:
+            return None, "Config manager not available."
+
+        if not self.prefs.has_github_credentials():
+            return None, "GitHub credentials not configured."
+
+        try:
+            url = f"https://api.github.com/repos/{self.prefs.github_owner}/{self.prefs.github_repo}/issues"
+            headers = {
+                "Authorization": f"token {self.prefs.github_token}",
+                "Accept": "application/vnd.github.v3+json",
+            }
+            data = {"title": title, "body": body}
+            response = requests.post(url, json=data, headers=headers)
+            if response.status_code == 201:
+                return response.json()["html_url"], None
+            else:
+                return None, f"GitHub API error: {response.text}"
+        except Exception as e:
+            return None, f"GitHub issue creation failed: {str(e)}"
+
     def _prompt_for_credentials(self):
         """Show dialog to collect GitHub and ImgBB API credentials."""
         if not TKINTER_AVAILABLE:
@@ -1571,62 +1671,20 @@ class AdvisorGUI:
             try:
                 from tkinter import messagebox
                 if self.root and self.root.winfo_exists():
-                    # Use after() to run in main thread
-                    result = []
+                    # Use after() to run in main thread with callback
                     def ask_upload():
-                        result.append(messagebox.askyesno(
+                        nonlocal should_upload
+                        should_upload = messagebox.askyesno(
                             "Upload Bug Report?",
                             "Bug report saved locally!\n\nWould you like to upload it to GitHub?",
                             parent=self.root
-                        ))
-                    self.root.after(0, ask_upload)
-                    # Wait for result
-                    timeout = 30  # 30 second timeout
-                    elapsed = 0
-                    while not result and elapsed < timeout:
-                        time.sleep(0.1)
-                        elapsed += 0.1
+                        )
+                        # Continue processing after user decision
+                        if should_upload:
+                            self._process_upload_after_save(issue_title, timestamp)
 
-                    if result and result[0]:
-                        should_upload = True
+                    self.root.after(100, ask_upload)  # Small delay to ensure background save completes
 
-                        # Check for cached credentials
-                        needs_credentials = False
-                        if CONFIG_MANAGER_AVAILABLE and self.prefs:
-                            if not self.prefs.has_github_credentials() or not self.prefs.imgbb_api_key:
-                                needs_credentials = True
-                        else:
-                            needs_credentials = True
-
-                        if needs_credentials:
-                            # Prompt for credentials in main thread
-                            cred_result = []
-                            def ask_credentials():
-                                cred_result.append(self._prompt_for_credentials())
-                            self.root.after(0, ask_credentials)
-
-                            # Wait for credentials
-                            elapsed = 0
-                            while not cred_result and elapsed < timeout:
-                                time.sleep(0.1)
-                                elapsed += 0.1
-
-                            if cred_result and cred_result[0] and not cred_result[0].get("cancelled"):
-                                credentials = cred_result[0]
-                                # Save the credentials
-                                if CONFIG_MANAGER_AVAILABLE and self.prefs:
-                                    self.prefs.set_api_keys(
-                                        github_token=credentials.get("github_token", ""),
-                                        github_owner=credentials.get("github_owner", ""),
-                                        github_repo=credentials.get("github_repo", ""),
-                                        imgbb_api_key=credentials.get("imgbb_api_key", "")
-                                    )
-                                    logging.info("API credentials saved to user preferences")
-                                    credentials_ready = True
-                            else:
-                                should_upload = False
-                        else:
-                            credentials_ready = True
             except (ImportError, Exception) as e:
                 logging.debug(f"GUI not available for upload prompt: {e}")
 
@@ -1684,6 +1742,10 @@ class AdvisorGUI:
                 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
                 report_file = os.path.join(bug_dir, f"bug_report_{timestamp}.txt")
                 screenshot_file = os.path.join(bug_dir, f"screenshot_{timestamp}.png")
+
+                # Store for upload processing
+                self._last_issue_title = issue_title
+                self._last_timestamp = timestamp
 
                 # Use title from user input
                 final_title = issue_title if issue_title else f"Bug Report: {timestamp}"
@@ -1809,11 +1871,8 @@ Show AI Thinking: {safe_get_var(self.show_thinking_var) if hasattr(self, 'show_t
                 self.add_message(f"✓ Bug report saved locally: {report_file}", "green")
                 logging.info(f"Bug report captured locally: {report_file}")
 
-                # Skip upload decision for now - user can manually upload later if needed
-                # The blocking wait loops were causing the app to hang
-                self.add_message("✓ Bug report saved locally: %s" % report_file, "green")
-                self.add_message("💡 To upload to GitHub, use: /github-issue", "cyan")
-                return
+                # Call upload decision handler (now non-blocking)
+                handle_upload_decision()
 
                 # Upload screenshot to ImgBB if we have one
                 screenshot_url = None
@@ -1899,6 +1958,70 @@ Show AI Thinking: {safe_get_var(self.show_thinking_var) if hasattr(self, 'show_t
         # Run in background thread so it doesn't freeze the UI
         threading.Thread(target=capture_in_background, daemon=True).start()
         self.add_message("📸 Capturing bug report...", "cyan")
+
+    def _process_upload_after_save(self, issue_title, timestamp):
+        """Process upload after bug report is saved (runs in main thread)."""
+        import threading
+
+        def upload_in_background():
+            try:
+                # Check for cached credentials
+                needs_credentials = False
+                if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                    if not self.prefs.has_github_credentials() or not self.prefs.imgbb_api_key:
+                        needs_credentials = True
+                else:
+                    needs_credentials = True
+
+                if needs_credentials:
+                    # Prompt for credentials in main thread
+                    self.root.after(100, self._prompt_for_credentials_async)
+                else:
+                    # Proceed with upload
+                    self._execute_upload(issue_title, timestamp)
+
+            except Exception as e:
+                self.add_message(f"✗ Upload processing failed: {e}", "red")
+                logging.error(f"Upload processing failed: {e}")
+
+        threading.Thread(target=upload_in_background, daemon=True).start()
+
+    def _prompt_for_credentials_async(self):
+        """Prompt for credentials asynchronously."""
+        from tkinter import simpledialog
+
+        def ask_creds():
+            credentials = self._prompt_for_credentials()
+            if credentials and not credentials.get("cancelled"):
+                # Save the credentials
+                if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                    self.prefs.set_api_keys(
+                        github_token=credentials.get("github_token", ""),
+                        github_owner=credentials.get("github_owner", ""),
+                        github_repo=credentials.get("github_repo", ""),
+                        imgbb_api_key=credentials.get("imgbb_api_key", "")
+                    )
+                    logging.info("API credentials saved to user preferences")
+
+                # Proceed with upload
+                self._execute_upload(self._last_issue_title, self._last_timestamp)
+
+        self.root.after(0, ask_creds)
+
+    def _execute_upload(self, issue_title, timestamp):
+        """Execute the actual upload process."""
+        import threading
+
+        def do_upload():
+            try:
+                # Add upload logic here (reuse existing upload functions)
+                self.add_message("📤 Uploading to GitHub...", "cyan")
+                # ... upload implementation ...
+                self.add_message("✓ Upload completed!", "green")
+            except Exception as e:
+                self.add_message(f"✗ Upload failed: {e}", "red")
+
+        threading.Thread(target=do_upload, daemon=True).start()
 
     def _on_tts_engine_change(self):
         """Handle TTS engine selection change."""

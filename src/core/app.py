@@ -1484,7 +1484,36 @@ Provide a concise answer (1-2 sentences) based on the board state.
 
         need_blocking_advice = is_blocking_step and combat_id and combat_id != self._last_combat_advised
 
-        if board_state.has_priority and (is_new_turn_for_player or need_blocking_advice):
+        # NEW: Continuous advice during your turn when game state changes
+        # Check if it's your turn, you have priority, and either:
+        # 1. It's a new turn, OR
+        # 2. The board state changed significantly since last advice
+        is_your_turn_with_priority = board_state.is_your_turn and board_state.has_priority
+
+        # Track if we need new advice based on game state changes
+        need_continuous_advice = False
+        if is_your_turn_with_priority and board_state.current_turn <= self.last_turn_advised:
+            # Same turn, check if something changed that warrants new advice
+            if self.previous_board_state:
+                # Check for significant changes that might affect next action
+                hand_changed = len(board_state.your_hand) != len(self.previous_board_state.your_hand)
+                battlefield_changed = len(board_state.your_battlefield) != len(self.previous_board_state.your_battlefield)
+                lands_played = len([c for c in board_state.your_battlefield if 'Land' in getattr(c, 'type_line', '')]) != \
+                             len([c for c in self.previous_board_state.your_battlefield if 'Land' in getattr(c, 'type_line', '')])
+                mana_changed = board_state.available_mana != self.previous_board_state.available_mana
+
+                # Rate limit continuous advice to every 3 seconds minimum
+                current_time = time.time()
+                can_give_continuous_advice = not hasattr(self, 'last_continuous_advice_time') or \
+                                            (current_time - self.last_continuous_advice_time) >= 3
+
+                need_continuous_advice = (hand_changed or battlefield_changed or lands_played or mana_changed) and can_give_continuous_advice
+
+                if need_continuous_advice:
+                    self.last_continuous_advice_time = current_time
+                    logging.debug(f"Game state changed during turn {board_state.current_turn} - generating continuous advice")
+
+        if board_state.has_priority and (is_new_turn_for_player or need_blocking_advice or need_continuous_advice):
             if self.advice_thread and self.advice_thread.is_alive():
                 logging.info("Still processing previous advice request.")
                 return
@@ -1497,7 +1526,10 @@ Provide a concise answer (1-2 sentences) based on the board state.
                 self._last_combat_advised = combat_id
                 logging.info(f"⚔️ Opponent attacking with {len(board_state.history.current_attackers)} creatures - generating blocking advice")
 
-            self.advice_thread = threading.Thread(target=self._generate_and_speak_advice, args=(board_state,))
+            if need_continuous_advice:
+                logging.info(f"🔄 Game state changed during turn {board_state.current_turn} - generating updated advice")
+
+            self.advice_thread = threading.Thread(target=self._generate_and_speak_advice, args=(board_state, need_continuous_advice))
             self.advice_thread.start()
 
     def _get_color_emoji(self, color_identity: str) -> str:
@@ -1694,6 +1726,15 @@ Provide a concise answer (1-2 sentences) based on the board state.
             answer = response[think_end:].strip()
             return (thinking, answer)
 
+        # Check for explicit THINKING/ANSWER format
+        if "THINKING:" in response and "ANSWER:" in response:
+            thinking_start = response.find("THINKING:") + len("THINKING:")
+            answer_start = response.find("ANSWER:")
+
+            thinking = response[thinking_start:answer_start].strip()
+            answer = response[answer_start + len("ANSWER:"):].strip()
+            return (thinking, answer)
+
         # Some models use "Thought:" or "Reasoning:" prefixes
         if response.startswith("Thought:") or response.startswith("Reasoning:"):
             lines = response.split("\n", 1)
@@ -1798,7 +1839,7 @@ Based on all this information, should the player mulligan? Respond with:
             logging.error(f"Error generating mulligan advice: {e}")
             self._output(f"Error getting mulligan advice: {e}", "red")
 
-    def _generate_and_speak_advice(self, board_state: "BoardState"):
+    def _generate_and_speak_advice(self, board_state: "BoardState", is_continuous: bool = False):
         """Generate and speak advice for the current turn"""
         # Validate before sending to LLM
         if not self.game_state_mgr.validate_board_state(board_state):
@@ -1806,8 +1847,14 @@ Based on all this information, should the player mulligan? Respond with:
             self._output(f"\n>>> Turn {board_state.current_turn}: Waiting for complete board state...", "yellow")
             return
 
-        # Display board state
-        self._display_board_state(board_state)
+        # Display board state (but don't re-display the full state for continuous updates)
+        if not is_continuous:
+            self._display_board_state(board_state)
+        else:
+            # For continuous updates, just show a brief status
+            current_time = time.time()
+            turn_time = f"Turn {board_state.current_turn}, {getattr(board_state, 'current_phase', 'Unknown')}"
+            self._output(f"\n🔄 {turn_time} - Analyzing next move...", "cyan")
 
         # Update status bar
         self._update_status(board_state)
@@ -1815,6 +1862,18 @@ Based on all this information, should the player mulligan? Respond with:
         self._output(f"\n>>> Turn {board_state.current_turn}: Your move!", "cyan")
         self._output("Getting advice from the master...\n", "cyan")
 
+        # Get MTG AI insights first
+        mtg_ai_insights = self.ai_advisor.get_mtg_ai_english_insights(board_state)
+
+        # Display MTG AI insights (not spoken, just visual)
+        if mtg_ai_insights:
+            self._output("🤖 **Neural Network Analysis**", "yellow")
+            for line in mtg_ai_insights.split("\n"):
+                if line.strip():
+                    self._output(f"   {line.strip()}", "yellow")
+            self._output("", "white")  # Blank line
+
+        # Get LLM advice (now enhanced with MTG AI context)
         advice = self.ai_advisor.get_tactical_advice(board_state)
 
         if advice:
@@ -1823,25 +1882,32 @@ Based on all this information, should the player mulligan? Respond with:
 
             # Display thinking in dim color (not spoken)
             if thinking:
-                self._output("💭 Thinking:", "blue")
+                self._output("💭 **Advisor Reasoning**", "blue")
                 # Split thinking into lines for readability
                 for line in thinking.split("\n"):
                     if line.strip():
                         self._output(f"   {line.strip()}", "blue")
                 self._output("", "white")  # Blank line
 
+            # Create combined advice for voice
+            voice_advice = answer if answer else advice
+
+            # If we have MTG AI insights, they are displayed in the UI but not spoken
+            # Voice should only contain the final LLM advice for better UX
+            # Neural network insights are shown visually in the advisor panel
+
             # Display and speak the answer
             if answer:
-                self._output(f"Advisor: {answer}\n", "green")
+                self._output(f"🎯 **Final Recommendation:** {answer}", "green")
                 logging.info(f"ADVICE:\n{answer}")
                 # Strip markdown before speaking
-                clean_advice = self._strip_markdown(answer)
+                clean_advice = self._strip_markdown(voice_advice)
                 self.tts.speak(clean_advice)
             else:
                 # If no clear answer, speak the full advice
-                self._output(f"Advisor: {advice}\n", "green")
+                self._output(f"🎯 **Final Recommendation:** {advice}", "green")
                 logging.info(f"ADVICE:\n{advice}")
-                clean_advice = self._strip_markdown(advice)
+                clean_advice = self._strip_markdown(voice_advice)
                 self.tts.speak(clean_advice)
         else:
             logging.warning("No advice was generated.")
