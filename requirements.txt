@@ -29,6 +29,19 @@ chromadb>=0.4.0              # Vector database for semantic search
 sentence-transformers>=2.2.0 # For generating text embeddings
 
 # -----------------------------------------------------------------------------
+# Reinforcement Learning Dependencies
+# -----------------------------------------------------------------------------
+# These packages enable Conservative Q-Learning integration with 17Lands data.
+# Required for enhanced AI decision quality through offline reinforcement learning.
+# -----------------------------------------------------------------------------
+gymnasium>=0.26.0         # Modern RL environment interface
+stable-baselines3>=2.0.0 # Conservative Q-Learning and other RL algorithms
+pandas>=1.5.0             # Data processing for 17Lands replay datasets
+matplotlib>=3.5.0         # Visualization for training metrics and explainability
+scikit-learn>=1.2.0       # Statistical utilities for model evaluation
+tqdm>=4.64.0              # Progress bars for training and data processing
+
+# -----------------------------------------------------------------------------
 # Platform-Specific Dependencies
 # -----------------------------------------------------------------------------
 # On Windows, you may need these for the TUI mode and pyttsx3.

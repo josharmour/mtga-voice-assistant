@@ -52,3 +52,14 @@ config.json
 # Generated database files
 data/scryfall_default_cards.json
 chat_backup/
+
+# RL-specific files
+models/
+checkpoints/
+tensorboard_logs/
+*.pth
+*.pt
+*.ckpt
+wandb/
+mlruns/
+.rl_cache/
