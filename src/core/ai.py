@@ -1548,6 +1548,56 @@ The ANSWER should be ONLY what gets spoken by text-to-speech. The THINKING secti
             lines.append(", ".join(opp_graveyard_names))
             lines.append("")
 
+        # Add RAG context if available
+        if self.use_rag and self.rag_system:
+            try:
+                # Collect all card names for statistics
+                card_names = set()
+                if board_state.your_hand:
+                    card_names.update([c.name for c in board_state.your_hand])
+                if board_state.your_battlefield:
+                    card_names.update([c.name for c in board_state.your_battlefield])
+                if board_state.opponent_battlefield:
+                    card_names.update([c.name for c in board_state.opponent_battlefield])
+
+                # Add card statistics if we have any cards
+                if card_names:
+                    lines.append("== CARD PERFORMANCE STATS (17lands data) ==")
+                    stats_added = 0
+                    card_list = list(card_names)[:10]  # Limit to 10 most relevant cards
+                    for card_name in sorted(card_list):
+                        try:
+                            # Get card stats from RAG system
+                            stats = self.rag_system.get_card_stats(card_name)
+                            if stats and stats.get('games_played', 0) > 100:
+                                win_rate = stats.get('gih_win_rate', 0.0)
+                                games = stats.get('games_played', 0)
+                                # Tactical note based on win rate
+                                if win_rate > 0.58:
+                                    note = "key performer; prioritize it"
+                                elif win_rate > 0.53:
+                                    note = "solid role-player"
+                                else:
+                                    note = "below average performer"
+
+                                lines.append(f"• {card_name}: GIHWR {win_rate:.1%} ({games} games) - {note}")
+                                stats_added += 1
+                        except Exception as e:
+                            logging.debug(f"Could not fetch stats for {card_name}: {e}")
+
+                    if stats_added > 0:
+                        lines.append("")
+                        logging.info(f"✓ Added RAG stats for {stats_added}/{len(card_list)} cards")
+                    else:
+                        # Remove the header if no stats were added
+                        lines.pop()
+                        logging.debug("No card stats available from 17lands")
+                else:
+                    logging.debug("RAG context skipped: no cards in play")
+
+            except Exception as e:
+                logging.error(f"Error adding RAG context: {e}")
+
         return "\n".join(lines)
 
     def get_tactical_advice(self, board_state: "BoardState") -> Optional[str]:

@@ -43,8 +43,8 @@ class UserPreferences:
     voice_engine: str = "kokoro"  # kokoro/pyttsx3/system
 
     # Model preferences
-    current_model: str = "llama2"
-    current_voice: str = "default"
+    current_model: str = "gemma3n:latest"
+    current_voice: str = "am_adam"
 
     # Game preferences
     auto_detect_draft: bool = True

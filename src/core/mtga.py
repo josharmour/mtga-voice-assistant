@@ -1125,17 +1125,23 @@ class GameStateManager:
 
             board_state.your_decklist = deck_with_names
 
-            # Calculate library count based on deck size minus known zones
-            # This is more accurate than relying on game_objects library count
-            cards_seen = (len(board_state.your_hand) +
-                         len(board_state.your_battlefield) +
-                         len(board_state.your_graveyard) +
-                         len(board_state.your_exile))
-            board_state.your_library_count = max(0, total_deck_size - cards_seen)
+            # Only calculate library count from deck size if we don't already have it from zone tracking
+            # Zone tracking is more accurate as it counts actual game objects in library
+            if board_state.your_library_count == 0:
+                cards_seen = (len(board_state.your_hand) +
+                             len(board_state.your_battlefield) +
+                             len(board_state.your_graveyard) +
+                             len(board_state.your_exile))
+                board_state.your_library_count = max(0, total_deck_size - cards_seen)
+                logging.debug(f"Calculated library count from deck size: {board_state.your_library_count} "
+                             f"(deck size {total_deck_size} - seen {cards_seen})")
+            else:
+                logging.debug(f"Using library count from zone tracking: {board_state.your_library_count}")
+
             board_state.your_deck_remaining = board_state.your_library_count
 
             logging.debug(f"Deck tracking: {len(deck_with_names)} unique cards, deck size {total_deck_size}, "
-                         f"seen {cards_seen} cards, {board_state.your_library_count} remaining in library")
+                         f"{board_state.your_library_count} remaining in library")
 
         logging.info(f"Board State Summary: Hand: {len(board_state.your_hand)}, "
                     f"Battlefield: {len(board_state.your_battlefield)}, "

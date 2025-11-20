@@ -40,6 +40,7 @@ except ImportError:
 # Import draft advisor (requires tabulate, termcolor, scipy)
 try:
     from .draft_advisor import DraftAdvisor, display_draft_pack, format_draft_pack_for_gui
+    from .deck_builder_v2 import DeckBuilderV2
     DRAFT_ADVISOR_AVAILABLE = True
 except ImportError as e:
     DRAFT_ADVISOR_AVAILABLE = False
@@ -61,7 +62,7 @@ log_dir.mkdir(exist_ok=True)
 # Configure logging - file gets all, console gets only errors/warnings
 log_file_path = log_dir / "advisor.log"
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,  # Changed from DEBUG to reduce CPU usage (was logging every line read from MTGA log)
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_file_path),
@@ -152,10 +153,8 @@ class CLIVoiceAdvisor:
                         "pf_dora", "pm_alex", "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi",
                         "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang"]
 
-    # Available BarkTTS voices (English speakers)
-    BARK_VOICES = ["v2/en_speaker_0", "v2/en_speaker_1", "v2/en_speaker_2", "v2/en_speaker_3",
-                   "v2/en_speaker_4", "v2/en_speaker_5", "v2/en_speaker_6", "v2/en_speaker_7",
-                   "v2/en_speaker_8", "v2/en_speaker_9"]
+    # BarkTTS has been removed - Kokoro only now
+    BARK_VOICES = []  # Empty list for backward compatibility
 
     def __init__(self, use_tui: bool = False, use_gui: bool = False):
         self.use_tui = use_tui
@@ -221,17 +220,34 @@ class CLIVoiceAdvisor:
             print("✓ Ollama service is running")
 
         self.game_state_mgr = GameStateManager(self.card_db)
-        self.ai_advisor = AIAdvisor(card_db=self.card_db)
-        self.tts = TextToSpeech(voice="am_adam", volume=1.0)
+
+        # Initialize AI advisor with saved model preference
+        saved_model = "gemma3n:latest"  # default
+        if self.prefs:
+            saved_model = self.prefs.current_model or "gemma3n:latest"
+            logging.debug(f"Loading AI model preference: {saved_model}")
+        self.ai_advisor = AIAdvisor(card_db=self.card_db, model=saved_model)
+
+        # Initialize TTS with saved preferences
+        saved_voice = "am_adam"  # default
+        saved_volume = 1.0  # default
+        if self.prefs:
+            saved_voice = self.prefs.current_voice or "am_adam"
+            saved_volume = (self.prefs.volume or 100) / 100.0  # Convert percentage to 0-1
+            logging.debug(f"Loading TTS preferences: voice={saved_voice}, volume={saved_volume}")
+        self.tts = TextToSpeech(voice=saved_voice, volume=saved_volume)
+
         self.log_follower = LogFollower(self.log_path)
 
-        # Initialize draft advisor if available
+        # Initialize draft advisor and deck builder if available
         self.draft_advisor = None
+        self.deck_builder = None
         if DRAFT_ADVISOR_AVAILABLE:
             try:
                 rag_system = self.ai_advisor.rag_system if hasattr(self.ai_advisor, 'rag_system') else None
                 ollama_client = self.ai_advisor.client if hasattr(self.ai_advisor, 'client') else None
                 self.draft_advisor = DraftAdvisor(self.card_db, rag_system, ollama_client)
+                self.deck_builder = DeckBuilderV2()
 
                 # Register draft event callbacks with GameStateManager
                 self.game_state_mgr.register_draft_callback("EventGetCoursesV2", self._on_draft_pool)
@@ -242,9 +258,11 @@ class CLIVoiceAdvisor:
 
                 if not use_tui:
                     print("✓ Draft advisor enabled")
+                    print("✓ Deck builder enabled")
             except Exception as e:
                 logging.warning(f"Failed to initialize draft advisor: {e}")
                 self.draft_advisor = None
+                self.deck_builder = None
 
         self.last_turn_advised = -1
         self.advice_thread = None
@@ -293,6 +311,10 @@ class CLIVoiceAdvisor:
         # Check if model is already available locally
         if model in self.available_models:
             self.ai_advisor.client.model = model
+            # Save to preferences
+            if self.prefs:
+                self.prefs.set_model(model)
+                logging.debug(f"Saved model preference: {model}")
             self._update_status()
             logging.info(f"Model changed to: {model}")
             self._output(f"✓ Model changed to: {model}", "green")
@@ -322,6 +344,10 @@ class CLIVoiceAdvisor:
 
                 # Set the new model
                 self.ai_advisor.client.model = model
+                # Save to preferences
+                if self.prefs:
+                    self.prefs.set_model(model)
+                    logging.debug(f"Saved model preference: {model}")
                 self._update_status()
                 logging.info(f"Successfully pulled and switched to model: {model}")
                 self._output(f"✓ Successfully pulled and loaded: {model}", "green")
@@ -439,7 +465,9 @@ class CLIVoiceAdvisor:
             if pack_num == 1 and pick_num == 1:
                 self._last_announced_pick = None  # Reset deduplication tracking for new draft
                 self.draft_advisor.picked_cards = []
+                self._draft_completed = False  # Reset completion flag
                 logging.info("New draft detected - reset state")
+                # Note: Deck builder will auto-download data when needed
 
             # Track previous pack to infer picked card
             # If we have a previous pack and we're now on a new pick, infer what was picked
@@ -543,9 +571,11 @@ class CLIVoiceAdvisor:
             if pack_num == 3 and pick_num == 15 and not pick_two_mode:
                 # Standard draft final pick detected
                 logging.info("Premier Draft final pick detected - waiting for completion")
+                self._on_draft_complete()
             elif len(self.draft_advisor.picked_cards) >= min_cards_for_completion:
                 # We've tracked enough picks - draft complete!
                 logging.info(f"Draft complete! {len(self.draft_advisor.picked_cards)} cards picked (min: {min_cards_for_completion})")
+                self._on_draft_complete()
 
         except Exception as e:
             logging.error(f"Error handling Draft.Notify: {e}")
@@ -886,6 +916,128 @@ class CLIVoiceAdvisor:
             import traceback
             traceback.print_exc()
 
+    def _on_draft_complete(self):
+        """Handle draft completion - generate deck suggestion"""
+        if not self.draft_advisor or not self.deck_builder:
+            return
+
+        # Avoid duplicate triggers
+        if hasattr(self, '_draft_completed') and self._draft_completed:
+            return
+
+        self._draft_completed = True
+
+        try:
+            picked_cards = self.draft_advisor.picked_cards
+            set_code = self.draft_advisor.current_set or "TLA"
+
+            logging.info(f"Draft complete! Generating deck suggestion from {len(picked_cards)} cards...")
+
+            # Speak completion
+            if self.tts:
+                self.tts.speak(f"Draft complete with {len(picked_cards)} cards. Generating deck suggestion.")
+
+            # Generate deck suggestion in background thread
+            def generate_deck():
+                try:
+                    suggestion = self.deck_builder.suggest_deck(picked_cards, set_code)
+
+                    if suggestion:
+                        self._display_deck_suggestion(suggestion)
+                    else:
+                        msg = "No deck data available for this set yet. You can manually build your deck in MTGA."
+                        logging.info(msg)
+                        if self.use_gui and self.gui:
+                            self.gui.add_message(msg, "yellow")
+                        elif self.use_tui and self.tui:
+                            self.tui.add_message(msg)
+                        if self.tts:
+                            self.tts.speak("Deck data not available for this set yet.")
+
+                except Exception as e:
+                    logging.error(f"Error generating deck suggestion: {e}")
+                    import traceback
+                    logging.error(traceback.format_exc())
+
+            threading.Thread(target=generate_deck, daemon=True).start()
+
+        except Exception as e:
+            logging.error(f"Error in draft complete handler: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+
+    def _display_deck_suggestion(self, suggestions):
+        """Display deck suggestion to user"""
+        try:
+            # Handle both single suggestion and list
+            if not isinstance(suggestions, list):
+                suggestions = [suggestions]
+
+            if not suggestions:
+                return
+
+            # Display top suggestion
+            suggestion = suggestions[0]
+
+            lines = []
+            lines.append("="*80)
+            lines.append("🎯 DECK SUGGESTION")
+            lines.append("="*80)
+            lines.append(f"Archetype: {suggestion.archetype} {suggestion.color_pair_name} ({suggestion.main_colors})")
+            lines.append(f"Score: {suggestion.score:.3f} (Avg GIHWR: {suggestion.avg_gihwr:.3f})")
+
+            # Show other options
+            if len(suggestions) > 1:
+                lines.append("")
+                lines.append("Other options:")
+                for i, s in enumerate(suggestions[1:3], 2):
+                    lines.append(f"  {i}. {s.archetype} {s.color_pair_name} (Score: {s.score:.3f})")
+
+            lines.append("")
+            lines.append("MAINDECK ({} cards):".format(sum(suggestion.maindeck.values())))
+            lines.append("-"*80)
+
+            for card_name, count in sorted(suggestion.maindeck.items()):
+                lines.append(f"  {count}x {card_name}")
+
+            lines.append("")
+            lines.append(f"LANDS ({sum(suggestion.lands.values())} cards):")
+            for land_name, count in sorted(suggestion.lands.items()):
+                lines.append(f"  {count}x {land_name}")
+
+            if suggestion.sideboard:
+                lines.append("")
+                lines.append("SIDEBOARD:")
+                for card_name, count in sorted(suggestion.sideboard.items()):
+                    lines.append(f"  {count}x {card_name}")
+
+            lines.append("")
+            lines.append("="*80)
+
+            # Display based on mode
+            if self.use_gui and self.gui:
+                self.gui.set_board_state(lines)
+                self.gui.add_message(f"Deck suggestion ready: {suggestion.color_pair_name}", "green")
+                if self.tts:
+                    self.tts.speak(f"Suggested deck: {suggestion.color_pair_name}")
+            elif self.use_tui and self.tui:
+                self.tui.set_board_state(lines)
+                self.tui.add_message(f"Deck suggestion: {suggestion.color_pair_name}")
+                if self.tts:
+                    self.tts.speak(f"Suggested deck: {suggestion.color_pair_name}")
+            else:
+                for line in lines:
+                    print(line)
+                if self.tts:
+                    self.tts.speak(f"Suggested deck: {suggestion.color_pair_name}")
+
+            logging.info(f"Displayed deck suggestion: {suggestion.color_pair_name}")
+
+        except Exception as e:
+            logging.error(f"Error displaying deck suggestion: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+
     def run(self):
         """Start the advisor with background log monitoring and interactive CLI"""
         if self.use_gui:
@@ -988,6 +1140,15 @@ class CLIVoiceAdvisor:
         # Set card database for log highlighting
         if hasattr(self.gui, 'set_card_database'):
             self.gui.set_card_database(self.card_db)
+
+        # Pass TTS and AI objects to GUI for live updates
+        if hasattr(self, 'tts') and self.tts:
+            self.gui.tts = self.tts
+        if hasattr(self, 'ai_advisor') and self.ai_advisor:
+            self.gui.ai_advisor = self.ai_advisor
+
+        # Update status to ready
+        self.gui.status_label.config(text="✓ Ready - Monitoring MTGA")
 
         # Initialize settings
         self.gui.update_settings(
@@ -1172,6 +1333,10 @@ class CLIVoiceAdvisor:
                     if len(matching_models) == 1:
                         selected_model = matching_models[0]
                         self.ai_advisor.client.model = selected_model
+                        # Save to preferences
+                        if self.prefs:
+                            self.prefs.set_model(selected_model)
+                            logging.debug(f"Saved model preference: {selected_model}")
                         self._output(f"✓ Model changed to: {selected_model}", "green")
                         self._update_status()
                         logging.info(f"Ollama model switched to: {selected_model}")
@@ -1500,18 +1665,27 @@ Provide a concise answer (1-2 sentences) based on the board state.
                 battlefield_changed = len(board_state.your_battlefield) != len(self.previous_board_state.your_battlefield)
                 lands_played = len([c for c in board_state.your_battlefield if 'Land' in getattr(c, 'type_line', '')]) != \
                              len([c for c in self.previous_board_state.your_battlefield if 'Land' in getattr(c, 'type_line', '')])
-                mana_changed = board_state.available_mana != self.previous_board_state.available_mana
+                mana_changed = board_state.your_mana_pool != self.previous_board_state.your_mana_pool
 
-                # Rate limit continuous advice to every 3 seconds minimum
+                # Check for phase changes (combat, end step, etc.)
+                phase_changed = board_state.current_phase != self.previous_board_state.current_phase
+
+                # Rate limit continuous advice to every 1 second minimum (reduced from 3s)
                 current_time = time.time()
                 can_give_continuous_advice = not hasattr(self, 'last_continuous_advice_time') or \
-                                            (current_time - self.last_continuous_advice_time) >= 3
+                                            (current_time - self.last_continuous_advice_time) >= 1.0
 
-                need_continuous_advice = (hand_changed or battlefield_changed or lands_played or mana_changed) and can_give_continuous_advice
+                need_continuous_advice = (hand_changed or battlefield_changed or lands_played or mana_changed or phase_changed) and can_give_continuous_advice
 
                 if need_continuous_advice:
                     self.last_continuous_advice_time = current_time
-                    logging.debug(f"Game state changed during turn {board_state.current_turn} - generating continuous advice")
+                    change_reason = []
+                    if hand_changed: change_reason.append("hand")
+                    if battlefield_changed: change_reason.append("battlefield")
+                    if lands_played: change_reason.append("lands")
+                    if mana_changed: change_reason.append("mana")
+                    if phase_changed: change_reason.append(f"phase ({self.previous_board_state.current_phase} → {board_state.current_phase})")
+                    logging.debug(f"Game state changed during turn {board_state.current_turn}: {', '.join(change_reason)}")
 
         if board_state.has_priority and (is_new_turn_for_player or need_blocking_advice or need_continuous_advice):
             if self.advice_thread and self.advice_thread.is_alive():
@@ -1862,18 +2036,7 @@ Based on all this information, should the player mulligan? Respond with:
         self._output(f"\n>>> Turn {board_state.current_turn}: Your move!", "cyan")
         self._output("Getting advice from the master...\n", "cyan")
 
-        # Get MTG AI insights first
-        mtg_ai_insights = self.ai_advisor.get_mtg_ai_english_insights(board_state)
-
-        # Display MTG AI insights (not spoken, just visual)
-        if mtg_ai_insights:
-            self._output("🤖 **Neural Network Analysis**", "yellow")
-            for line in mtg_ai_insights.split("\n"):
-                if line.strip():
-                    self._output(f"   {line.strip()}", "yellow")
-            self._output("", "white")  # Blank line
-
-        # Get LLM advice (now enhanced with MTG AI context)
+        # Get LLM advice directly (no neural network)
         advice = self.ai_advisor.get_tactical_advice(board_state)
 
         if advice:
@@ -1891,10 +2054,6 @@ Based on all this information, should the player mulligan? Respond with:
 
             # Create combined advice for voice
             voice_advice = answer if answer else advice
-
-            # If we have MTG AI insights, they are displayed in the UI but not spoken
-            # Voice should only contain the final LLM advice for better UX
-            # Neural network insights are shown visually in the advisor panel
 
             # Display and speak the answer
             if answer:

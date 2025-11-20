@@ -198,10 +198,10 @@ class TextToSpeech:
 
         for cmd, player_name in players:
             try:
-                subprocess.run(cmd, check=True, timeout=120,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # Use Popen instead of run to avoid blocking the UI thread
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 played = True
-                logging.info(f"Audio played with {player_name}")
+                logging.info(f"Audio playing with {player_name}")
                 break
             except FileNotFoundError:
                 continue
@@ -211,12 +211,24 @@ class TextToSpeech:
 
         if not played:
             logging.error("No audio player found (aplay, paplay, or ffplay). Cannot play audio.")
-
-        # Clean up temp file
-        try:
-            os.unlink(tmp_path)
-        except:
-            pass
+            # Clean up temp file immediately if we didn't play
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+        else:
+            # Clean up temp file after a delay (audio should be done by then)
+            # Use a background thread to avoid blocking
+            import threading
+            def cleanup_audio_file():
+                import time
+                time.sleep(10)  # Wait 10 seconds for audio to finish
+                try:
+                    os.unlink(tmp_path)
+                    logging.debug(f"Cleaned up temp audio file: {tmp_path}")
+                except:
+                    pass
+            threading.Thread(target=cleanup_audio_file, daemon=True).start()
 
 # Content of src/ui.py
 # Import Tkinter (optional - for GUI mode)
@@ -926,33 +938,8 @@ class AdvisorGUI:
         self.voice_dropdown.pack(pady=(0, 10), fill=tk.X)
         self.voice_dropdown.bind('<<ComboboxSelected>>', self._on_voice_change)
 
-        # TTS Engine toggle
-        tk.Label(settings_frame, text="TTS Engine:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
-        self.tts_engine_var = tk.StringVar(value="Kokoro")
-        tts_frame = tk.Frame(settings_frame, bg=self.bg_color)
-        tts_frame.pack(pady=(0, 10), fill=tk.X)
-
-        tk.Radiobutton(
-            tts_frame,
-            text="Kokoro",
-            variable=self.tts_engine_var,
-            value="Kokoro",
-            bg=self.bg_color,
-            fg=self.fg_color,
-            selectcolor='#1a1a1a',
-            command=self._on_tts_engine_change
-        ).pack(side=tk.LEFT)
-
-        tk.Radiobutton(
-            tts_frame,
-            text="BarkTTS",
-            variable=self.tts_engine_var,
-            value="BarkTTS",
-            bg=self.bg_color,
-            fg=self.fg_color,
-            selectcolor='#1a1a1a',
-            command=self._on_tts_engine_change
-        ).pack(side=tk.LEFT, padx=(10, 0))
+        # TTS Engine (Kokoro only - BarkTTS removed)
+        # No need for radio buttons since there's only one option
 
         # Volume slider
         tk.Label(settings_frame, text="Volume:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
@@ -1311,7 +1298,14 @@ class AdvisorGUI:
             model = self.model_var.get()
             if model and CONFIG_MANAGER_AVAILABLE and self.prefs:
                 self.prefs.set_model(model)
-                logging.debug(f"Model changed to: {model}")
+                logging.info(f"✓ AI Model changed to: {model}")
+                self.add_message(f"AI Model changed to: {model}", "green")
+
+                # Apply immediately if we have access to AI advisor
+                if hasattr(self, 'ai_advisor') and self.ai_advisor:
+                    if hasattr(self.ai_advisor, 'client') and self.ai_advisor.client:
+                        self.ai_advisor.client.model = model
+                        logging.debug("Applied model change to active AI client")
         except Exception as e:
             logging.error(f"Error changing model: {e}")
 
@@ -1321,7 +1315,17 @@ class AdvisorGUI:
             voice = self.voice_var.get()
             if voice and CONFIG_MANAGER_AVAILABLE and self.prefs:
                 self.prefs.set_voice_name(voice)
-                logging.debug(f"Voice changed to: {voice}")
+                logging.info(f"✓ Voice changed to: {voice}")
+                self.add_message(f"Voice changed to: {voice}", "green")
+
+                # Apply immediately if we have access to TTS
+                if hasattr(self, 'tts') and self.tts:
+                    if hasattr(self.tts, 'set_voice'):
+                        self.tts.set_voice(voice)
+                        logging.debug("Applied voice change to active TTS")
+                        # Test the new voice in a background thread to avoid blocking UI
+                        import threading
+                        threading.Thread(target=lambda: self.tts.speak(f"Voice changed to {voice.replace('_', ' ')}"), daemon=True).start()
         except Exception as e:
             logging.error(f"Error changing voice: {e}")
 
@@ -2231,6 +2235,21 @@ Show AI Thinking: {safe_get_var(self.show_thinking_var) if hasattr(self, 'show_t
 
         except Exception as e:
             logging.error(f"Error setting board state: {e}")
+
+    def set_draft_panes(self, pack_lines, picked_lines=None, picked_count=0, total_needed=45):
+        """Update draft display with pack and picked cards."""
+        # For now, combine pack and picked lines into board state
+        # In the future, could use separate panes
+        all_lines = []
+        if isinstance(pack_lines, list):
+            all_lines.extend(pack_lines)
+        if picked_lines:
+            all_lines.append("")
+            all_lines.append(f"=== PICKED CARDS ({picked_count}/{total_needed}) ===")
+            if isinstance(picked_lines, list):
+                all_lines.extend(picked_lines)
+
+        self.set_board_state(all_lines)
 
     def add_message(self, msg: str, color=None):
         """Add message to the advisor messages display."""
