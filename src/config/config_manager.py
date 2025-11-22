@@ -48,6 +48,7 @@ class UserPreferences:
     voice_engine: str = "kokoro"  # kokoro/pyttsx3/system
 
     # Model preferences
+    model_provider: str = "Google"  # Google, OpenAI, Anthropic, Ollama
     current_model: str = "gemini-3-pro-preview"
     current_voice: str = "am_adam"
 
@@ -63,6 +64,9 @@ class UserPreferences:
     github_owner: str = ""
     github_repo: str = ""
     imgbb_api_key: str = ""
+    google_api_key: str = ""
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
 
     @classmethod
     def load(cls) -> "UserPreferences":
@@ -71,8 +75,12 @@ class UserPreferences:
             try:
                 with open(PREFS_FILE, 'r') as f:
                     data = json.load(f)
+                    # Get all field names from the dataclass definition
+                    known_keys = {f.name for f in cls.__dataclass_fields__.values()}
+                    # Filter out any keys from the loaded data that are not in the dataclass
+                    filtered_data = {k: v for k, v in data.items() if k in known_keys}
                     logger.debug(f"Loaded preferences from {PREFS_FILE}")
-                    return cls(**data)
+                    return cls(**filtered_data)
             except Exception as e:
                 logger.warning(f"Failed to load preferences: {e}. Using defaults.")
                 return cls()
@@ -111,9 +119,11 @@ class UserPreferences:
             self.voice_engine = engine
         self.save()
 
-    def set_model(self, model: str):
-        """Set the current LLM model."""
+    def set_model(self, model: str, provider: str = None):
+        """Set the current LLM model and optionally the provider."""
         self.current_model = model
+        if provider:
+            self.model_provider = provider
         self.save()
 
     def set_voice_name(self, voice: str):
@@ -130,8 +140,10 @@ class UserPreferences:
         self.save()
 
     def set_api_keys(self, github_token: str = None, github_owner: str = None,
-                     github_repo: str = None, imgbb_api_key: str = None):
-        """Update API keys for bug reporting."""
+                     github_repo: str = None, imgbb_api_key: str = None,
+                     google_api_key: str = None, openai_api_key: str = None,
+                     anthropic_api_key: str = None):
+        """Update API keys for bug reporting and AI providers."""
         if github_token is not None:
             self.github_token = github_token
         if github_owner is not None:
@@ -140,6 +152,12 @@ class UserPreferences:
             self.github_repo = github_repo
         if imgbb_api_key is not None:
             self.imgbb_api_key = imgbb_api_key
+        if google_api_key is not None:
+            self.google_api_key = google_api_key
+        if openai_api_key is not None:
+            self.openai_api_key = openai_api_key
+        if anthropic_api_key is not None:
+            self.anthropic_api_key = anthropic_api_key
         self.save()
 
     def has_github_credentials(self) -> bool:
@@ -157,6 +175,7 @@ class UserPreferences:
             f"geometry={self.window_geometry}, "
             f"theme={self.theme}, "
             f"voice={self.voice_engine}, "
+            f"provider={self.model_provider}, "
             f"model={self.current_model}"
             f")"
         )

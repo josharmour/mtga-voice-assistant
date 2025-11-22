@@ -211,17 +211,8 @@ class CLIVoiceAdvisor:
         # ArenaCardDatabase has get_card_name and get_card_data methods
         self.game_state_mgr = GameStateManager(self.arena_db)
 
-        # Initialize AI advisor (Gemini)
-        saved_model = self.prefs.current_model if self.prefs else "gemini-1.5-flash"
-        self.ai_advisor = AIAdvisor(model=saved_model)
-
-        # Available Gemini models
-        self.available_models = [
-            "gemini-3-pro-preview",
-            "gemini-2.0-flash-exp",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro"
-        ]
+        # Initialize AI advisor
+        self.ai_advisor = AIAdvisor(prefs=self.prefs)
 
         # Initialize TTS asynchronously to prevent blocking startup
         self.tts = None
