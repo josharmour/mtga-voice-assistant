@@ -1,0 +1,80 @@
+# Python virtual environment
+venv/
+.venv/
+env/
+mtg_env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables and secrets
+.env
+.env.local
+
+# Log files
+*.log
+logs/
+
+# Data, cache, and database files
+data/chromadb/
+data/card_stats.db
+data/card_metadata.db
+data/scryfall_cache.db
+data/17lands_data/
+card_cache.json
+data/.last_update_check
+
+# Generated model files and checkpoints
+*.pt
+*.pth
+*.onnx
+models/
+
+# Bug reports (keep folder, ignore contents)
+bug_reports/*
+!bug_reports/.gitkeep
+
+# IDE and Editor configs
+.vscode/
+.idea/
+.obsidian/
+*.swp
+*.swo
+.DS_Store
+
+# Documentation
+docs/
+# Exception: If we ever want to force track a file in docs, we can use !docs/filename
+# But for now, all public docs are in root.
+
+# Local status reports and AI logs
+local-docs/
+task_scripts/
+.claude/
+.gemini/
+.jules/
+GEMINI.md
+CLAUDE.md
+*_MEMORY.md
+
+# Legacy and dev scripts
+advisor.py
+inspect_db.py
+create_dummy_data.py
+debug_startup.py
+populate_card_stats.py
+process_*.py
+test_deck_builder_tla.py
+notebooks/
+
+# User specific screenshots
+# Ignored, except for the main screenshot for the README.
+*.png
+!mtga-voice-assistant.png
+# Dist/Build
+dist/
+build/
+*.spec
