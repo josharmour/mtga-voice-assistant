@@ -1,33 +1,66 @@
 import logging
-from typing import Dict, List, Optional
-from .gemini_advisor import GeminiAdvisor
+from typing import Dict, List
+
+from ..config.config_manager import UserPreferences
 from ..data.data_management import ScryfallClient
+from .llm.google import GeminiAdvisor
+from .llm.openai import OpenAIAdvisor
+from .llm.anthropic import AnthropicAdvisor
+from .llm.ollama import OllamaAdvisor
 
 logger = logging.getLogger(__name__)
 
 class AIAdvisor:
     """
     Main AI Advisor interface.
-    Delegates to GeminiAdvisor for intelligence.
-    Maintains compatibility with existing app structure.
+    Dynamically delegates to a selected provider's advisor.
     """
-    def __init__(self, card_db=None, model: str = "gemini-1.5-flash"):
-        # card_db is passed from app.py (ArenaCardDatabase).
-        # We pass it to GeminiAdvisor to use as a robust fallback for card data.
+    def __init__(self, card_db=None, prefs: UserPreferences = None):
+        if not prefs:
+            logger.warning("AIAdvisor initialized without preferences. Loading defaults.")
+            prefs = UserPreferences.load()
+
         self.scryfall = ScryfallClient()
-        self.advisor = GeminiAdvisor(model_name=model, scryfall_client=self.scryfall, card_db=card_db)
-        logger.info(f"AI Advisor initialized with model: {model}")
+        self.advisor = None
+
+        provider = prefs.model_provider.lower()
+        model = prefs.current_model
+
+        advisor_map = {
+            "google": (GeminiAdvisor, {"api_key": prefs.google_api_key}),
+            "openai": (OpenAIAdvisor, {"api_key": prefs.openai_api_key}),
+            "anthropic": (AnthropicAdvisor, {"api_key": prefs.anthropic_api_key}),
+            "ollama": (OllamaAdvisor, {}),
+        }
+
+        if provider in advisor_map:
+            AdvisorClass, kwargs = advisor_map[provider]
+            try:
+                self.advisor = AdvisorClass(
+                    model_name=model,
+                    card_db=card_db,
+                    scryfall_client=self.scryfall,
+                    **kwargs
+                )
+                logger.info(f"{provider.capitalize()} Advisor initialized with model: {model}")
+            except Exception as e:
+                logger.error(f"Failed to initialize {provider.capitalize()} Advisor: {e}")
+                self.advisor = None
+        else:
+            logger.error(f"Unknown model provider: {prefs.model_provider}. AI Advisor not initialized.")
 
     def get_tactical_advice(self, board_state: Dict, user_query: str = "") -> str:
         """
         Get tactical advice from the AI.
         """
-        # We can pass user_query if we want to support custom questions later
-        # For now, we just pass the board state
+        if not self.advisor:
+            return "AI Advisor not initialized. Please configure a provider in the settings."
         return self.advisor.get_tactical_advice(board_state)
 
     def get_draft_pick(self, pack_cards: List[str], current_pool: List[str]) -> str:
         """
         Get draft pick recommendation.
         """
+        if not self.advisor:
+            return "AI Advisor not initialized. Please configure a provider in the settings."
         return self.advisor.get_draft_pick(pack_cards, current_pool)
