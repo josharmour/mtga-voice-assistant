@@ -12,6 +12,10 @@ from typing import List, Dict, Tuple, Optional, Set
 from dataclasses import dataclass
 from collections import defaultdict, Counter
 import csv
+import gzip
+import shutil
+import requests
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +87,97 @@ class DeckBuilder:
     def __init__(self, data_dir: Path = Path("data")):
         """Initialize deck builder with path to 17lands data"""
         self.data_dir = data_dir
+        self.cache_dir = data_dir / "17lands_cache"
+        self.compressed_cache = self.cache_dir / "compressed"
+        self.decompressed_cache = self.cache_dir / "decompressed"
         self.winning_decks_cache = {}  # {set_code: List[deck_data]}
+        self.download_locks = {}  # {set_code: threading.Lock}
+
+        # Create cache directories
+        self.compressed_cache.mkdir(parents=True, exist_ok=True)
+        self.decompressed_cache.mkdir(parents=True, exist_ok=True)
+
+    def _ensure_game_data(self, set_code: str, format_type: str = "PremierDraft") -> Optional[Path]:
+        """
+        Ensure game data is available, downloading if necessary.
+
+        Returns path to decompressed CSV, or None if unavailable.
+        """
+        set_code = set_code.upper()
+
+        # Check decompressed cache first
+        decompressed_path = self.decompressed_cache / f"{set_code}_{format_type}.csv"
+        if decompressed_path.exists():
+            logger.debug(f"Using cached data: {decompressed_path.name}")
+            return decompressed_path
+
+        # Check if we need to decompress
+        compressed_path = self.compressed_cache / f"{set_code}_{format_type}.csv.gz"
+        if compressed_path.exists():
+            logger.info(f"Decompressing cached file: {compressed_path.name}")
+            try:
+                with gzip.open(compressed_path, 'rb') as f_in:
+                    with open(decompressed_path, 'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                logger.info(f"Decompressed: {decompressed_path.name} ({decompressed_path.stat().st_size / (1024*1024):.1f} MB)")
+                return decompressed_path
+            except Exception as e:
+                logger.error(f"Error decompressing {compressed_path}: {e}")
+                return None
+
+        # Need to download - use lock to prevent duplicate downloads
+        if set_code not in self.download_locks:
+            self.download_locks[set_code] = threading.Lock()
+
+        with self.download_locks[set_code]:
+            # Check again in case another thread downloaded while we waited
+            if decompressed_path.exists():
+                return decompressed_path
+
+            # Download from 17lands
+            url = f"https://17lands-public.s3.amazonaws.com/analysis_data/game_data/game_data_public.{set_code}.{format_type}.csv.gz"
+
+            logger.info(f"Downloading 17lands data for {set_code} from {url}")
+            logger.info("This may take a few minutes for large datasets...")
+
+            try:
+                response = requests.get(url, stream=True, timeout=180)
+                response.raise_for_status()
+
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+
+                # Download to compressed cache
+                with open(compressed_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=1024*1024):  # 1MB chunks
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0 and downloaded % (10*1024*1024) == 0:  # Log every 10MB
+                            percent = (downloaded / total_size) * 100
+                            logger.info(f"  Download progress: {percent:.1f}% ({downloaded/(1024*1024):.1f}/{total_size/(1024*1024):.1f} MB)")
+
+                logger.info(f"Downloaded: {compressed_path.name} ({compressed_path.stat().st_size / (1024*1024):.1f} MB)")
+
+                # Decompress
+                logger.info("Decompressing...")
+                with gzip.open(compressed_path, 'rb') as f_in:
+                    with open(decompressed_path, 'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+
+                logger.info(f"Ready: {decompressed_path.name} ({decompressed_path.stat().st_size / (1024*1024):.1f} MB)")
+                return decompressed_path
+
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 403 or e.response.status_code == 404:
+                    logger.warning(f"Game data not yet available for {set_code} (HTTP {e.response.status_code})")
+                else:
+                    logger.error(f"HTTP error downloading {set_code} data: {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Error downloading {set_code} data: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+                return None
 
     def load_winning_decks(self, set_code: str, min_win_rate: float = 0.55, max_decks: int = 5000) -> List[Dict]:
         """
@@ -106,6 +200,7 @@ class DeckBuilder:
         format_types = ["PremierDraft", "PickTwoDraft", "QuickDraft", "TradDraft"]
         csv_path = None
 
+        # First try to find existing files in old location (backward compatibility)
         for format_type in format_types:
             test_path = self.data_dir / f"17lands_{set_code.upper()}_{format_type}.csv"
             if test_path.exists():
@@ -113,8 +208,16 @@ class DeckBuilder:
                 logger.debug(f"Found 17lands data: {csv_path.name}")
                 break
 
+        # If not found, try to download using new cache system
         if not csv_path:
-            logger.warning(f"17lands data not found for {set_code} (tried: {', '.join(format_types)})")
+            logger.info(f"Game data not in cache, attempting download for {set_code}...")
+            for format_type in format_types:
+                csv_path = self._ensure_game_data(set_code, format_type)
+                if csv_path:
+                    break
+
+        if not csv_path:
+            logger.warning(f"17lands data not available for {set_code} (tried: {', '.join(format_types)})")
             return []
 
         logger.info(f"Loading winning decks from {csv_path.name}...")

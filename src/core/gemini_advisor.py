@@ -118,12 +118,21 @@ class GeminiAdvisor:
         
         # Helper to format card info
         def format_card(card_obj):
-            name = card_obj.get('name') if isinstance(card_obj, dict) else getattr(card_obj, 'name', 'Unknown')
-            grp_id = card_obj.get('grp_id') if isinstance(card_obj, dict) else getattr(card_obj, 'grp_id', None)
+            is_dict = isinstance(card_obj, dict)
+            name = card_obj.get('name') if is_dict else getattr(card_obj, 'name', 'Unknown')
+            grp_id = card_obj.get('grp_id') if is_dict else getattr(card_obj, 'grp_id', None)
+            
+            # Get fallback stats from object itself (if Scryfall fails)
+            obj_power = card_obj.get('power') if is_dict else getattr(card_obj, 'power', None)
+            obj_toughness = card_obj.get('toughness') if is_dict else getattr(card_obj, 'toughness', None)
             
             if grp_id:
                 card_data = self.scryfall.get_card_by_arena_id(grp_id)
                 if card_data:
+                    # Prefer name from Scryfall if local name is unknown
+                    if name.startswith("Unknown") and card_data.get("name"):
+                        name = card_data.get("name")
+
                     power = card_data.get('power', '?')
                     toughness = card_data.get('toughness', '?')
                     mana = card_data.get('mana_cost', '')
@@ -137,7 +146,16 @@ class GeminiAdvisor:
                     if oracle: details.append(f"Text: {oracle}")
                     
                     return f"- {name} | {' | '.join(details)}"
-            return f"- {name}"
+            
+            # Fallback: Use whatever data we parsed from the logs
+            details = []
+            if obj_power is not None and obj_toughness is not None:
+                details.append(f"Stats: {obj_power}/{obj_toughness}")
+            
+            if details:
+                return f"- {name} | {' | '.join(details)} (Card text unknown)"
+
+            return f"- {name} (Card text unknown)"
 
         # Process My Battlefield
         my_battlefield = board_state.get('your_battlefield', [])

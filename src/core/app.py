@@ -57,7 +57,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_file_path),
+        logging.FileHandler(log_file_path, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -90,6 +90,24 @@ def remove_emojis(text: str) -> str:
         '⚠️': '[WARNING]',
         '✅': '[OK]',
         '❌': '[X]',
+        '⏳': '[WAIT]',
+        '📦': '[BOX]',
+        '🎮': '[GAME]',
+        '🃏': '[CARD]',
+        '🔍': '[SEARCH]',
+        '⚡': '[EVENT]',
+        '💪': '[POWER]',
+        '🎴': '[MULLIGAN]',
+        '🔮': '[SCRY]',
+        '📋': '[DECK]',
+        '💀': '[DEATH]',
+        '💥': '[DAMAGE]',
+        '🐛': '[BUG]',
+        '📸': '[SNAP]',
+        '📤': '[UPLOAD]',
+        '🔄': '[RESTART]',
+        '📝': '[NOTE]',
+        '═══': '===',
     }
 
     result = text
@@ -252,7 +270,12 @@ class CLIVoiceAdvisor:
             try:
                 print(clean_message)
             except UnicodeEncodeError:
-                print(clean_message.encode('ascii', errors='ignore').decode('ascii'))
+                # Fallback: print with replacement characters using utf-8 logic
+                try:
+                    print(clean_message.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8'))
+                except:
+                    # Ultimate fallback
+                    print(clean_message.encode('ascii', errors='ignore').decode('ascii'))
 
     def _update_status(self, board_state: "BoardState" = None):
         """Update status display (GUI)"""

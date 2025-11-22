@@ -32,6 +32,11 @@ class UserPreferences:
     window_y: int = 100
     always_on_top: bool = True
 
+    # Secondary window geometries
+    deck_window_geometry: str = "350x600+1000+100"
+    board_window_geometry: str = "600x800+50+50"
+    log_window_geometry: str = "800x400+50+600"
+
     # UI preferences
     theme: str = "dark"  # dark/light
     show_board_state: bool = True
@@ -43,7 +48,7 @@ class UserPreferences:
     voice_engine: str = "kokoro"  # kokoro/pyttsx3/system
 
     # Model preferences
-    current_model: str = "gemma3n:latest"
+    current_model: str = "gemini-3-pro-preview"
     current_voice: str = "am_adam"
 
     # Game preferences

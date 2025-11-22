@@ -1,39 +1,31 @@
 # -----------------------------------------------------------------------------
-# Core Dependencies (Essential for basic application functionality)
+# Core Dependencies
 # -----------------------------------------------------------------------------
 requests>=2.31.0
 urllib3>=2.0.0
-tabulate>=0.9.0      # For clean table output in the TUI/draft advisor
-termcolor>=2.3.0     # For color-coding card grades in the draft advisor
-numpy>=1.24.0        # Required for statistical calculations (used by scipy)
+python-dotenv>=1.0.0    # Load .env file
+tabulate>=0.9.0      # For clean table output
+termcolor>=2.3.0     # For color-coding
+numpy>=1.24.0        # Basic math
 
 # -----------------------------------------------------------------------------
-# Text-to-Speech (TTS) Engines
+# AI & Data
 # -----------------------------------------------------------------------------
-# The advisor uses a primary and a fallback TTS engine.
-# Kokoro is fast and high-quality, while BarkTTS is a fallback.
-# -----------------------------------------------------------------------------
-kokoro-onnx>=0.1.0   # Primary TTS engine (fast, ONNX-based)
-scipy>=1.11.0        # Required by kokoro-onnx for audio processing
-transformers>=4.30.0 # Required for BarkTTS (fallback TTS)
-torch>=2.0.0         # Required for BarkTTS
+google-genai>=0.3.0       # Gemini API (New SDK)
+diskcache>=5.6.0            # Simple caching for Scryfall/MTGJSON
 
 # -----------------------------------------------------------------------------
-# Optional: Retrieval-Augmented Generation (RAG) System
+# Text-to-Speech (TTS)
 # -----------------------------------------------------------------------------
-# These packages enable the RAG system, which provides more advanced,
-# context-aware advice by searching MTG rules and card data.
-# These are large packages; install them only if you need RAG features.
-# -----------------------------------------------------------------------------
-chromadb>=0.4.0              # Vector database for semantic search
-sentence-transformers>=2.2.0 # For generating text embeddings
+kokoro-onnx>=0.1.0   # Primary TTS engine
+scipy>=1.11.0        # Required by kokoro-onnx
+sounddevice>=0.4.6   # Audio playback
+soundfile>=0.12.1    # Audio saving/processing
+onnxruntime>=1.16.0  # Required for Kokoro ONNX
 
 # -----------------------------------------------------------------------------
-# Platform-Specific Dependencies
+# Bark TTS (Fallback)
 # -----------------------------------------------------------------------------
-# On Windows, you may need these for the TUI mode and pyttsx3.
-#   pip install windows-curses pywin32
-#
-# On Linux, you may need to install system packages for pyttsx3:
-#   sudo apt-get install espeak espeak-ng libespeak1
-# -----------------------------------------------------------------------------
+transformers>=4.35.0
+torch>=2.0.0
+

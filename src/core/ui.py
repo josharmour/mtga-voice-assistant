@@ -133,8 +133,11 @@ class TextToSpeech:
         """Speak using Kokoro TTS"""
         logging.info(f"Speaking with Kokoro ({self.voice}): {text[:100]}...")
         try:
+            # Sanitize text for Kokoro (remove newlines to avoid phonemizer mismatch)
+            clean_text = text.replace('\n', ' ').replace('\r', '').strip()
+            
             # Generate audio using Kokoro
-            audio_array, sample_rate = self.tts.create(text, voice=self.voice, speed=1.0)
+            audio_array, sample_rate = self.tts.create(clean_text, voice=self.voice, speed=1.0)
 
             # Apply volume adjustment
             audio_array = audio_array * self.volume
