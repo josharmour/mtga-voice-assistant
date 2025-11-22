@@ -17,10 +17,11 @@ class LogFollower:
         self.inode = None
         self.offset = 0
         self.first_open = True  # Track if this is first time opening
+        self.is_caught_up = False # Track if we have processed the backlog
 
     def follow(self, callback: Callable[[str], None]):
         """Follow the log file indefinitely, calling the callback for each new line."""
-        print(f"[DEBUG] LogFollower.follow() started! Watching: {self.log_path}")
+        # Debug output disabled for cleaner console
         logging.info(f"LogFollower.follow() started! Watching: {self.log_path}")
         while True:
             try:
@@ -38,22 +39,23 @@ class LogFollower:
 
                 logging.debug(f"LogFollower: current_inode={current_inode}, self.inode={self.inode}")
                 if self.inode is None or self.inode != current_inode:
-                    print(f"[DEBUG] Opening log file (inode changed or first open)")
+                    # Debug: Opening log file (inode changed or first open)
                     if self.file:
                         self.file.close()
                     self.file = open(self.log_path, 'r', encoding='utf-8', errors='replace')
                     self.inode = current_inode
-                    print(f"[DEBUG] File opened successfully, inode={self.inode}")
+                    # Debug: File opened successfully
 
                     # On first open, seek to end to ignore old matches
                     # On log rotation, start from beginning of new file
                     if self.first_open:
-                        # First time opening - go to end
-                        self.file.seek(0, 2)  # Seek to end of file
-                        self.offset = self.file.tell()
+                        # First time opening - read from beginning to rebuild full state
+                        # This ensures we catch deck lists and zone definitions even if app started mid-game
+                        self.file.seek(0, 0)
+                        self.offset = 0
                         self.first_open = False
-                        print(f"[DEBUG] First open - seeked to end, offset={self.offset}")
-                        logging.info("Log file opened - starting from end (ignoring old matches).")
+                        # Debug: First open - starting from beginning to rebuild state
+                        logging.info("Log file opened - starting from beginning to rebuild state.")
                     else:
                         # Log rotation - start from beginning of new file
                         self.offset = 0
@@ -64,20 +66,27 @@ class LogFollower:
                 while True:
                     line = self.file.readline()
                     if not line:
+                        self.is_caught_up = True
                         break
                     line_count += 1
                     self.offset = self.file.tell()
                     stripped_line = line.strip()
 
-                    # Debug: show what we're reading
-                    if "Draft" in stripped_line or "BotDraft" in stripped_line or "<==" in stripped_line or "==>" in stripped_line:
-                        print(f"[DEBUG] Draft-related line: {stripped_line[:150]}")
+                    # Debug: draft-related lines (disabled for cleaner console)
+                    # if "Draft" in stripped_line or "BotDraft" in stripped_line:
+                    #     print(f"[DEBUG] Draft-related line: {stripped_line[:150]}")
 
                     if logging.getLogger().isEnabledFor(logging.DEBUG):
                         logging.debug(f"Read line: {stripped_line[:100]}...") # Log first 100 chars to avoid spam
                     callback(stripped_line)
-                if line_count > 0:
-                    print(f"[DEBUG] Processed {line_count} lines")
+                    
+                    # Yield thread execution to keep UI responsive during heavy parsing
+                    # This is critical when reading large log files on startup
+                    if line_count % 10 == 0:
+                        time.sleep(0.001)
+
+                # if line_count > 0:
+                #     print(f"[DEBUG] Processed {line_count} lines")
                 time.sleep(0.05)
             except FileNotFoundError:
                 logging.warning(f"Log file not found at {self.log_path}. Waiting...")
@@ -107,6 +116,7 @@ class GameObject:
     counters: Dict[str, int] = dataclasses.field(default_factory=dict)  # {counter_type: count}
     attached_to: Optional[int] = None  # Instance ID of attached permanent
     visibility: str = "public"  # "public", "private", "revealed"
+    type_line: str = ""  # Added to prevent AttributeError in some contexts
 
 @dataclasses.dataclass
 class PlayerState:
@@ -411,14 +421,18 @@ class MatchScanner:
                     game_obj.attached_to = attached_to
                     state_changed = True
                 if power is not None and game_obj.power != power:
+                    logging.info(f"💪 Power change for {game_obj.name} ({instance_id}): {game_obj.power} -> {power}")
                     game_obj.power = power
                     state_changed = True
                 if toughness is not None and game_obj.toughness != toughness:
+                    logging.info(f"🛡️ Toughness change for {game_obj.name} ({instance_id}): {game_obj.toughness} -> {toughness}")
                     game_obj.toughness = toughness
                     state_changed = True
 
         return state_changed
 
+        return state_changed
+        
     def _parse_zones(self, zones) -> bool:
         """Parse the zones structure which contains cards in hand, battlefield, etc."""
         state_changed = False
@@ -438,10 +452,12 @@ class MatchScanner:
 
             if zone_type_str and zone_id:
                 # Map zone type string to zone ID
+                if zone_type_str not in self.zone_type_to_ids or self.zone_type_to_ids[zone_type_str] != zone_id:
+                    logging.info(f"Zone mapping found: {zone_type_str} -> zoneId {zone_id} (owner: {owner_seat_id})")
+                
                 self.zone_type_to_ids[zone_type_str] = zone_id
                 self.zone_id_to_type[zone_id] = zone_type_str
-                logging.debug(f"Zone mapping: {zone_type_str} -> zoneId {zone_id} (owner: {owner_seat_id}, cards: {len(object_instance_ids)})")
-
+                
                 # Update all cards in this zone with the correct zone ID
                 for card_id in object_instance_ids:
                     if card_id in self.game_objects:
@@ -450,6 +466,9 @@ class MatchScanner:
                             logging.debug(f"Updating card {card_id} zone from {card.zone_id} to {zone_id} ({zone_type_str})")
                             card.zone_id = zone_id
                             state_changed = True
+            elif zone_id:
+                # Zone with ID but no type?
+                logging.warning(f"Zone with ID {zone_id} has no type! Owner: {owner_seat_id}")
 
         return state_changed
 
@@ -847,10 +866,10 @@ class GameStateManager:
 
                     # Call the registered callback if it exists
                     if event_type in self._draft_callbacks:
-                        print(f"[DEBUG] Calling callback for {event_type}")
+                        # Debug: Calling callback for event
                         self._draft_callbacks[event_type](parsed_data)
                     else:
-                        print(f"[DEBUG] No callback registered for draft event: {event_type}")
+                        # Debug: No callback registered for draft event
                         logging.debug(f"No callback registered for draft event: {event_type}")
                 else:
                     # Some events like LogBusinessEvents return a status string, not JSON
@@ -879,7 +898,7 @@ class GameStateManager:
                         pack_arena_ids = [int(card_id) for card_id in pack_cards_str.split(",")]
 
                         logging.info(f"Draft.Notify: Pack {pack_num}, Pick {pick_num}, {len(pack_arena_ids)} cards")
-                        print(f"[DEBUG] Draft.Notify detected: Pack {pack_num}, Pick {pick_num}")
+                        # Debug: Draft.Notify detected
 
                         # Call Draft.Notify callback if registered
                         if "Draft.Notify" in self._draft_callbacks:
@@ -931,7 +950,7 @@ class GameStateManager:
 
                 # Mark that the next line contains the JSON for this event
                 self._next_line_event = event_type
-                print(f"[DEBUG] Detected end event marker: {event_type}, expecting JSON on next line")
+                # Debug: Detected end event marker
                 logging.debug(f"Detected end event marker: {event_type}, expecting JSON on next line")
 
             return False  # Draft events don't change game state
@@ -991,8 +1010,9 @@ class GameStateManager:
         return False
 
     def get_current_board_state(self) -> Optional[BoardState]:
-        logging.debug("Attempting to get current board state.")
+        # logging.debug("Attempting to get current board state.")
         if not self.scanner.local_player_seat_id:
+            # print("DEBUG: No local player seat ID")
             logging.debug("No local player seat ID found yet.")
             return None
 
@@ -1008,12 +1028,14 @@ class GameStateManager:
             logging.debug(f"Missing player data. Your player: {your_player}, Opponent player: {opponent_player}")
             return None
 
+        # print(f"DEBUG: Priority check: priority_seat={self.scanner.priority_player_seat}, your_seat={your_seat_id}")
         board_state = BoardState(
             your_seat_id=your_seat_id,
             opponent_seat_id=opponent_seat_id,
             your_life=your_player.life_total,
             your_hand_count=your_player.hand_count,
             opponent_life=opponent_player.life_total,
+            # Use the tracked hand count from PlayerState, which is updated via game state messages
             opponent_hand_count=opponent_player.hand_count,
             current_turn=self.scanner.current_turn,
             current_phase=self.scanner.current_phase,
@@ -1028,35 +1050,8 @@ class GameStateManager:
             game_stage=self.scanner.game_stage
         )
 
-        # Debug: Log all game objects before filtering
-        logging.debug(f"Total game objects: {len(self.scanner.game_objects)}")
         for obj_id, obj in self.scanner.game_objects.items():
             logging.debug(f"  Object {obj_id}: grpId={obj.grp_id}, zoneId={obj.zone_id}, owner={obj.owner_seat_id}")
-
-        # Get the actual zone IDs from the mappings discovered during parsing
-        hand_zone_id = None
-        battlefield_zone_id = None
-        graveyard_zone_id = None
-        exile_zone_id = None
-        library_zone_id = None
-        stack_zone_id = None
-
-        for zone_type_str, zone_id in self.scanner.zone_type_to_ids.items():
-            if "Hand" in zone_type_str:
-                hand_zone_id = zone_id
-            elif "Battlefield" in zone_type_str:
-                battlefield_zone_id = zone_id
-            elif "Graveyard" in zone_type_str:
-                graveyard_zone_id = zone_id
-            elif "Exile" in zone_type_str:
-                exile_zone_id = zone_id
-            elif "Library" in zone_type_str:
-                library_zone_id = zone_id
-            elif "Stack" in zone_type_str:
-                stack_zone_id = zone_id
-
-        logging.debug(f"Using zone mappings: Hand={hand_zone_id}, Battlefield={battlefield_zone_id}, "
-                     f"Graveyard={graveyard_zone_id}, Exile={exile_zone_id}, Stack={stack_zone_id}")
 
         for obj in self.scanner.game_objects.values():
             obj.name = self.card_lookup.get_card_name(obj.grp_id)
@@ -1069,36 +1064,39 @@ class GameStateManager:
             except Exception as e:
                 logging.debug(f"Could not fetch color for {obj.grp_id}: {e}")
 
-            logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={obj.zone_id}, owner={obj.owner_seat_id}")
+            # Get the zone type for this object's zone
+            zone_type = self.scanner.zone_id_to_type.get(obj.zone_id, "")
+            
+            logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={obj.zone_id} ({zone_type}), owner={obj.owner_seat_id}")
 
             if obj.owner_seat_id == your_seat_id:
-                if hand_zone_id and obj.zone_id == hand_zone_id:
+                if "Hand" in zone_type:
                     logging.debug(f"  -> Added to your hand: {obj.name}")
                     board_state.your_hand.append(obj)
-                elif battlefield_zone_id and obj.zone_id == battlefield_zone_id:
+                elif "Battlefield" in zone_type:
                     logging.debug(f"  -> Added to your battlefield: {obj.name}")
                     board_state.your_battlefield.append(obj)
-                elif graveyard_zone_id and obj.zone_id == graveyard_zone_id:
+                elif "Graveyard" in zone_type:
                     logging.debug(f"  -> Added to your graveyard: {obj.name}")
                     board_state.your_graveyard.append(obj)
-                elif exile_zone_id and obj.zone_id == exile_zone_id:
+                elif "Exile" in zone_type:
                     logging.debug(f"  -> Added to your exile: {obj.name}")
                     board_state.your_exile.append(obj)
-                elif library_zone_id and obj.zone_id == library_zone_id:
+                elif "Library" in zone_type:
                     board_state.your_library_count += 1
                 else:
                     logging.debug(f"  -> Skipped your card (zone {obj.zone_id})")
             elif obj.owner_seat_id == opponent_seat_id:
-                if battlefield_zone_id and obj.zone_id == battlefield_zone_id:
+                if "Battlefield" in zone_type:
                     logging.debug(f"  -> Added to opponent battlefield: {obj.name}")
                     board_state.opponent_battlefield.append(obj)
-                elif graveyard_zone_id and obj.zone_id == graveyard_zone_id:
+                elif "Graveyard" in zone_type:
                     logging.debug(f"  -> Added to opponent graveyard: {obj.name}")
                     board_state.opponent_graveyard.append(obj)
-                elif exile_zone_id and obj.zone_id == exile_zone_id:
+                elif "Exile" in zone_type:
                     logging.debug(f"  -> Added to opponent exile: {obj.name}")
                     board_state.opponent_exile.append(obj)
-                elif library_zone_id and obj.zone_id == library_zone_id:
+                elif "Library" in zone_type:
                     board_state.opponent_library_count += 1
                 else:
                     logging.debug(f"  -> Skipped opponent card (zone {obj.zone_id})")
@@ -1106,7 +1104,7 @@ class GameStateManager:
                 logging.debug(f"  -> Skipped card (owner {obj.owner_seat_id} not a player)")
 
             # Stack is shared between players
-            if stack_zone_id and obj.zone_id == stack_zone_id:
+            if "Stack" in zone_type:
                 logging.debug(f"  -> Added to stack: {obj.name}")
                 board_state.stack.append(obj)
 
@@ -1143,7 +1141,23 @@ class GameStateManager:
             logging.debug(f"Deck tracking: {len(deck_with_names)} unique cards, deck size {total_deck_size}, "
                          f"{board_state.your_library_count} remaining in library")
 
-        logging.info(f"Board State Summary: Hand: {len(board_state.your_hand)}, "
+        # Fill in missing hand cards with placeholders if count > detected
+        if board_state.your_hand_count > len(board_state.your_hand):
+            missing_count = board_state.your_hand_count - len(board_state.your_hand)
+            logging.info(f"Hand count mismatch: Arena says {board_state.your_hand_count}, detected {len(board_state.your_hand)}. Adding {missing_count} placeholders.")
+            for i in range(missing_count):
+                # Create a placeholder object
+                placeholder = GameObject(
+                    instance_id=-1, 
+                    grp_id=0, 
+                    zone_id=0, 
+                    owner_seat_id=your_seat_id,
+                    name="Unknown Card",
+                    visibility="private"
+                )
+                board_state.your_hand.append(placeholder)
+
+        logging.info(f"Board State Summary: Hand: {len(board_state.your_hand)} (Count: {board_state.your_hand_count}), "
                     f"Battlefield: {len(board_state.your_battlefield)}, "
                     f"Graveyard: {len(board_state.your_graveyard)}, "
                     f"Exile: {len(board_state.your_exile)}, "

@@ -4,10 +4,10 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-import curses
 import time
 from collections import deque
 from typing import List, Callable
+from .secondary_window import SecondaryWindow
 
 # Content of src/tts.py
 class TextToSpeech:
@@ -178,7 +178,28 @@ class TextToSpeech:
             logging.error(traceback.format_exc())
 
     def _save_and_play_audio(self, audio_array, sample_rate: int, engine_name: str):
-        """Save audio to temp file and play it"""
+        """Play audio directly using sounddevice (better for WSL)"""
+        try:
+            import sounddevice as sd
+            
+            logging.info(f"Playing audio with sounddevice ({engine_name})...")
+            
+            # Play audio directly (non-blocking)
+            sd.play(audio_array, sample_rate)
+            
+            logging.info(f"Audio playback started successfully")
+            
+        except ImportError:
+            logging.error("sounddevice not installed. Install with: pip install sounddevice")
+            # Fallback to system players
+            self._save_and_play_audio_fallback(audio_array, sample_rate, engine_name)
+        except Exception as e:
+            logging.error(f"sounddevice playback error: {e}")
+            # Fallback to system players
+            self._save_and_play_audio_fallback(audio_array, sample_rate, engine_name)
+    
+    def _save_and_play_audio_fallback(self, audio_array, sample_rate: int, engine_name: str):
+        """Fallback: Save audio to temp file and play with system commands"""
         import scipy.io.wavfile as wavfile
 
         # Save to temporary file
@@ -247,454 +268,6 @@ try:
 except ImportError:
     CONFIG_MANAGER_AVAILABLE = False
     logging.warning("Config manager not available. User preferences will not persist.")
-
-class AdvisorTUI:
-    """
-    Text User Interface for MTGA Voice Advisor using curses.
-
-    Layout:
-    ┌─────────────────────────────────────────────────────────────┐
-    │ Status Bar: Turn 5 | Model: llama3.2 | Voice: am_adam     │
-    ├─────────────────────────────────────────────────────────────┤
-    │                                                             │
-    │ Board State Window (scrollable)                            │
-    │                                                             │
-    ├─────────────────────────────────────────────────────────────┤
-    │                                                             │
-    │ Messages Window (scrollable)                               │
-    │ - Advisor responses                                        │
-    │ - Game events                                              │
-    │ - Command feedback                                         │
-    │                                                             │
-    ├─────────────────────────────────────────────────────────────┤
-    │ You: _                                                      │
-    └─────────────────────────────────────────────────────────────┘
-    """
-
-    def __init__(self, stdscr):
-        self.stdscr = stdscr
-        self.running = True
-        self.board_state_lines = []
-        self.messages = deque(maxlen=100)  # Keep last 100 messages
-        self.input_buffer = ""
-        self.input_callback = None
-
-        # Initialize colors
-        curses.start_color()
-        curses.use_default_colors()
-        curses.init_pair(1, curses.COLOR_GREEN, -1)   # Green
-        curses.init_pair(2, curses.COLOR_CYAN, -1)    # Cyan
-        curses.init_pair(3, curses.COLOR_YELLOW, -1)  # Yellow
-        curses.init_pair(4, curses.COLOR_RED, -1)     # Red
-        curses.init_pair(5, curses.COLOR_BLUE, -1)    # Blue
-        curses.init_pair(6, curses.COLOR_WHITE, -1)   # White
-
-        # Color name to pair ID mapping
-        self.color_map = {
-            "green": 1,
-            "cyan": 2,
-            "yellow": 3,
-            "red": 4,
-            "blue": 5,
-            "white": 6,
-        }
-
-        # Configure stdscr
-        self.stdscr.keypad(True)
-        curses.curs_set(1)  # Show cursor
-
-        # Create windows
-        self._create_windows()
-
-    def _create_windows(self):
-        """Create and layout windows"""
-        height, width = self.stdscr.getmaxyx()
-
-        # Status bar: 1 line at top
-        self.status_win = curses.newwin(1, width, 0, 0)
-
-        # Board state: 70% of available height (more space for full board display)
-        available_height = height - 3  # Minus status, separator, input
-        board_height = max(10, int(available_height * 0.7))
-        self.board_win = curses.newwin(board_height, width, 1, 0)
-        self.board_win.scrollok(True)
-
-        # Messages: remaining 30% of space
-        msg_y = 1 + board_height
-        msg_height = height - msg_y - 2
-        self.msg_win = curses.newwin(msg_height, width, msg_y, 0)
-        self.msg_win.scrollok(True)
-
-        # Input prompt: 1 line at bottom
-        self.input_win = curses.newwin(1, width, height - 1, 0)
-
-        # Scroll positions
-        self.board_scroll = 0
-        self.msg_scroll = 0
-
-    def resize(self):
-        """Handle terminal resize"""
-        try:
-            # Update curses internal tracking of terminal size
-            curses.update_lines_cols()
-
-            # Clear and refresh main screen
-            self.stdscr.clear()
-            self.stdscr.refresh()
-
-            # Recreate windows with new dimensions
-            self._create_windows()
-
-            # Redraw everything
-            self.refresh_all()
-        except Exception as e:
-            # Silently handle resize errors
-            pass
-
-    def set_status(self, text: str):
-        """Update status bar"""
-        try:
-            self.status_win.clear()
-            self.status_win.addstr(0, 0, text[:self.status_win.getmaxyx()[1]-1],
-                                  curses.color_pair(1) | curses.A_BOLD)
-            self.status_win.refresh()
-        except curses.error:
-            pass
-
-    def set_board_state(self, lines: List[str]):
-        """Update board state display"""
-        self.board_state_lines = lines
-        self._refresh_board()
-
-    def add_message(self, msg: str, color = 0):
-        """Add message to message log. Color can be string name or int pair ID."""
-        timestamp = time.strftime("%H:%M:%S")
-        # Convert color string to int if needed
-        if isinstance(color, str):
-            color = self.color_map.get(color, 6)  # Default to white
-        self.messages.append((timestamp, msg, color))
-        # Auto-scroll to bottom
-        self.msg_scroll = max(0, len(self.messages) - self.msg_win.getmaxyx()[0])
-        self._refresh_messages()
-
-    def _refresh_board(self):
-        """Redraw board state window"""
-        try:
-            self.board_win.clear()
-            height, width = self.board_win.getmaxyx()
-
-            # Draw border
-            try:
-                self.board_win.addstr(0, 0, "═" * (width-1), curses.color_pair(2))
-                self.board_win.addstr(0, 2, " BOARD STATE ", curses.color_pair(2) | curses.A_BOLD)
-            except curses.error:
-                pass
-
-            # Draw visible lines
-            visible_lines = self.board_state_lines[self.board_scroll:self.board_scroll + height - 1]
-            for i, line in enumerate(visible_lines):
-                try:
-                    # Truncate to fit width
-                    display_line = line[:width-1]
-                    self.board_win.addstr(i + 1, 0, display_line)
-                except curses.error:
-                    pass
-
-            self.board_win.refresh()
-        except curses.error:
-            pass
-
-    def _refresh_messages(self):
-        """Redraw messages window"""
-        try:
-            self.msg_win.clear()
-            height, width = self.msg_win.getmaxyx()
-
-            # Draw border
-            try:
-                self.msg_win.addstr(0, 0, "═" * (width-1), curses.color_pair(2))
-                self.msg_win.addstr(0, 2, " MESSAGES ", curses.color_pair(2) | curses.A_BOLD)
-            except curses.error:
-                pass
-
-            # Draw visible messages
-            visible_msgs = list(self.messages)[self.msg_scroll:self.msg_scroll + height - 1]
-            for i, (timestamp, msg, color) in enumerate(visible_msgs):
-                try:
-                    # Format: [HH:MM:SS] message
-                    display_line = f"[{timestamp}] {msg}"[:width-1]
-                    attr = curses.color_pair(color) if color else 0
-                    self.msg_win.addstr(i + 1, 0, display_line, attr)
-                except curses.error:
-                    pass
-
-            self.msg_win.refresh()
-        except curses.error:
-            pass
-
-    def _refresh_input(self):
-        """Redraw input prompt"""
-        try:
-            self.input_win.clear()
-            width = self.input_win.getmaxyx()[1]
-
-            # Show prompt and input buffer
-            prompt = "You: "
-            display = prompt + self.input_buffer
-
-            # Truncate if too long
-            if len(display) >= width:
-                display = prompt + "..." + self.input_buffer[-(width-len(prompt)-4):]
-
-            self.input_win.addstr(0, 0, display)
-            self.input_win.refresh()
-        except curses.error:
-            pass
-
-    def refresh_all(self):
-        """Refresh all windows"""
-        try:
-            self.status_win.refresh()
-        except:
-            pass
-        self._refresh_board()
-        self._refresh_messages()
-        self._refresh_input()
-
-    def get_input(self, callback: Callable[[str], None]):
-        """
-        Get user input (non-blocking with callback).
-        Call this in a loop to handle input.
-        """
-        self.input_callback = callback
-        self._refresh_input()
-
-        try:
-            # Non-blocking input
-            self.stdscr.timeout(100)  # 100ms timeout
-            ch = self.stdscr.getch()
-
-            if ch == -1:  # No input
-                return True
-
-            if ch == curses.KEY_RESIZE:
-                self.resize()
-            elif ch == ord('\n') or ch == curses.KEY_ENTER or ch == 10:
-                # Enter key - submit input
-                if self.input_buffer.strip():
-                    user_input = self.input_buffer
-                    self.input_buffer = ""
-                    self._refresh_input()
-                    if self.input_callback:
-                        self.input_callback(user_input)
-            elif ch == curses.KEY_BACKSPACE or ch == 127 or ch == 8:
-                # Backspace
-                if self.input_buffer:
-                    self.input_buffer = self.input_buffer[:-1]
-                    self._refresh_input()
-            elif ch == curses.KEY_UP:
-                # Scroll board up
-                self.board_scroll = max(0, self.board_scroll - 1)
-                self._refresh_board()
-            elif ch == curses.KEY_DOWN:
-                # Scroll board down
-                max_scroll = max(0, len(self.board_state_lines) - self.board_win.getmaxyx()[0] + 1)
-                self.board_scroll = min(max_scroll, self.board_scroll + 1)
-                self._refresh_board()
-            elif ch == curses.KEY_PPAGE:  # Page Up
-                # Scroll messages up
-                self.msg_scroll = max(0, self.msg_scroll - 5)
-                self._refresh_messages()
-            elif ch == curses.KEY_NPAGE:  # Page Down
-                # Scroll messages down
-                max_scroll = max(0, len(self.messages) - self.msg_win.getmaxyx()[0] + 1)
-                self.msg_scroll = min(max_scroll, self.msg_scroll + 5)
-                self._refresh_messages()
-            elif 32 <= ch <= 126:  # Printable ASCII
-                self.input_buffer += chr(ch)
-                self._refresh_input()
-
-            return self.running
-
-        except KeyboardInterrupt:
-            self.running = False
-            return False
-
-    def show_popup(self, lines: List[str], title: str = ""):
-        """Show a temporary popup overlay (press any key to dismiss)"""
-        try:
-            if not lines:
-                return
-
-            height, width = self.stdscr.getmaxyx()
-
-            # Calculate popup dimensions (80% of screen)
-            popup_height = min(len(lines) + 4, int(height * 0.8))
-            max_line_len = max((len(line) for line in lines), default=20)
-            popup_width = min(max_line_len + 4, int(width * 0.8))
-
-            # Center the popup
-            y = (height - popup_height) // 2
-            x = (width - popup_width) // 2
-
-            # Create popup window with border
-            popup = curses.newwin(popup_height, popup_width, y, x)
-            popup.box()
-
-            # Add title if provided
-            if title:
-                popup.addstr(0, 2, f" {title} ", curses.color_pair(2) | curses.A_BOLD)
-
-            # Add content (scrollable if needed)
-            max_content_lines = popup_height - 3
-            for i, line in enumerate(lines[:max_content_lines]):
-                try:
-                    popup.addstr(i + 1, 2, line[:popup_width - 4])
-                except curses.error:
-                    pass
-
-            # Add footer
-            footer = "Press any key to close"
-            popup.addstr(popup_height - 1, (popup_width - len(footer)) // 2,
-                        footer, curses.color_pair(3))
-
-            popup.refresh()
-
-            # Wait for keypress (blocking)
-            self.stdscr.timeout(-1)  # Blocking mode
-            self.stdscr.getch()
-            self.stdscr.timeout(100)  # Back to non-blocking
-
-            # Clear popup and refresh screen
-            del popup
-            self.stdscr.touchwin()
-            self.refresh_all()
-
-        except Exception as e:
-            pass
-
-    def show_settings_menu(self, settings_callback):
-        """
-        Show interactive settings menu.
-
-        Args:
-            settings_callback: Function to call with (setting_name, new_value)
-
-        Returns tuple of (models_list, kokoro_voices_list, bark_voices_list, current_model, current_voice, current_volume, current_tts)
-        """
-        try:
-            height, width = self.stdscr.getmaxyx()
-
-            # Create popup (60% of screen)
-            popup_height = min(20, int(height * 0.6))
-            popup_width = min(70, int(width * 0.7))
-            y = (height - popup_height) // 2
-            x = (width - popup_width) // 2
-
-            popup = curses.newwin(popup_height, popup_width, y, x)
-            popup.keypad(True)
-
-            # Get initial values from callback
-            result = settings_callback("get_values", None)
-            models, kokoro_voices, bark_voices, current_model, current_voice, current_volume, current_tts = result
-
-            selected_idx = 0
-            settings_items = ["AI Model", "Voice", "Volume", "TTS Engine"]
-
-            while True:
-                popup.clear()
-                popup.box()
-                popup.addstr(0, 2, " Settings ", curses.color_pair(2) | curses.A_BOLD)
-
-                # Display settings with selection
-                for i, item in enumerate(settings_items):
-                    line_y = i + 2
-
-                    # Highlight selected item
-                    attr = curses.A_REVERSE if i == selected_idx else 0
-
-                    if item == "AI Model":
-                        value = current_model
-                        hint = " (Enter to cycle)"
-                    elif item == "Voice":
-                        value = current_voice
-                        hint = " (Enter to cycle)"
-                    elif item == "Volume":
-                        value = f"{current_volume}%"
-                        hint = " (+/- to adjust)"
-                    elif item == "TTS Engine":
-                        value = "Kokoro" if current_tts == "kokoro" else "BarkTTS"
-                        hint = " (Enter to toggle)"
-
-                    display = f"  {item:15} {value}{hint}"
-                    try:
-                        popup.addstr(line_y, 2, display[:popup_width-4], attr)
-                    except curses.error:
-                        pass
-
-                # Footer
-                footer_y = popup_height - 2
-                popup.addstr(footer_y, 2, "↑↓: Navigate  Enter: Change  ESC/Q: Close", curses.color_pair(3))
-
-                popup.refresh()
-
-                # Handle input
-                ch = popup.getch()
-
-                if ch == 27 or ch == ord('q') or ch == ord('Q'):  # ESC or Q
-                    break
-                elif ch == curses.KEY_UP:
-                    selected_idx = (selected_idx - 1) % len(settings_items)
-                elif ch == curses.KEY_DOWN:
-                    selected_idx = (selected_idx + 1) % len(settings_items)
-                elif ch == ord('\n') or ch == ord(' '):  # Enter or Space
-                    setting = settings_items[selected_idx]
-
-                    if setting == "AI Model":
-                        # Cycle to next model
-                        current_idx = models.index(current_model) if current_model in models else 0
-                        new_idx = (current_idx + 1) % len(models)
-                        current_model = models[new_idx]
-                        settings_callback("model", current_model)
-
-                    elif setting == "Voice":
-                        # Cycle to next voice (use appropriate voice list)
-                        voice_list = kokoro_voices if current_tts == "kokoro" else bark_voices
-                        current_idx = voice_list.index(current_voice) if current_voice in voice_list else 0
-                        new_idx = (current_idx + 1) % len(voice_list)
-                        current_voice = voice_list[new_idx]
-                        settings_callback("voice", current_voice)
-
-                    elif setting == "TTS Engine":
-                        # Toggle TTS engine
-                        new_tts = "bark" if current_tts == "kokoro" else "kokoro"
-                        current_tts = new_tts
-                        settings_callback("tts_engine", new_tts)
-
-                elif ch == ord('+') or ch == ord('='):  # Volume up
-                    if settings_items[selected_idx] == "Volume":
-                        current_volume = min(100, current_volume + 10)
-                        settings_callback("volume", current_volume)
-
-                elif ch == ord('-') or ch == ord('_'):  # Volume down
-                    if settings_items[selected_idx] == "Volume":
-                        current_volume = max(0, current_volume - 10)
-                        settings_callback("volume", current_volume)
-
-            # Cleanup
-            del popup
-            self.stdscr.touchwin()
-            self.refresh_all()
-
-        except Exception as e:
-            pass
-
-    def cleanup(self):
-        """Cleanup curses"""
-        curses.nocbreak()
-        self.stdscr.keypad(False)
-        curses.echo()
-        curses.endwin()
 
 
 class LogHighlighter:
@@ -859,6 +432,16 @@ class AdvisorGUI:
 
         self._create_widgets()
 
+        # Initialize secondary windows
+        self.board_window = SecondaryWindow(self.root, "Board State", 
+            self.prefs.board_window_geometry if self.prefs and hasattr(self.prefs, 'board_window_geometry') else "600x800")
+        
+        self.deck_window = SecondaryWindow(self.root, "My Deck",
+            self.prefs.deck_window_geometry if self.prefs and hasattr(self.prefs, 'deck_window_geometry') else "400x600")
+            
+        self.log_window = SecondaryWindow(self.root, "MTGA Logs",
+            self.prefs.log_window_geometry if self.prefs and hasattr(self.prefs, 'log_window_geometry') else "800x200")
+
         # Message queue for thread-safe updates
         self.message_queue = deque(maxlen=100)
         # Initialize with a helpful message
@@ -890,6 +473,20 @@ class AdvisorGUI:
         # Start update loop
         self.running = True
         self._update_loop()
+        self._process_log_queue()
+
+        # Ensure secondary windows are visible by default
+        self.root.after(500, self._ensure_windows_visible)
+
+    def _ensure_windows_visible(self):
+        """Ensure secondary windows are visible on startup."""
+        try:
+            if self.board_window: self.board_window.deiconify()
+            if self.deck_window: self.deck_window.deiconify()
+            if self.log_window: self.log_window.deiconify()
+        except Exception as e:
+            logging.error(f"Error showing secondary windows: {e}")
+
 
     def _create_widgets(self):
         """Create all GUI widgets"""
@@ -1021,6 +618,16 @@ class AdvisorGUI:
             activeforeground=self.fg_color
         ).pack(anchor=tk.W, pady=5)
 
+        # Windows toggles
+        tk.Label(settings_frame, text="Windows:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
+        
+        windows_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        windows_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Button(windows_frame, text="Board", command=lambda: self.board_window.deiconify(), bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        tk.Button(windows_frame, text="Deck", command=lambda: self.deck_window.deiconify(), bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        tk.Button(windows_frame, text="Logs", command=lambda: self.log_window.deiconify(), bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+
         # Buttons
         tk.Button(
             settings_frame,
@@ -1058,17 +665,6 @@ class AdvisorGUI:
             padx=10,
             pady=5,
             font=('Consolas', 9, 'bold')
-        ).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-
-        tk.Button(
-            button_frame,
-            text="📤 Upload Bug",
-            command=self._upload_latest_bug_report,
-            bg=self.accent_color,
-            fg='#1a1a1a',
-            relief=tk.FLAT,
-            padx=10,
-            pady=5
         ).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         tk.Button(
@@ -1123,64 +719,19 @@ class AdvisorGUI:
         content_frame = tk.Frame(self.root, bg=self.bg_color)
         content_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Board state area (top)
-        board_header_frame = tk.Frame(content_frame, bg=self.bg_color)
-        board_header_frame.pack(pady=(0, 5), fill=tk.X)
-
-        self.board_label = tk.Label(
-            board_header_frame,
-            text="═══ BOARD STATE ═══",
-            bg=self.bg_color,
-            fg=self.accent_color,
-            font=('Consolas', 10, 'bold')
-        )
-        self.board_label.pack(side=tk.LEFT, expand=True)
-
-        # Draft card counter (hidden by default)
-        self.draft_counter_label = tk.Label(
-            board_header_frame,
-            text="",
-            bg=self.bg_color,
-            fg=self.accent_color,
-            font=('Consolas', 9, 'bold')
-        )
-        self.draft_counter_label.pack(side=tk.RIGHT, padx=10)
-
-        self.board_text = scrolledtext.ScrolledText(
-            content_frame,
-            height=15,
-            bg='#1a1a1a',
-            fg=self.fg_color,
-            font=('Consolas', 9),
-            relief=tk.FLAT,
-            padx=10,
-            pady=10
-        )
-        self.board_text.pack(fill=tk.BOTH, expand=True)
-        self.board_text.config(state=tk.DISABLED)
-
-        # Configure color tags for draft pack display (matching messages_text colors)
-        self.board_text.tag_config('color_w', foreground='#ffff99')   # White - pale yellow
-        self.board_text.tag_config('color_u', foreground='#55aaff')   # Blue
-        self.board_text.tag_config('color_b', foreground='#aaaaaa')   # Black - gray
-        self.board_text.tag_config('color_r', foreground='#ff5555')   # Red
-        self.board_text.tag_config('color_g', foreground='#00ff88')   # Green
-        self.board_text.tag_config('color_c', foreground='#cccccc')   # Colorless - light gray
-        self.board_text.tag_config('color_multi', foreground='#ffdd44') # Multicolor - orange-yellow
-
-        # Advisor messages area (bottom)
+        # Advisor messages area
         self.advisor_label = tk.Label(
             content_frame,
-            text="═══ ADVISOR ═══",
+            text="═══ ADVISOR MESSAGES ═══",
             bg=self.bg_color,
             fg=self.accent_color,
             font=('Consolas', 10, 'bold')
         )
-        self.advisor_label.pack(pady=(10, 5))
+        self.advisor_label.pack(pady=(0, 5))
 
         self.messages_text = scrolledtext.ScrolledText(
             content_frame,
-            height=15,
+            height=20,
             bg='#1a1a1a',
             fg=self.fg_color,
             font=('Consolas', 9),
@@ -1199,98 +750,10 @@ class AdvisorGUI:
         self.messages_text.tag_config('red', foreground='#ff5555')
         self.messages_text.tag_config('white', foreground='#ffffff')
 
-        # MTGA Logs panel
-        logs_header_frame = tk.Frame(content_frame, bg=self.bg_color)
-        logs_header_frame.pack(pady=(10, 5), fill=tk.X)
-
-        self.logs_label = tk.Label(
-            logs_header_frame,
-            text="═══ MTGA LOGS (COLOR-CODED) ═══",
-            bg=self.bg_color,
-            fg=self.success_color,
-            font=('Consolas', 10, 'bold')
-        )
-        self.logs_label.pack(side=tk.LEFT, expand=True)
-
-        # Toggle button for logs
-        self.logs_toggle_btn = tk.Button(
-            logs_header_frame,
-            text="[Collapse]",
-            bg='#1a1a1a',
-            fg=self.success_color,
-            font=('Consolas', 8),
-            relief=tk.FLAT,
-            command=self._toggle_logs_panel
-        )
-        self.logs_toggle_btn.pack(side=tk.RIGHT, padx=5)
-
-        self.logs_text = scrolledtext.ScrolledText(
-            content_frame,
-            height=8,
-            bg='#1a1a1a',
-            fg=self.fg_color,
-            font=('Consolas', 8),
-            relief=tk.FLAT,
-            padx=10,
-            pady=10
-        )
-        self.logs_text.pack(fill=tk.BOTH, expand=True)
-        self.logs_text.config(state=tk.DISABLED)
-
-        # Configure color tags for logs
-        self.logs_text.tag_config('card_detected', foreground='#00ff88')  # Green
-        self.logs_text.tag_config('grpid', foreground='#55aaff')         # Blue
-        self.logs_text.tag_config('draft_event', foreground='#ffff00')    # Yellow
-        self.logs_text.tag_config('game_event', foreground='#88ffff')     # Cyan
-        self.logs_text.tag_config('error', foreground='#ff5555')          # Red
-        self.logs_text.tag_config('default', foreground='#ffffff')        # White
-
         # Initialize log highlighter
         self.log_highlighter = LogHighlighter(card_db=None)  # Will be set in __init__
 
-        # RAG References panel (bottom)
-        rag_header_frame = tk.Frame(content_frame, bg=self.bg_color)
-        rag_header_frame.pack(pady=(10, 5), fill=tk.X)
-
-        self.rag_label = tk.Label(
-            rag_header_frame,
-            text="═══ RAG REFERENCES ═══",
-            bg=self.bg_color,
-            fg=self.info_color,
-            font=('Consolas', 10, 'bold')
-        )
-        self.rag_label.pack(side=tk.LEFT, expand=True)
-
-        # Toggle button for RAG references
-        self.rag_toggle_btn = tk.Button(
-            rag_header_frame,
-            text="[Expand]",
-            bg='#1a1a1a',
-            fg=self.info_color,
-            font=('Consolas', 8),
-            relief=tk.FLAT,
-            command=self._toggle_rag_panel
-        )
-        self.rag_toggle_btn.pack(side=tk.RIGHT, padx=5)
-
-        self.rag_text = scrolledtext.ScrolledText(
-            content_frame,
-            height=6,
-            bg='#1a1a1a',
-            fg=self.fg_color,
-            font=('Consolas', 8),
-            relief=tk.FLAT,
-            padx=10,
-            pady=10
-        )
-        self.rag_text.pack(fill=tk.BOTH, expand=False)
-        self.rag_text.config(state=tk.DISABLED)
-
-        # Tag configurations for RAG panel
-        self.rag_text.tag_config('rule', foreground='#ffff00', font=('Consolas', 8, 'bold'))
-        self.rag_text.tag_config('card', foreground='#00ff88', font=('Consolas', 8, 'bold'))
-        self.rag_text.tag_config('query', foreground='#55aaff', font=('Consolas', 8, 'italic'))
-        self.rag_text.tag_config('stats', foreground='#ff88ff')
+        # RAG References panel removed
 
     def _on_model_change(self, event=None):
         """Handle model selection change."""
@@ -1310,48 +773,62 @@ class AdvisorGUI:
             logging.error(f"Error changing model: {e}")
 
     def _on_voice_change(self, event=None):
-        """Handle voice selection change."""
+        """Handle voice selection change"""
         try:
-            voice = self.voice_var.get()
-            if voice and CONFIG_MANAGER_AVAILABLE and self.prefs:
-                self.prefs.set_voice_name(voice)
-                logging.info(f"✓ Voice changed to: {voice}")
-                self.add_message(f"Voice changed to: {voice}", "green")
-
-                # Apply immediately if we have access to TTS
-                if hasattr(self, 'tts') and self.tts:
-                    if hasattr(self.tts, 'set_voice'):
-                        self.tts.set_voice(voice)
-                        logging.debug("Applied voice change to active TTS")
-                        # Test the new voice in a background thread to avoid blocking UI
-                        import threading
-                        threading.Thread(target=lambda: self.tts.speak(f"Voice changed to {voice.replace('_', ' ')}"), daemon=True).start()
+            new_voice = self.voice_var.get()
+            logging.info(f"Voice changed to: {new_voice}")
+            
+            # Update TTS engine voice via advisor reference
+            if hasattr(self.advisor_ref, 'tts') and self.advisor_ref.tts:
+                if hasattr(self.advisor_ref.tts, 'set_voice'):
+                    self.advisor_ref.tts.set_voice(new_voice)
+            
+            # Save preference
+            if self.prefs:
+                self.prefs.set_voice_name(new_voice)
+            
+            # Test the new voice in a background thread
+            if hasattr(self.advisor_ref, 'tts') and self.advisor_ref.tts:
+                import threading
+                threading.Thread(target=lambda: self.advisor_ref.tts.speak(f"Voice changed to {new_voice.replace('_', ' ')}"), daemon=True).start()
         except Exception as e:
             logging.error(f"Error changing voice: {e}")
 
-    def _toggle_rag_panel(self):
-        """Toggle RAG references panel visibility."""
-        try:
-            if self.rag_text.winfo_viewable():
-                self.rag_text.pack_forget()
-                self.rag_toggle_btn.config(text="[Expand]")
-            else:
-                self.rag_text.pack(fill=tk.BOTH, expand=False)
-                self.rag_toggle_btn.config(text="[Collapse]")
-        except Exception as e:
-            logging.error(f"Error toggling RAG panel: {e}")
+    # _toggle_logs_panel removed (dead code referring to non-existent self.logs_text)
 
-    def _toggle_logs_panel(self):
-        """Toggle MTGA logs panel visibility."""
+    def append_log(self, text: str):
+        """Append text to the log queue (thread-safe)"""
+        # Use a queue to prevent flooding the main thread with update events
+        if not hasattr(self, 'log_queue'):
+            self.log_queue = deque(maxlen=1000)
+        self.log_queue.append(text)
+
+    def _process_log_queue(self):
+        """Process queued log messages in batches."""
         try:
-            if self.logs_text.winfo_viewable():
-                self.logs_text.pack_forget()
-                self.logs_toggle_btn.config(text="[Expand]")
-            else:
-                self.logs_text.pack(fill=tk.BOTH, expand=True)
-                self.logs_toggle_btn.config(text="[Collapse]")
+            if hasattr(self, 'log_queue') and self.log_queue:
+                # Process up to 50 lines at a time to keep UI responsive
+                lines = []
+                for _ in range(min(50, len(self.log_queue))):
+                    lines.append(self.log_queue.popleft())
+                
+                if lines and self.log_window and self.log_window.winfo_exists():
+                    # Join lines for a single update
+                    text_block = "".join(lines) # lines already have newlines or will be added by append_text?
+                    # append_log in app.py passes raw line. append_text adds newline.
+                    # Let's handle it carefully.
+                    for line in lines:
+                        self.log_window.append_text(line)
+            
+            # Schedule next check
+            if self.root and self.root.winfo_exists():
+                self.root.after(100, self._process_log_queue)
+                
         except Exception as e:
-            logging.error(f"Error toggling logs panel: {e}")
+            logging.error(f"Error processing log queue: {e}")
+            if self.root and self.root.winfo_exists():
+                self.root.after(100, self._process_log_queue)
+
 
     def _on_restart(self):
         """Handle restart button click - restarts the application."""
@@ -1403,241 +880,16 @@ class AdvisorGUI:
             logging.error(f"Error on exit: {e}")
             self.root.quit()
 
-    def _upload_latest_bug_report(self):
-        """Upload the most recent bug report to GitHub."""
-        import os
-        import glob
-        import threading
-
-        def upload_in_background():
-            try:
-                # Find the most recent bug report
-                bug_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bug_reports")
-                if not os.path.exists(bug_dir):
-                    self.add_message("❌ No bug reports found", "red")
-                    return
-
-                # Get the most recent bug report file
-                bug_files = glob.glob(os.path.join(bug_dir, "bug_report_*.txt"))
-                if not bug_files:
-                    self.add_message("❌ No bug reports found", "red")
-                    return
-
-                latest_file = max(bug_files, key=os.path.getctime)
-                self.add_message(f"📤 Uploading latest bug report: {os.path.basename(latest_file)}", "cyan")
-
-                # Read the bug report
-                with open(latest_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-
-                # Extract title from content
-                title = "Bug Report"
-                for line in content.split('\n'):
-                    if line.startswith('Title:'):
-                        title = line.replace('Title:', '').strip()
-                        break
-
-                # Check for GitHub credentials
-                if not CONFIG_MANAGER_AVAILABLE or not self.prefs or not self.prefs.has_github_credentials():
-                    self.add_message("❌ GitHub credentials not configured", "red")
-                    self.add_message("💡 Use F12 to create a bug report and set up credentials", "yellow")
-                    return
-
-                # Upload to GitHub
-                issue_url, error = self._create_github_issue(title, content)
-                if error:
-                    self.add_message(f"❌ Upload failed: {error}", "red")
-                else:
-                    self.add_message(f"✅ Uploaded to GitHub: {issue_url}", "green")
-                    # Try to copy to clipboard
-                    try:
-                        import pyperclip
-                        pyperclip.copy(issue_url)
-                        self.add_message("✅ URL copied to clipboard", "green")
-                    except ImportError:
-                        self.add_message("💡 Install pyperclip for automatic clipboard copying", "yellow")
-
-            except Exception as e:
-                self.add_message(f"❌ Upload failed: {e}", "red")
-                logging.error(f"Bug report upload failed: {e}")
-
-        threading.Thread(target=upload_in_background, daemon=True).start()
-
-    def _create_github_issue(self, title, body):
-        """Create GitHub issue using stored credentials."""
-        import requests
-
-        if not CONFIG_MANAGER_AVAILABLE or not self.prefs:
-            return None, "Config manager not available."
-
-        if not self.prefs.has_github_credentials():
-            return None, "GitHub credentials not configured."
-
-        try:
-            url = f"https://api.github.com/repos/{self.prefs.github_owner}/{self.prefs.github_repo}/issues"
-            headers = {
-                "Authorization": f"token {self.prefs.github_token}",
-                "Accept": "application/vnd.github.v3+json",
-            }
-            data = {"title": title, "body": body}
-            response = requests.post(url, json=data, headers=headers)
-            if response.status_code == 201:
-                return response.json()["html_url"], None
-            else:
-                return None, f"GitHub API error: {response.text}"
-        except Exception as e:
-            return None, f"GitHub issue creation failed: {str(e)}"
-
-    def _prompt_for_credentials(self):
-        """Show dialog to collect GitHub and ImgBB API credentials."""
-        if not TKINTER_AVAILABLE:
-            return None
-
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Bug Report API Credentials")
-        dialog.geometry("600x400")
-        dialog.transient(self.root)
-        dialog.grab_set()
-
-        # Center the dialog
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
-        y = (dialog.winfo_screenheight() // 2) - (400 // 2)
-        dialog.geometry(f"600x400+{x}+{y}")
-
-        result = {}
-
-        # Main frame with padding
-        main_frame = ttk.Frame(dialog, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Title
-        title_label = ttk.Label(
-            main_frame,
-            text="API Credentials for Bug Reporting",
-            font=("TkDefaultFont", 12, "bold")
-        )
-        title_label.pack(pady=(0, 10))
-
-        # Info label
-        info_label = ttk.Label(
-            main_frame,
-            text="These credentials will be saved locally for future bug reports.\n"
-                 "Leave blank to skip uploading to GitHub and ImgBB.",
-            justify=tk.LEFT,
-            wraplength=550
-        )
-        info_label.pack(pady=(0, 15))
-
-        # Create a scrollable frame for the form
-        canvas = tk.Canvas(main_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        # GitHub credentials
-        github_label = ttk.Label(scrollable_frame, text="GitHub Credentials:", font=("TkDefaultFont", 10, "bold"))
-        github_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
-
-        ttk.Label(scrollable_frame, text="GitHub Owner (username):").grid(row=1, column=0, sticky="w", pady=2)
-        github_owner_entry = ttk.Entry(scrollable_frame, width=50)
-        github_owner_entry.grid(row=1, column=1, sticky="ew", pady=2, padx=(10, 0))
-
-        ttk.Label(scrollable_frame, text="GitHub Repo (repository name):").grid(row=2, column=0, sticky="w", pady=2)
-        github_repo_entry = ttk.Entry(scrollable_frame, width=50)
-        github_repo_entry.grid(row=2, column=1, sticky="ew", pady=2, padx=(10, 0))
-
-        ttk.Label(scrollable_frame, text="GitHub Token (personal access token):").grid(row=3, column=0, sticky="w", pady=2)
-        github_token_entry = ttk.Entry(scrollable_frame, width=50, show="*")
-        github_token_entry.grid(row=3, column=1, sticky="ew", pady=2, padx=(10, 0))
-
-        # Separator
-        ttk.Separator(scrollable_frame, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=15)
-
-        # ImgBB credentials
-        imgbb_label = ttk.Label(scrollable_frame, text="ImgBB Credentials:", font=("TkDefaultFont", 10, "bold"))
-        imgbb_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 5))
-
-        ttk.Label(scrollable_frame, text="ImgBB API Key:").grid(row=6, column=0, sticky="w", pady=2)
-        imgbb_key_entry = ttk.Entry(scrollable_frame, width=50, show="*")
-        imgbb_key_entry.grid(row=6, column=1, sticky="ew", pady=2, padx=(10, 0))
-
-        # Help text
-        help_text = ttk.Label(
-            scrollable_frame,
-            text="How to get these credentials:\n\n"
-                 "GitHub Token: Settings → Developer settings → Personal access tokens → Generate new token\n"
-                 "  (Required scope: 'repo' for creating issues)\n\n"
-                 "ImgBB API Key: https://api.imgbb.com/ → Get API key (free)",
-            justify=tk.LEFT,
-            foreground="gray",
-            wraplength=550
-        )
-        help_text.grid(row=7, column=0, columnspan=2, sticky="w", pady=(15, 0))
-
-        scrollable_frame.columnconfigure(1, weight=1)
-
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        # Buttons frame
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=(15, 0))
-
-        def on_save():
-            result["github_owner"] = github_owner_entry.get().strip()
-            result["github_repo"] = github_repo_entry.get().strip()
-            result["github_token"] = github_token_entry.get().strip()
-            result["imgbb_api_key"] = imgbb_key_entry.get().strip()
-            dialog.destroy()
-
-        def on_cancel():
-            result["cancelled"] = True
-            dialog.destroy()
-
-        save_btn = ttk.Button(button_frame, text="Save & Continue", command=on_save)
-        save_btn.pack(side=tk.LEFT, padx=5)
-
-        cancel_btn = ttk.Button(button_frame, text="Cancel", command=on_cancel)
-        cancel_btn.pack(side=tk.LEFT, padx=5)
-
-        # Pre-fill with existing values or project defaults
-        if CONFIG_MANAGER_AVAILABLE and self.prefs:
-            # Use stored values if available, otherwise use project defaults
-            github_owner_entry.insert(0, self.prefs.github_owner or "josharmour")
-            github_repo_entry.insert(0, self.prefs.github_repo or "mtga-voice-assistant")
-            if self.prefs.github_token:
-                github_token_entry.insert(0, self.prefs.github_token)
-            if self.prefs.imgbb_api_key:
-                imgbb_key_entry.insert(0, self.prefs.imgbb_api_key)
-        else:
-            # No preferences available, use project defaults
-            github_owner_entry.insert(0, "josharmour")
-            github_repo_entry.insert(0, "mtga-voice-assistant")
-
-        # Wait for dialog to close
-        dialog.wait_window()
-
-        return result if result and not result.get("cancelled") else None
-
     def _capture_bug_report(self):
-        """Capture bug report with screenshot, logs, and board state"""
+        """Capture bug report with screenshot, logs, and board state to local file only"""
         import threading
-        import base64
-        import requests
+        import subprocess
+        import time
+        import os
 
         # Ask user for title only (required), description is optional and can be submitted via TTS
         issue_title = None
         user_description = None
-        should_upload = False
-        credentials_ready = False
 
         try:
             from tkinter import messagebox, simpledialog
@@ -1666,329 +918,204 @@ class AdvisorGUI:
         # Notify user we're starting the capture
         self.add_message("📸 Capturing bug report...", "cyan")
 
-        # Define a callback to handle upload decision and credentials AFTER local save
-        def handle_upload_decision():
-            """Called from background thread when local save is complete."""
-            nonlocal should_upload, credentials_ready
-
-            # Ask user if they want to upload to GitHub (must be in main thread)
-            try:
-                from tkinter import messagebox
-                if self.root and self.root.winfo_exists():
-                    # Use after() to run in main thread with callback
-                    def ask_upload():
-                        nonlocal should_upload
-                        should_upload = messagebox.askyesno(
-                            "Upload Bug Report?",
-                            "Bug report saved locally!\n\nWould you like to upload it to GitHub?",
-                            parent=self.root
-                        )
-                        # Continue processing after user decision
-                        if should_upload:
-                            self._process_upload_after_save(issue_title, timestamp)
-
-                    self.root.after(100, ask_upload)  # Small delay to ensure background save completes
-
-            except (ImportError, Exception) as e:
-                logging.debug(f"GUI not available for upload prompt: {e}")
-
-        def upload_to_imgbb(image_path):
-            """Upload image to ImgBB using stored credentials."""
-            if not CONFIG_MANAGER_AVAILABLE or not self.prefs or not self.prefs.imgbb_api_key:
-                return None, "ImgBB API key not configured."
-
-            try:
-                with open(image_path, "rb") as file:
-                    payload = {
-                        "key": self.prefs.imgbb_api_key,
-                        "image": base64.b64encode(file.read()),
-                    }
-                    response = requests.post("https://api.imgbb.com/1/upload", payload)
-                    if response.status_code == 200:
-                        data = response.json()
-                        return data["data"]["url"], None
-                    else:
-                        return None, f"ImgBB API error: {response.text}"
-            except Exception as e:
-                return None, f"ImgBB upload failed: {str(e)}"
-
-        def create_github_issue(title, body):
-            """Create GitHub issue using stored credentials."""
-            if not CONFIG_MANAGER_AVAILABLE or not self.prefs:
-                return None, "Config manager not available."
-
-            if not self.prefs.has_github_credentials():
-                return None, "GitHub credentials not configured."
-
-            try:
-                url = f"https://api.github.com/repos/{self.prefs.github_owner}/{self.prefs.github_repo}/issues"
-                headers = {
-                    "Authorization": f"token {self.prefs.github_token}",
-                    "Accept": "application/vnd.github.v3+json",
-                }
-                data = {"title": title, "body": body}
-                response = requests.post(url, json=data, headers=headers)
-                if response.status_code == 201:
-                    return response.json()["html_url"], None
-                else:
-                    return None, f"GitHub API error: {response.text}"
-            except Exception as e:
-                return None, f"GitHub issue creation failed: {str(e)}"
-
         def capture_in_background():
             nonlocal user_description
             try:
                 # Create bug_reports directory if it doesn't exist
-                bug_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bug_reports")
-                os.makedirs(bug_dir, exist_ok=True)
+                base_bug_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "bug_reports")
+                os.makedirs(base_bug_dir, exist_ok=True)
 
-                # Generate timestamp for this report
-                timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-                report_file = os.path.join(bug_dir, f"bug_report_{timestamp}.txt")
-                screenshot_file = os.path.join(bug_dir, f"screenshot_{timestamp}.png")
+                # Find next available Bug Report ID
+                existing_reports = [d for d in os.listdir(base_bug_dir) if os.path.isdir(os.path.join(base_bug_dir, d)) and d.startswith("Bug Report #")]
+                max_id = 0
+                for report in existing_reports:
+                    try:
+                        report_id = int(report.split("#")[1])
+                        if report_id > max_id:
+                            max_id = report_id
+                    except (IndexError, ValueError):
+                        continue
+                
+                next_id = max_id + 1
+                folder_name = f"Bug Report #{next_id}"
+                
+                # Create specific folder for this report
+                report_dir = os.path.join(base_bug_dir, folder_name)
+                os.makedirs(report_dir, exist_ok=True)
 
-                # Store for upload processing
-                self._last_issue_title = issue_title
-                self._last_timestamp = timestamp
+                report_file = os.path.join(report_dir, "bug_report.txt")
+                log_file_copy = os.path.join(report_dir, "advisor.log")
 
                 # Use title from user input
-                final_title = issue_title if issue_title else f"Bug Report: {timestamp}"
+                final_title = issue_title if issue_title else f"Bug Report #{next_id}"
+                final_description = user_description if user_description else "No description provided."
 
-                # Offer TTS for description if no description was provided
-                if not user_description:
-                    self.add_message("🎤 Listening for bug description (speak into microphone)...", "cyan")
-                    self.add_message("💡 Tip: You can also click away and manually submit a description later via /bug-report", "cyan")
-
-                    # Try to get description from TTS (if available)
-                    try:
-                        if self.advisor_ref and hasattr(self.advisor_ref, 'tts'):
-                            # Use existing TTS to listen for description
-                            # For now, offer it in a message but require manual text input
-                            self.add_message("📝 Speaking description via TTS is not yet implemented. Please check bug report window for text input.", "yellow")
-                    except Exception as e:
-                        logging.debug(f"TTS description not available: {e}")
-
-                final_description = user_description if user_description else "No description provided (click F12 again to add one later)."
-
-                # Take screenshot using gnome-screenshot or scrot
-                screenshot_captured = False
+                # --- SCREENSHOT CAPTURE ---
+                import pyautogui
                 try:
-                    result = subprocess.run(['gnome-screenshot', '-f', screenshot_file],
-                                          timeout=2, check=False, capture_output=True)
-                    if result.returncode == 0 and os.path.exists(screenshot_file):
-                        screenshot_captured = True
-                        logging.info(f"Screenshot captured: {screenshot_file}")
-                    else:
-                        logging.warning(f"gnome-screenshot failed with code {result.returncode}")
+                    import pygetwindow as gw
+                except ImportError:
+                    gw = None
+                    logging.warning("pygetwindow not available, window-specific screenshots might fail")
+
+                # 1. Capture Full Desktop (Overview)
+                try:
+                    full_screenshot = pyautogui.screenshot()
+                    full_screenshot.save(os.path.join(report_dir, "desktop_full.png"))
+                    logging.info("Captured full desktop screenshot")
                 except Exception as e:
-                    logging.warning(f"gnome-screenshot not available: {e}")
+                    logging.error(f"Failed to capture full desktop: {e}")
 
-                if not screenshot_captured:
+                # 2. Capture Advisor Main Window
+                try:
+                    if self.root and self.root.winfo_exists():
+                        x = self.root.winfo_rootx()
+                        y = self.root.winfo_rooty()
+                        w = self.root.winfo_width()
+                        h = self.root.winfo_height()
+                        # Add a small buffer/border
+                        region = (x, y, w, h)
+                        main_shot = pyautogui.screenshot(region=region)
+                        main_shot.save(os.path.join(report_dir, "advisor_main.png"))
+                except Exception as e:
+                    logging.error(f"Failed to capture main window: {e}")
+
+                # 3. Capture Secondary Windows (Board, Deck, Logs)
+                for win_name, win_obj in [("board", self.board_window), ("deck", self.deck_window), ("logs", self.log_window)]:
                     try:
-                        result = subprocess.run(['scrot', screenshot_file],
-                                             timeout=2, check=False, capture_output=True)
-                        if result.returncode == 0 and os.path.exists(screenshot_file):
-                            screenshot_captured = True
-                            logging.info(f"Screenshot captured with scrot: {screenshot_file}")
-                        else:
-                            logging.warning(f"scrot failed with code {result.returncode}")
+                        if win_obj and win_obj.winfo_exists() and win_obj.winfo_viewable():
+                            x = win_obj.winfo_rootx()
+                            y = win_obj.winfo_rooty()
+                            w = win_obj.winfo_width()
+                            h = win_obj.winfo_height()
+                            region = (x, y, w, h)
+                            shot = pyautogui.screenshot(region=region)
+                            shot.save(os.path.join(report_dir, f"advisor_{win_name}.png"))
                     except Exception as e:
-                        logging.warning(f"scrot not available: {e}")
+                        logging.error(f"Failed to capture {win_name} window: {e}")
 
-                if not screenshot_captured:
-                    screenshot_file = None  # Will handle missing screenshot gracefully
-                    self.add_message("⚠ Screenshot not captured (gnome-screenshot or scrot not available)", "yellow")
+                # 4. Capture MTGA Window
+                mtga_found = False
+                if gw:
+                    try:
+                        # Try common titles for MTGA
+                        mtga_windows = gw.getWindowsWithTitle('Magic: The Gathering Arena')
+                        if not mtga_windows:
+                            mtga_windows = gw.getWindowsWithTitle('MTGA')
+                        
+                        if mtga_windows:
+                            mtga_win = mtga_windows[0]
+                            # Ensure it's not minimized (restore if needed? No, might disrupt user. Just check.)
+                            if not mtga_win.isMinimized:
+                                region = (mtga_win.left, mtga_win.top, mtga_win.width, mtga_win.height)
+                                mtga_shot = pyautogui.screenshot(region=region)
+                                mtga_shot.save(os.path.join(report_dir, "mtga_game.png"))
+                                mtga_found = True
+                                logging.info("Captured MTGA window")
+                            else:
+                                logging.warning("MTGA window found but is minimized")
+                    except Exception as e:
+                        logging.error(f"Failed to capture MTGA window: {e}")
+                
+                if not mtga_found:
+                    logging.warning("MTGA window not found or could not be captured")
+
 
                 # Collect current state
                 board_state_text = "\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
 
-                # Read recent logs (last 300 lines)
+                # Read recent logs (last 1000 lines for better context)
                 recent_logs = ""
-                # Try multiple possible log locations
                 log_paths = [
-                    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "advisor.log"),
-                    os.path.join(os.path.expanduser("~"), ".mtga_advisor", "logs", "advisor.log"),
-                    os.path.join(os.path.expanduser("~"), ".mtga_advisor", "advisor.log"),
-                    os.path.expanduser("~/logs/advisor.log"),
+                    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "logs", "advisor.log"),
                 ]
 
-                log_found = False
                 for log_path in log_paths:
                     try:
                         if os.path.exists(log_path):
-                            with open(log_path, "r") as f:
+                            # Copy the full log file
+                            import shutil
+                            shutil.copy2(log_path, log_file_copy)
+                            
+                            # Also read for the summary text file
+                            with open(log_path, "r", encoding='utf-8', errors='replace') as f:
                                 lines = f.readlines()
-                                recent_logs = "".join(lines[-300:])
-                            log_found = True
+                                recent_logs = "".join(lines[-1000:])
                             break
                     except Exception as e:
+                        logging.error(f"Error reading/copying log file: {e}")
                         continue
 
-                if not log_found:
-                    recent_logs = "(No logs found - this is normal for first run or if logs haven't been written yet)"
+                if not recent_logs:
+                    recent_logs = "(No logs found)"
 
-                # Get current settings (safely from background thread)
+                # Read recent MTGA logs (last 200 lines) for context
+                mtga_log_snippet = ""
+                mtga_log_path = None
+                
+                # Try to get log path from advisor reference
+                if hasattr(self, 'advisor_ref') and self.advisor_ref:
+                    if hasattr(self.advisor_ref, 'log_follower') and self.advisor_ref.log_follower:
+                        mtga_log_path = self.advisor_ref.log_follower.log_path
+                    elif hasattr(self.advisor_ref, 'log_path'):
+                        mtga_log_path = self.advisor_ref.log_path
+                
+                if mtga_log_path and os.path.exists(mtga_log_path):
+                    try:
+                         with open(mtga_log_path, "r", encoding='utf-8', errors='replace') as f:
+                            lines = f.readlines()
+                            mtga_log_snippet = "".join(lines[-200:])
+                    except Exception as e:
+                        mtga_log_snippet = f"(Error reading MTGA log: {e})"
+                else:
+                    mtga_log_snippet = "(MTGA log path not available)"
+
+                # Get current settings
                 def safe_get_var(var_obj):
-                    """Safely get tkinter variable value from background thread"""
                     try:
                         if hasattr(var_obj, 'get'):
                             return str(var_obj.get())
-                    except Exception as e:
-                        logging.debug(f"Could not get variable value: {e}")
+                    except:
+                        return "N/A"
                     return "N/A"
 
                 settings = f"""Model: {safe_get_var(self.model_var) if hasattr(self, 'model_var') else 'N/A'}
 Voice: {safe_get_var(self.voice_var) if hasattr(self, 'voice_var') else 'N/A'}
-TTS Engine: {safe_get_var(self.tts_engine_var) if hasattr(self, 'tts_engine_var') else 'N/A'}
 Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'}%
 Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'continuous_var') else 'N/A'}
-Show AI Thinking: {safe_get_var(self.show_thinking_var) if hasattr(self, 'show_thinking_var') else 'N/A'}
 """
 
-                # Write bug report to local file
-                with open(report_file, "w") as f:
+                # Write summary report
+                with open(report_file, "w", encoding='utf-8') as f:
                     f.write("="*70 + "\n")
                     f.write(f"BUG REPORT: {final_title}\n")
                     f.write("="*70 + "\n\n")
-
                     f.write("USER DESCRIPTION:\n")
                     f.write(f"{final_description}\n\n")
-
-                    f.write("SCREENSHOT:\n")
-                    f.write(f"{screenshot_file}\n\n")
-
                     f.write("="*70 + "\n")
                     f.write("CURRENT SETTINGS:\n")
-                    f.write("="*70 + "\n")
                     f.write(settings + "\n")
-
                     f.write("="*70 + "\n")
                     f.write("CURRENT BOARD STATE:\n")
-                    f.write("="*70 + "\n")
                     f.write(board_state_text + "\n\n")
-
                     f.write("="*70 + "\n")
-                    f.write("RECENT LOGS (last 300 lines):\n")
-                    f.write("="*70 + "\n")
+                    f.write("RECENT LOGS (Snippet):\n")
                     f.write(recent_logs + "\n")
+                    f.write("="*70 + "\n")
+                    f.write("MTGA LOGS (Snippet):\n")
+                    f.write(mtga_log_snippet + "\n")
 
-                self.add_message(f"✓ Bug report saved locally: {report_file}", "green")
-                logging.info(f"Bug report captured locally: {report_file}")
-
-                # Call upload decision handler (now non-blocking)
-                handle_upload_decision()
-
-                # Upload screenshot to ImgBB if we have one
-                screenshot_url = None
-                if screenshot_file and os.path.exists(screenshot_file):
-                    screenshot_url, error = upload_to_imgbb(screenshot_file)
-                    if error:
-                        self.add_message(f"⚠ Screenshot upload failed: {error}", "yellow")
-                        logging.warning(f"Screenshot upload failed: {error}")
-
-                        # If ImgBB API key is invalid, suggest re-entering credentials
-                        if "Invalid API" in str(error) or "Bad" in str(error):
-                            self.add_message("💡 Tip: Your ImgBB API key may be invalid. Delete ~/.mtga_advisor/preferences.json to re-enter credentials.", "cyan")
-                    else:
-                        self.add_message(f"✓ Screenshot uploaded to ImgBB", "green")
-                else:
-                    logging.warning("No screenshot file available to upload")
-                    self.add_message("ℹ No screenshot captured (continuing without screenshot)", "cyan")
-
-                # Create GitHub issue
-                screenshot_section = ""
-                if screenshot_url:
-                    screenshot_section = f"""**Screenshot:**
-![Screenshot]({screenshot_url})
-
-"""
-
-                issue_body = f"""**Description:**
-{final_description}
-
-{screenshot_section}**Settings:**
-```
-{settings}
-```
-
-**Board State:**
-```
-{board_state_text}
-```
-
-**Recent Logs:**
-```
-{recent_logs}
-```
-"""
-                issue_url, error = create_github_issue(final_title, issue_body)
-                if error:
-                    self.add_message(f"⚠ GitHub upload failed: {error}", "yellow")
-                    logging.info(f"GitHub issue not created: {error}")
-
-                    # If credentials are bad, suggest re-entering them
-                    if "Bad credentials" in str(error) or "401" in str(error):
-                        self.add_message("💡 Tip: Your GitHub token may be invalid. Delete ~/.mtga_advisor/preferences.json to re-enter credentials.", "cyan")
-                else:
-                    # Copy URL to clipboard
-                    try:
-                        # Try to copy to clipboard using xclip or other tools
-                        try:
-                            process = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE)
-                            process.communicate(issue_url.encode('utf-8'))
-                            self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
-                            self.add_message(f"📋 GitHub URL copied to clipboard!", "cyan")
-                        except FileNotFoundError:
-                            # xclip not found, try xsel
-                            try:
-                                process = subprocess.Popen(['xsel', '-bi'], stdin=subprocess.PIPE)
-                                process.communicate(issue_url.encode('utf-8'))
-                                self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
-                                self.add_message(f"📋 GitHub URL copied to clipboard!", "cyan")
-                            except FileNotFoundError:
-                                # No clipboard tool available
-                                self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
-                                self.add_message(f"⚠ Could not copy URL to clipboard (xclip or xsel not installed)", "yellow")
-                    except Exception as e:
-                        self.add_message(f"✓ Bug report uploaded to GitHub: {issue_url}", "green")
-                        self.add_message(f"⚠ Could not copy URL to clipboard: {e}", "yellow")
-
-                    logging.info(f"Bug report uploaded to GitHub: {issue_url}")
+                self.add_message(f"✓ Bug report saved to: {folder_name}", "green")
+                logging.info(f"Bug report saved to {report_dir}")
 
             except Exception as e:
                 self.add_message(f"✗ Bug report failed: {e}", "red")
                 logging.error(f"Failed to capture bug report: {e}")
+                import traceback
+                logging.error(traceback.format_exc())
 
-        # Run in background thread so it doesn't freeze the UI
+        # Run in background thread
         threading.Thread(target=capture_in_background, daemon=True).start()
-        self.add_message("📸 Capturing bug report...", "cyan")
-
-    def _process_upload_after_save(self, issue_title, timestamp):
-        """Process upload after bug report is saved (runs in main thread)."""
-        import threading
-
-        def upload_in_background():
-            try:
-                # Check for cached credentials
-                needs_credentials = False
-                if CONFIG_MANAGER_AVAILABLE and self.prefs:
-                    if not self.prefs.has_github_credentials() or not self.prefs.imgbb_api_key:
-                        needs_credentials = True
-                else:
-                    needs_credentials = True
-
-                if needs_credentials:
-                    # Prompt for credentials in main thread
-                    self.root.after(100, self._prompt_for_credentials_async)
-                else:
-                    # Proceed with upload
-                    self._execute_upload(issue_title, timestamp)
-
-            except Exception as e:
-                self.add_message(f"✗ Upload processing failed: {e}", "red")
-                logging.error(f"Upload processing failed: {e}")
-
-        threading.Thread(target=upload_in_background, daemon=True).start()
 
     def _prompt_for_credentials_async(self):
         """Prompt for credentials asynchronously."""
@@ -2195,93 +1322,9 @@ Show AI Thinking: {safe_get_var(self.show_thinking_var) if hasattr(self, 'show_t
         except Exception as e:
             logging.error(f"Error setting status: {e}")
 
-    def set_board_state(self, lines: list):
-        """Update board state display with color tagging for Magic colors."""
-        try:
-            if not hasattr(self, 'board_text'):
-                return
 
-            self.board_text.config(state=tk.NORMAL)
-            self.board_text.delete(1.0, tk.END)
 
-            # Add each line to the board display with appropriate color tagging
-            for line in lines:
-                # Try to detect color emojis and apply appropriate tag
-                tag = None
-
-                # Check for color emojis to apply color tags
-                if "⚪" in line:
-                    tag = "color_w"
-                elif "🔵" in line:
-                    tag = "color_u"
-                elif "⚫" in line:
-                    tag = "color_b"
-                elif "🔴" in line:
-                    tag = "color_r"
-                elif "🟢" in line:
-                    tag = "color_g"
-                elif "🌈" in line:
-                    tag = "color_multi"
-
-                # Add line with tag if found
-                if tag:
-                    self.board_text.insert(tk.END, line + '\n', tag)
-                else:
-                    self.board_text.insert(tk.END, line + '\n')
-
-            self.board_text.config(state=tk.DISABLED)
-            # Auto-scroll to bottom
-            self.board_text.see(tk.END)
-
-        except Exception as e:
-            logging.error(f"Error setting board state: {e}")
-
-    def set_draft_panes(self, pack_lines, picked_lines=None, picked_count=0, total_needed=45):
-        """Update draft display with pack and picked cards."""
-        # For now, combine pack and picked lines into board state
-        # In the future, could use separate panes
-        all_lines = []
-        if isinstance(pack_lines, list):
-            all_lines.extend(pack_lines)
-        if picked_lines:
-            all_lines.append("")
-            all_lines.append(f"=== PICKED CARDS ({picked_count}/{total_needed}) ===")
-            if isinstance(picked_lines, list):
-                all_lines.extend(picked_lines)
-
-        self.set_board_state(all_lines)
-
-    def add_message(self, msg: str, color=None):
-        """Add message to the advisor messages display."""
-        try:
-            if not hasattr(self, 'messages_text'):
-                return
-
-            import time
-            timestamp = time.strftime("%H:%M:%S")
-
-            self.messages_text.config(state=tk.NORMAL)
-
-            # Add timestamp
-            self.messages_text.insert(tk.END, f"[{timestamp}] ")
-
-            # Add message with color tag if specified
-            if color and isinstance(color, str):
-                # Map common color names to tags
-                color_tag = color.lower()
-                if color_tag in ['green', 'blue', 'cyan', 'yellow', 'red', 'white']:
-                    self.messages_text.insert(tk.END, msg + '\n', color_tag)
-                else:
-                    self.messages_text.insert(tk.END, msg + '\n')
-            else:
-                self.messages_text.insert(tk.END, msg + '\n')
-
-            self.messages_text.config(state=tk.DISABLED)
-            # Auto-scroll to bottom
-            self.messages_text.see(tk.END)
-
-        except Exception as e:
-            logging.error(f"Error adding message: {e}")
+    # Removed duplicate non-thread-safe methods - thread-safe versions are below
 
     def add_log_line(self, log_line: str, detected_items: List = None):
         """
@@ -2353,3 +1396,214 @@ Show AI Thinking: {safe_get_var(self.show_thinking_var) if hasattr(self, 'show_t
 
         except Exception as e:
             logging.error(f"Error adding log line: {e}")
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_voice_settings(volume=volume)
+                logging.debug(f"Volume changed to: {volume}%")
+        except Exception as e:
+            logging.error(f"Error changing volume: {e}")
+
+    def _on_continuous_toggle(self):
+        """Handle opponent turn alerts toggle."""
+        try:
+            enabled = self.continuous_var.get()
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.set_game_preferences(opponent_alerts=enabled)
+                logging.debug(f"Opponent turn alerts: {'enabled' if enabled else 'disabled'}")
+        except Exception as e:
+            logging.error(f"Error toggling opponent alerts: {e}")
+
+    def _on_always_on_top_toggle(self):
+        """Handle always on top toggle."""
+        try:
+            enabled = self.always_on_top_var.get()
+            if self.root:
+                self.root.attributes('-topmost', enabled)
+            if CONFIG_MANAGER_AVAILABLE and self.prefs:
+                self.prefs.always_on_top = enabled
+                self.prefs.save()
+                logging.debug(f"Always on top: {'enabled' if enabled else 'disabled'}")
+        except Exception as e:
+            logging.error(f"Error toggling always on top: {e}")
+
+    def _clear_messages(self):
+        """Clear the messages display."""
+        try:
+            self.messages_text.config(state=tk.NORMAL)
+            self.messages_text.delete(1.0, tk.END)
+            self.messages_text.config(state=tk.DISABLED)
+            logging.info("Messages cleared")
+        except Exception as e:
+            logging.error(f"Error clearing messages: {e}")
+
+    def _on_prompt_send(self, event=None):
+        """Handle prompt send button or Ctrl+Enter."""
+        try:
+            prompt = self.prompt_text.get(1.0, tk.END).strip()
+            if not prompt:
+                return
+
+            # Clear the prompt text
+            self.prompt_text.delete(1.0, tk.END)
+
+            # Send to advisor if available
+            if self.advisor_ref:
+                logging.info(f"Custom prompt sent: {prompt[:50]}...")
+                # The advisor would process this custom prompt
+                # This is a placeholder for the actual implementation
+
+        except Exception as e:
+            logging.error(f"Error sending prompt: {e}")
+
+    def on_closing(self):
+        """Handle window close event."""
+        try:
+            # Save window geometry
+            if self.root and CONFIG_MANAGER_AVAILABLE and self.prefs:
+                # Save main window
+                self.prefs.window_geometry = self.root.geometry()
+                
+                # Save secondary windows if open
+                if self.deck_window and self.deck_window.winfo_exists():
+                    self.prefs.deck_window_geometry = self.deck_window.geometry()
+                
+                if self.board_window and self.board_window.winfo_exists():
+                    self.prefs.board_window_geometry = self.board_window.geometry()
+                
+                if self.log_window and self.log_window.winfo_exists():
+                    self.prefs.log_window_geometry = self.log_window.geometry()
+                
+                self.prefs.save()
+
+            # Close the window
+            self.root.destroy()
+        except Exception as e:
+            logging.error(f"Error during window close: {e}")
+            if self.root:
+                self.root.destroy()
+
+    def cleanup(self):
+        """Placeholder cleanup method for GUI. Actual cleanup is handled by on_closing and Tkinter's destruction."""
+        logging.debug("AdvisorGUI cleanup method called.")
+        # No specific cleanup needed here as on_closing handles window destruction
+
+    def _update_loop(self):
+        """Main GUI update loop."""
+        try:
+            # Update board state display
+            if self.advisor_ref and hasattr(self.advisor_ref, 'board_state'):
+                board_state = self.advisor_ref.board_state
+                if board_state:
+                    # Update board display (placeholder)
+                    pass
+
+            # Schedule next update
+            if self.root and self.root.winfo_exists():
+                self.root.after(100, self._update_loop)
+
+        except Exception as e:
+            logging.error(f"Error in update loop: {e}")
+            # Try to reschedule despite error
+            if self.root and self.root.winfo_exists():
+                self.root.after(100, self._update_loop)
+
+    def update_settings(self, models, voices, bark_voices, current_model, current_voice, volume, tts_engine):
+        """Update GUI settings with current values from advisor (thread-safe)."""
+        def _update():
+            try:
+                # Update model dropdown
+                if hasattr(self, 'model_dropdown'):
+                    self.model_dropdown['values'] = models
+                    self.model_var.set(current_model)
+
+                # Update voice dropdown
+                if hasattr(self, 'voice_dropdown'):
+                    all_voices = list(voices) + list(bark_voices)
+                    self.voice_dropdown['values'] = all_voices
+                    self.voice_var.set(current_voice)
+
+                # Update volume slider
+                if hasattr(self, 'volume_slider'):
+                    self.volume_var.set(volume)
+                    self.volume_label.config(text=f"{volume}%")
+
+                # Update TTS engine radio buttons
+                if hasattr(self, 'tts_engine_var'):
+                    self.tts_engine_var.set(tts_engine)
+
+                logging.debug(f"GUI settings updated: model={current_model}, voice={current_voice}, volume={volume}, engine={tts_engine}")
+
+            except Exception as e:
+                logging.error(f"Error updating GUI settings: {e}")
+        
+        self.root.after(0, _update)
+
+    def set_card_database(self, card_db):
+        """Set the card database for log highlighting."""
+        try:
+            if hasattr(self, 'log_highlighter'):
+                self.log_highlighter.card_db = card_db
+        except Exception as e:
+            logging.error(f"Error setting card database: {e}")
+
+    def set_status(self, text: str):
+        """Update status display (currently a no-op for GUI, but required for compatibility)."""
+        try:
+            # Could update window title or a status bar if we add one
+            logging.debug(f"Status: {text}")
+        except Exception as e:
+            logging.error(f"Error setting status: {e}")
+
+    def set_board_state(self, lines: list):
+        """Update board state display in external window (thread-safe)."""
+        def _update():
+            if self.board_window and self.board_window.winfo_exists():
+                self.board_window.update_text(lines)
+        self.root.after(0, _update)
+
+    def set_draft_panes(self, pack_lines, picked_lines=None, picked_count=0, total_needed=45):
+        """Update draft display (thread-safe)."""
+        def _update():
+            if self.board_window and self.board_window.winfo_exists():
+                self.board_window.update_text(pack_lines)
+                
+            if self.deck_window and self.deck_window.winfo_exists() and picked_lines:
+                deck_lines = [f"=== PICKED CARDS ({picked_count}/{total_needed}) ==="] + picked_lines
+                self.deck_window.update_text(deck_lines)
+        self.root.after(0, _update)
+
+    def add_message(self, msg: str, color=None):
+        """Add message to the advisor messages display (thread-safe)."""
+        def _update():
+            try:
+                if not hasattr(self, 'messages_text'):
+                    return
+
+                import time
+                timestamp = time.strftime("%H:%M:%S")
+
+                self.messages_text.config(state=tk.NORMAL)
+
+                # Add timestamp
+                self.messages_text.insert(tk.END, f"[{timestamp}] ")
+
+                # Add message with color tag if specified
+                if color and isinstance(color, str):
+                    # Map common color names to tags
+                    color_tag = color.lower()
+                    if color_tag in ['green', 'blue', 'cyan', 'yellow', 'red', 'white']:
+                        self.messages_text.insert(tk.END, msg + '\n', color_tag)
+                    else:
+                        self.messages_text.insert(tk.END, msg + '\n')
+                else:
+                    self.messages_text.insert(tk.END, msg + '\n')
+
+                self.messages_text.config(state=tk.DISABLED)
+                # Auto-scroll to bottom
+                self.messages_text.see(tk.END)
+
+            except Exception as e:
+                logging.error(f"Error adding message: {e}")
+        
+        self.root.after(0, _update)
+
+

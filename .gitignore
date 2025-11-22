@@ -21,7 +21,7 @@ data/scryfall_cache.db
 data/17lands_data/
 
 # Bug reports
-bug_reports/
+# bug_reports/
 
 # Ghidra projects
 pyghidra_mcp_projects/
