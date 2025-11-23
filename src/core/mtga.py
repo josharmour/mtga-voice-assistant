@@ -49,12 +49,12 @@ class LogFollower:
                     # On first open, seek to end to ignore old matches
                     # On log rotation, start from beginning of new file
                     if self.first_open:
-                        # First time opening - read from beginning to rebuild full state
-                        # This ensures we catch deck lists and zone definitions even if app started mid-game
+                        # PERFORMANCE FIX: Read from beginning to get card definitions,
+                        # but we won't trigger expensive board state calculations until caught up
+                        # (handled in app.py callback with is_caught_up flag)
                         self.file.seek(0, 0)
                         self.offset = 0
                         self.first_open = False
-                        # Debug: First open - starting from beginning to rebuild state
                         logging.info("Log file opened - starting from beginning to rebuild state.")
                     else:
                         # Log rotation - start from beginning of new file
@@ -82,12 +82,12 @@ class LogFollower:
                     
                     # Yield thread execution to keep UI responsive during heavy parsing
                     # This is critical when reading large log files on startup
-                    if line_count % 10 == 0:
+                    if line_count % 200 == 0:
                         time.sleep(0.001)
 
                 # if line_count > 0:
                 #     print(f"[DEBUG] Processed {line_count} lines")
-                time.sleep(0.05)
+                time.sleep(0.1)  # Poll every 100ms
             except FileNotFoundError:
                 logging.warning(f"Log file not found at {self.log_path}. Waiting...")
                 time.sleep(5)
@@ -202,13 +202,11 @@ class BoardState:
     in_mulligan_phase: bool = False
     game_stage: str = ""  # "GameStage_Start" or "GameStage_Play"
 
+import datetime
+
 class MatchScanner:
     """
     Parses GRE messages to track game state.
-
-    Note: Zone IDs are assigned dynamically per match by Arena.
-    We discover them from GameStateMessage zones[] arrays and track them
-    in zone_type_to_ids and zone_id_to_type dictionaries.
     """
 
     def __init__(self):
@@ -219,22 +217,41 @@ class MatchScanner:
         self.active_player_seat: Optional[int] = None
         self.priority_player_seat: Optional[int] = None
         self.local_player_seat_id: Optional[int] = None
-        self.zone_type_to_ids: Dict[str, int] = {}  # Maps zone types to their zone IDs
-        self.observed_zone_ids: set = set()  # Track all zone IDs we see
-        self.zone_id_to_type: Dict[int, str] = {}  # Reverse mapping
-        self.game_history: GameHistory = GameHistory()  # Track events this turn
+        self.zone_type_to_ids: Dict[str, int] = {}
+        self.observed_zone_ids: set = set()
+        self.zone_id_to_type: Dict[int, str] = {}
+        self.game_history: GameHistory = GameHistory()
+        self.last_event_timestamp: Optional[datetime.datetime] = None # Track when the last event happened
 
         # Phase 3: Deck tracking
-        self.submitted_decklist: Dict[int, int] = {}  # {grpId: count} - original 60/40 card deck
-        self.cards_seen: Dict[int, int] = {}  # {grpId: count} - cards drawn/mulligan'd
-
-        # Phase 3: Known library cards (from scry/surveil)
-        self.library_top_known: List[str] = []  # Card names on top of library
-        self.scry_info: Optional[str] = None  # Description of last scry
+        self.submitted_decklist: Dict[int, int] = {}
+        self.cards_seen: Dict[int, int] = {}
+        
+        # Phase 3: Known library cards
+        self.library_top_known: List[str] = []
+        self.scry_info: Optional[str] = None
 
         # Mulligan tracking
-        self.game_stage: str = ""  # "GameStage_Start" during mulligan, "GameStage_Play" after
+        self.game_stage: str = ""
         self.in_mulligan_phase: bool = False
+
+    def parse_timestamp(self, line: str):
+        """Extract timestamp from log line if present."""
+        # Format: [UnityCrossThreadLogger]11/22/2025 10:20:17 PM: ...
+        try:
+            if "[UnityCrossThreadLogger]" in line:
+                # Find the timestamp part
+                start = line.find("]") + 1
+                end = line.find(": Match") 
+                if end == -1: end = line.find(": GRE")
+                if end == -1: end = line.find(": ")
+                
+                if start > 0 and end > start:
+                    ts_str = line[start:end].strip()
+                    # Try parsing "11/22/2025 10:20:17 PM"
+                    self.last_event_timestamp = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+        except Exception:
+            pass # Ignore parsing errors, timestamp is optional hint
 
     def reset_match_state(self):
         """Clear all game state when a new match starts"""
@@ -282,8 +299,39 @@ class MatchScanner:
         return state_changed
 
     def _parse_game_state_message(self, message: dict) -> bool:
+        """
+        Parse the massive GameStateMessage.
+        This is the primary source of truth for the board state.
+        """
+        if "gameStateMessage" not in message:
+            return False
+
+        # Handle potential JSON string within the message
+        game_state_raw = message["gameStateMessage"]
+        game_state = None
+
+        if isinstance(game_state_raw, str):
+            try:
+                # Clean up potential leading/trailing garbage characters if any
+                clean_json = game_state_raw.strip()
+                # Some logs have weird prefixes like "ClientToGREMessage "
+                if "{" in clean_json:
+                    clean_json = clean_json[clean_json.find("{"):]
+                
+                game_state = json.loads(clean_json)
+            except json.JSONDecodeError as e:
+                logging.warning(f"Failed to parse GameStateMessage JSON: {e}")
+                return False
+        elif isinstance(game_state_raw, dict):
+            game_state = game_state_raw
+        else:
+            logging.warning(f"Unknown GameStateMessage format: {type(game_state_raw)}")
+            return False
+
+        if not game_state:
+            return False
+
         logging.info(f"GameStateMessage received")
-        game_state = message.get("gameStateMessage", {})
         logging.info(f"Game State keys: {list(game_state.keys()) if game_state else 'empty'}")
         state_changed = False
 
@@ -322,6 +370,13 @@ class MatchScanner:
             logging.info("No players in game state message")
         if "turnInfo" in game_state:
             logging.info(f"Found turnInfo: {game_state['turnInfo']}")
+            
+            # Detect new match: if turn number goes from high to 1, it's a new game
+            new_turn = game_state['turnInfo'].get('turnNumber', 0)
+            if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
+                logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
+                self.reset_match_state()
+            
             state_changed |= self._parse_turn_info(game_state["turnInfo"])
         else:
             logging.info("No turnInfo in game state message")
@@ -366,6 +421,12 @@ class MatchScanner:
 
             logging.debug(f"  GameObject: instanceId={instance_id}, grpId={grp_id}, zoneId={zone_id}, ownerSeatId={owner_seat_id}, tapped={is_tapped}")
 
+            # CRITICAL FIX: Ensure player exists if we see their cards
+            # This handles cases where we join mid-match and missed the player definition
+            if owner_seat_id and owner_seat_id not in self.players:
+                logging.info(f"Inferred existence of Player {owner_seat_id} from object {instance_id}")
+                self.players[owner_seat_id] = PlayerState(seat_id=owner_seat_id)
+
             if instance_id not in self.game_objects:
                 self.game_objects[instance_id] = GameObject(
                     instance_id=instance_id,
@@ -386,6 +447,13 @@ class MatchScanner:
             else:
                 # Update existing object
                 game_obj = self.game_objects[instance_id]
+
+                # UPGRADE PLACEHOLDER: If we have a real grpId and the object was a placeholder (grpId=0)
+                if game_obj.grp_id == 0 and grp_id and grp_id != 0:
+                    logging.info(f"    -> Upgrading placeholder {instance_id} with real grpId {grp_id}")
+                    game_obj.grp_id = grp_id
+                    # Name will be updated by GameStateManager using card_lookup
+                    state_changed = True
 
                 if zone_id is not None and game_obj.zone_id != zone_id:
                     logging.info(f"    -> Zone changed from {game_obj.zone_id} to {zone_id}")
@@ -430,8 +498,6 @@ class MatchScanner:
                     state_changed = True
 
         return state_changed
-
-        return state_changed
         
     def _parse_zones(self, zones) -> bool:
         """Parse the zones structure which contains cards in hand, battlefield, etc."""
@@ -460,12 +526,25 @@ class MatchScanner:
                 
                 # Update all cards in this zone with the correct zone ID
                 for card_id in object_instance_ids:
-                    if card_id in self.game_objects:
-                        card = self.game_objects[card_id]
-                        if card.zone_id != zone_id:
-                            logging.debug(f"Updating card {card_id} zone from {card.zone_id} to {zone_id} ({zone_type_str})")
-                            card.zone_id = zone_id
-                            state_changed = True
+                    if card_id not in self.game_objects:
+                        # If a card is in a zone but not yet in game_objects, create a minimal placeholder.
+                        self.game_objects[card_id] = GameObject(
+                            instance_id=card_id,
+                            grp_id=0, # Placeholder grpId
+                            zone_id=zone_id,
+                            owner_seat_id=owner_seat_id,
+                            name=f"Unknown Card {card_id}", # Temporary name
+                            visibility="private" if "Hand" in zone_type_str or "Library" in zone_type_str else "public"
+                        )
+                        logging.debug(f"    -> Created minimal placeholder GameObject {card_id} for zone {zone_id} ({zone_type_str})")
+                        state_changed = True
+                    
+                    card = self.game_objects[card_id]
+                    if card.zone_id != zone_id:
+                        logging.debug(f"Updating card {card_id} zone from {card.zone_id} to {zone_id} ({zone_type_str})")
+                        card.zone_id = zone_id
+                        state_changed = True
+
             elif zone_id:
                 # Zone with ID but no type?
                 logging.warning(f"Zone with ID {zone_id} has no type! Owner: {owner_seat_id}")
@@ -841,6 +920,9 @@ class GameStateManager:
 
     def parse_log_line(self, line: str) -> bool:
         logging.debug(f"Full log line received by GameStateManager: {line}")
+        
+        # Try to extract timestamp from the line to track event freshness
+        self.scanner.parse_timestamp(line)
 
         # DRAFT EVENTS: Check if this is the JSON line after an end event marker
         if self._next_line_event:
@@ -858,11 +940,14 @@ class GameStateManager:
                     if "Payload" in parsed_data and isinstance(parsed_data["Payload"], str):
                         try:
                             # Parse the escaped JSON in Payload field
-                            inner_data = json.loads(parsed_data["Payload"])
-                            logging.debug(f"Unpacked Payload for {event_type}")
-                            parsed_data = inner_data
+                            payload_str = parsed_data["Payload"]
+                            if payload_str and payload_str.strip():
+                                inner_data = json.loads(payload_str)
+                                logging.debug(f"Unpacked Payload for {event_type}")
+                                parsed_data = inner_data
                         except json.JSONDecodeError as e:
-                            logging.warning(f"Failed to parse Payload JSON: {e}")
+                            # Suppress warning for common empty/invalid payloads
+                            logging.debug(f"Failed to parse Payload JSON: {e}")
 
                     # Call the registered callback if it exists
                     if event_type in self._draft_callbacks:
@@ -1010,6 +1095,7 @@ class GameStateManager:
         return False
 
     def get_current_board_state(self) -> Optional[BoardState]:
+        start_time = time.time()
         # logging.debug("Attempting to get current board state.")
         if not self.scanner.local_player_seat_id:
             # print("DEBUG: No local player seat ID")
@@ -1053,16 +1139,21 @@ class GameStateManager:
         for obj_id, obj in self.scanner.game_objects.items():
             logging.debug(f"  Object {obj_id}: grpId={obj.grp_id}, zoneId={obj.zone_id}, owner={obj.owner_seat_id}")
 
+        # PERFORMANCE FIX: Only look up card names/data if not already cached
+        # This prevents 100+ database queries on every board state calculation
         for obj in self.scanner.game_objects.values():
-            obj.name = self.card_lookup.get_card_name(obj.grp_id)
+            # Only look up name if it's not already set or is a placeholder
+            if not obj.name or obj.name.startswith("Unknown Card"):
+                obj.name = self.card_lookup.get_card_name(obj.grp_id)
 
-            # Look up card color for display
-            try:
-                card_data = self.card_lookup.get_card_data(obj.grp_id)
-                if card_data:
-                    obj.color_identity = card_data.get("color_identity", "")
-            except Exception as e:
-                logging.debug(f"Could not fetch color for {obj.grp_id}: {e}")
+            # Only look up color if not already set
+            if not obj.color_identity:
+                try:
+                    card_data = self.card_lookup.get_card_data(obj.grp_id)
+                    if card_data:
+                        obj.color_identity = card_data.get("color_identity", "")
+                except Exception as e:
+                    logging.debug(f"Could not fetch color for {obj.grp_id}: {e}")
 
             # Get the zone type for this object's zone
             zone_type = self.scanner.zone_id_to_type.get(obj.zone_id, "")
@@ -1084,10 +1175,16 @@ class GameStateManager:
                     board_state.your_exile.append(obj)
                 elif "Library" in zone_type:
                     board_state.your_library_count += 1
+                elif "Stack" in zone_type:
+                    # Stack is shared, handle below
+                    pass
                 else:
-                    logging.debug(f"  -> Skipped your card (zone {obj.zone_id})")
+                    logging.debug(f"  -> Skipped your card (zone {obj.zone_id}: {zone_type})")
             elif obj.owner_seat_id == opponent_seat_id:
-                if "Battlefield" in zone_type:
+                if "Hand" in zone_type:
+                    logging.debug(f"  -> Opponent has card in hand: {obj.name}")
+                    board_state.opponent_hand_count += 1
+                elif "Battlefield" in zone_type:
                     logging.debug(f"  -> Added to opponent battlefield: {obj.name}")
                     board_state.opponent_battlefield.append(obj)
                 elif "Graveyard" in zone_type:
@@ -1098,8 +1195,11 @@ class GameStateManager:
                     board_state.opponent_exile.append(obj)
                 elif "Library" in zone_type:
                     board_state.opponent_library_count += 1
+                elif "Stack" in zone_type:
+                    # Stack is shared, handle below
+                    pass
                 else:
-                    logging.debug(f"  -> Skipped opponent card (zone {obj.zone_id})")
+                    logging.debug(f"  -> Skipped opponent card (zone {obj.zone_id}: {zone_type})")
             else:
                 logging.debug(f"  -> Skipped card (owner {obj.owner_seat_id} not a player)")
 
@@ -1107,6 +1207,13 @@ class GameStateManager:
             if "Stack" in zone_type:
                 logging.debug(f"  -> Added to stack: {obj.name}")
                 board_state.stack.append(obj)
+
+        # CRITICAL FIX: Sync hand count
+        # If we detected actual cards in hand, trust that over the potentially stale server reported count.
+        real_hand_count = len(board_state.your_hand)
+        if real_hand_count > board_state.your_hand_count:
+            logging.info(f"Correcting hand count from {board_state.your_hand_count} to {real_hand_count} based on detected cards.")
+            board_state.your_hand_count = real_hand_count
 
         # Add game history to board state
         board_state.history = self.scanner.game_history
@@ -1162,6 +1269,10 @@ class GameStateManager:
                     f"Graveyard: {len(board_state.your_graveyard)}, "
                     f"Exile: {len(board_state.your_exile)}, "
                     f"Library: {board_state.your_library_count}")
+        
+        elapsed = time.time() - start_time
+        logging.debug(f"PERFORMANCE: get_current_board_state took {elapsed:.4f} seconds")
+        
         return board_state
 
     def validate_board_state(self, board_state: BoardState) -> bool:

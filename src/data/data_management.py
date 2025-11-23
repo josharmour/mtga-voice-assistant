@@ -118,7 +118,8 @@ class ScryfallClient:
             response = requests.get(url, timeout=10)
             
             if response.status_code == 404:
-                logger.warning(f"Card not found on Scryfall: {arena_id or name}")
+                # Suppress warning for common not founds to avoid log spam
+                # logger.warning(f"Card not found on Scryfall: {arena_id or name}")
                 return None
                 
             response.raise_for_status()

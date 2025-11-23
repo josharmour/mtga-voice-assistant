@@ -9,7 +9,6 @@ from collections import deque
 from typing import List, Callable
 from .secondary_window import SecondaryWindow
 import json
-import requests
 import threading
 
 # Content of src/tts.py
@@ -459,7 +458,7 @@ class AdvisorGUI:
         """Create and configure secondary windows."""
         self.board_window = SecondaryWindow(self.root, "Board State",
             self.prefs.board_window_geometry if self.prefs and hasattr(self.prefs, 'board_window_geometry') else "600x800")
-        self.deck_window = SecondaryWindow(self.root, "My Deck",
+        self.deck_window = SecondaryWindow(self.root, "Library",
             self.prefs.deck_window_geometry if self.prefs and hasattr(self.prefs, 'deck_window_geometry') else "400x600")
         self.log_window = SecondaryWindow(self.root, "MTGA Logs",
             self.prefs.log_window_geometry if self.prefs and hasattr(self.prefs, 'log_window_geometry') else "800x200")
@@ -545,6 +544,13 @@ class AdvisorGUI:
 
         self.pick_two_draft_var = tk.BooleanVar(value=False)
         tk.Checkbutton(settings_frame, text="Pick Two Draft", variable=self.pick_two_draft_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
+
+        # Voice Toggles
+        self.verbose_speech_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(settings_frame, text="Verbose Spoken Advice", variable=self.verbose_speech_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
+
+        self.mute_all_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(settings_frame, text="Mute All Audio", variable=self.mute_all_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
 
         # --- Remaining widgets ---
         # (This part is condensed for brevity, assuming it remains largely the same)
@@ -688,25 +694,37 @@ class AdvisorGUI:
     def append_log(self, text: str):
         """Append text to the log queue (thread-safe)"""
         if not hasattr(self, 'log_queue'):
-            self.log_queue = deque(maxlen=1000)
+            # PERFORMANCE FIX: Increase queue size 10x to prevent dropping log lines
+            self.log_queue = deque(maxlen=10000)
         self.log_queue.append(text)
 
     def _process_log_queue(self):
         """Process queued log messages in batches."""
         try:
             if hasattr(self, 'log_queue') and self.log_queue:
-                lines = []
-                for _ in range(min(50, len(self.log_queue))):
-                    lines.append(self.log_queue.popleft())
-                if lines and self.log_window and self.log_window.winfo_exists():
-                    for line in lines:
-                        self.log_window.append_text(line)
+                # Only update if window exists
+                if self.log_window and self.log_window.winfo_exists():
+                    lines = []
+                    # PERFORMANCE FIX: Process fewer lines to prevent UI starvation
+                    # Reduced from 500 to 100 to allow main thread to handle user input events
+                    for _ in range(min(100, len(self.log_queue))):
+                        lines.append(self.log_queue.popleft())
+
+                    # Use batch update
+                    self.log_window.append_batch(lines)
+                else:
+                    # If window doesn't exist, let queue fill (or clear it if it gets too big)
+                    if len(self.log_queue) > 9000:
+                         self.log_queue.clear()
+
             if self.root and self.root.winfo_exists():
-                self.root.after(100, self._process_log_queue)
+                # PERFORMANCE FIX: Process less frequently (was 50ms, now 200ms)
+                # This gives the UI event loop 200ms of idle time between log updates
+                self.root.after(200, self._process_log_queue)
         except Exception as e:
             logging.error(f"Error processing log queue: {e}")
             if self.root and self.root.winfo_exists():
-                self.root.after(100, self._process_log_queue)
+                self.root.after(500, self._process_log_queue)
 
     def _on_restart(self):
         """Handle restart button click - restarts the application."""
@@ -1056,6 +1074,20 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
             if self.deck_window and self.deck_window.winfo_exists() and picked_lines:
                 deck_lines = [f"=== PICKED CARDS ({picked_count}/{total_needed}) ==="] + picked_lines
                 self.deck_window.update_text(deck_lines)
+        self.root.after(0, _update)
+
+    def set_deck_window_title(self, title: str):
+        """Update the title of the Deck/Library window (thread-safe)."""
+        def _update():
+            if self.deck_window and self.deck_window.winfo_exists():
+                self.deck_window.title(title)
+        self.root.after(0, _update)
+
+    def set_deck_content(self, lines: list):
+        """Update the content of the Deck/Library window (thread-safe)."""
+        def _update():
+            if self.deck_window and self.deck_window.winfo_exists():
+                self.deck_window.update_text(lines)
         self.root.after(0, _update)
 
     def add_message(self, msg: str, color=None):

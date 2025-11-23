@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Callable
 import subprocess
 from collections import deque
 import sys
+import datetime
 
 from .mtga import LogFollower, GameStateManager
 from .ai import AIAdvisor
@@ -53,6 +54,8 @@ log_dir.mkdir(exist_ok=True)
 
 # Configure logging
 log_file_path = log_dir / "advisor.log"
+
+# Standard logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -61,10 +64,11 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-# Set console handler to WARNING to hide debug/info noise
-for handler in logging.root.handlers:
-    if isinstance(handler, logging.StreamHandler):
-        handler.setLevel(logging.WARNING)
+
+# Set console handler to WARNING to hide debug/info noise on the console if desired, 
+# but basicConfig sets it for root. We can adjust specific handlers if needed.
+# For now, keeping it simple.
+
 
 # ----------------------------------------------------------------------------------
 # Utility Functions
@@ -206,19 +210,25 @@ class CLIVoiceAdvisor:
         self.continuous_monitoring = self.prefs.opponent_turn_alerts if self.prefs else True
         self.last_alert_time = 0
 
+        # PERFORMANCE FIX: Debounce GUI updates to prevent overwhelming the UI
+        self._last_gui_update = 0
+        self._gui_update_interval = 0.25  # Update GUI max 4x per second (was 0.5)
+        self._pending_board_state = None
+
         self.log_path = detect_player_log_path()
         if not self.log_path:
             print("ERROR: Could not find Arena Player.log.")
             exit(1)
 
-        # Initialize Arena Card Database (for local card name lookups)
-        print("Initializing Arena card database...")
-        self.arena_db = ArenaCardDatabase()
-
         # Initialize Scryfall Client (for AI advisor context - card text, oracle, etc.)
         print("Initializing Scryfall client...")
         self.scryfall = ScryfallClient()
         self.card_stats = CardStatsDB()
+
+        # Initialize Arena Card Database (for local card name lookups)
+        # Pass scryfall client for fallback
+        print("Initializing Arena card database...")
+        self.arena_db = ArenaCardDatabase(scryfall_client=self.scryfall)
 
         # Initialize GameStateManager with Arena card database
         # ArenaCardDatabase has get_card_name and get_card_data methods
@@ -281,6 +291,17 @@ class CLIVoiceAdvisor:
                     # Ultimate fallback
                     print(clean_message.encode('ascii', errors='ignore').decode('ascii'))
 
+    def _maybe_update_gui(self):
+        """Debounced GUI update - max 2x per second to prevent performance issues"""
+        if not self._pending_board_state:
+            return
+
+        current_time = time.time()
+        if current_time - self._last_gui_update > self._gui_update_interval:
+            self._update_status(self._pending_board_state)
+            self._last_gui_update = current_time
+            self._pending_board_state = None
+
     def _update_status(self, board_state: "BoardState" = None):
         """Update status display (GUI)"""
         if board_state:
@@ -299,6 +320,38 @@ class CLIVoiceAdvisor:
                 # Format and update board state in GUI
                 lines = self._format_board_state_for_display(board_state)
                 self.gui.set_board_state(lines)
+                
+                # Update Library/Deck Window
+                if board_state.your_decklist:
+                    deck_lines = []
+                    total_cards = sum(board_state.your_decklist.values())
+                    deck_lines.append(f"LIBRARY REMAINING: {board_state.your_library_count}")
+                    deck_lines.append("=" * 40)
+                    
+                    # Calculate approximate probabilities if library count > 0
+                    remaining_lib = board_state.your_library_count
+                    
+                    # Sort by name
+                    sorted_deck = sorted(board_state.your_decklist.items())
+                    
+                    for card_name, count in sorted_deck:
+                        # Simple heuristic: subtract copies seen in other zones to estimate remaining
+                        # This is imperfect without strict card-counting logic (e.g. tracking every drawn card)
+                        # But GameStateManager should ideally track "cards_seen" or similar.
+                        # For now, we just list the deck composition.
+                        # TODO: Implement accurate "remaining in deck" tracking in GameStateManager
+                        
+                        prob_str = ""
+                        if remaining_lib > 0:
+                            # Rough probability based on original count (inaccurate as game progresses but better than nothing)
+                            pct = (count / remaining_lib) * 100
+                            prob_str = f" ({pct:.1f}%)"
+                            
+                        deck_lines.append(f"{count}x {card_name}{prob_str}")
+                        
+                    self.gui.set_deck_content(deck_lines)
+                else:
+                    self.gui.set_deck_content(["Waiting for deck data...", "(Deck list not yet parsed)"])
 
     def _format_board_state_for_display(self, board_state: "BoardState") -> list:
         """Format board state as list of strings for terminal/GUI display"""
@@ -338,6 +391,10 @@ class CLIVoiceAdvisor:
                 lines.append(format_card(card))
         else:
             lines.append("  (Hidden or empty)")
+        lines.append("")
+
+        # Opponent hand count
+        lines.append(f"OPPONENT'S HAND ({board_state.opponent_hand_count} cards)")
         lines.append("")
         
         # Separate battlefield cards into lands and non-lands
@@ -403,6 +460,19 @@ class CLIVoiceAdvisor:
         lines.append(f"OPPONENT'S GRAVEYARD ({len(board_state.opponent_graveyard)} cards):")
         if board_state.opponent_graveyard:
             for card in board_state.opponent_graveyard[-5:]:  # Last 5
+                lines.append(f"  • {card.name}")
+        lines.append("")
+
+        # Exile Zones
+        lines.append(f"YOUR EXILE ({len(board_state.your_exile)} cards):")
+        if board_state.your_exile:
+            for card in board_state.your_exile[-5:]:
+                lines.append(f"  • {card.name}")
+        lines.append("")
+
+        lines.append(f"OPPONENT'S EXILE ({len(board_state.opponent_exile)} cards):")
+        if board_state.opponent_exile:
+            for card in board_state.opponent_exile[-5:]:
                 lines.append(f"  • {card.name}")
         lines.append("")
         
@@ -602,32 +672,73 @@ class CLIVoiceAdvisor:
             # This prevents flooding the UI with thousands of historical log lines on startup,
             # which causes the application to freeze/hang.
             if self.use_gui and self.gui and self.log_follower.is_caught_up:
-                self.gui.append_log(line)
+                # Filter out spammy UI/Hover messages from the GUI display to reduce noise
+                if not any(spam in line for spam in [
+                    "ClientToGreuimessage", 
+                    "GREMessageType_UIMessage", 
+                    "onHover", 
+                    "ClientToMatchServiceMessageType_ClientToGREUIMessage"
+                ]):
+                    self.gui.append_log(line)
 
             # Process with GameStateManager
             self.game_state_mgr.parse_log_line(line)
-            
-            # Check for tactical advice trigger
-            board_state = self.game_state_mgr.get_current_board_state()
-            
-            # DEBUG: Print trigger status
-            if board_state:
-                # print(f"DEBUG: Turn={board_state.current_turn}, Phase={board_state.current_phase}, Priority={board_state.has_priority}, LastAdvised={self.last_turn_advised}")
-                # Update UI continuously
-                self._update_status(board_state)
+
+            # CRITICAL OPTIMIZATION:
+            # Do not recalculate board state or update UI if we are not caught up with the log.
+            # Doing so for every historical line causes massive startup delays and freezing.
+            if not self.log_follower.is_caught_up:
+                return
+
+            # PERFORMANCE FIX: Only get board state when game state changes
+            # This prevents rebuilding the board state thousands of times per second
+            # Check if line contains game state indicators
+            has_game_state_change = any(indicator in line for indicator in [
+                'GameStateMessage',
+                'ActionsAvailableReq',
+                'turnInfo',
+                'priorityPlayer',
+                'gameObjects',
+                'zones',
+                'GameStage_Start',
+                'mulligan'
+            ])
+
+            if has_game_state_change:
+                # Get the board state for display and advice checking
+                board_state = self.game_state_mgr.get_current_board_state()
+
+                # Queue debounced GUI update
+                if board_state:
+                    self._pending_board_state = board_state
+                    self._maybe_update_gui()
             else:
-                # print("DEBUG: No board state")
-                pass
-            
+                # No game state change - skip board state calculation entirely
+                board_state = None
+
             # Trigger advice if player has priority OR is in mulligan phase
             # CRITICAL: Only trigger advice if we are caught up to live events!
             # Otherwise, we will spam advice for every historical turn processed on startup.
             should_trigger = (
-                self.log_follower.is_caught_up and 
-                ((board_state and board_state.has_priority) or (board_state and board_state.in_mulligan_phase))
+                board_state and
+                self.log_follower.is_caught_up and
+                (board_state.has_priority or board_state.in_mulligan_phase)
             )
             
             if should_trigger:
+                # Check for event freshness to avoid advising on old log data
+                is_fresh = True
+                if self.game_state_mgr.scanner.last_event_timestamp:
+                    import datetime
+                    now = datetime.datetime.now()
+                    diff = (now - self.game_state_mgr.scanner.last_event_timestamp).total_seconds()
+                    if diff > 30: # If event is older than 30 seconds, ignore it
+                        logging.info(f"Skipping advice for stale event (delay: {diff:.1f}s)")
+                        is_fresh = False
+                
+                if not is_fresh:
+                    return
+
                 # Trigger advice if needed
                 current_turn = board_state.current_turn
                 current_phase = board_state.current_phase
