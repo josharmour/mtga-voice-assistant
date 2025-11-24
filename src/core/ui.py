@@ -439,6 +439,10 @@ class AdvisorGUI:
         self.board_state_lines = ["="*70, "⏳ WAITING FOR MATCH...", "="*70]
         self.rag_panel_expanded = False
 
+        # Performance: Batched UI update system with dirty flags
+        self._pending_updates = {}  # key -> value for pending updates
+        self._update_scheduled = False
+
         self.root.bind('<F12>', lambda e: self._capture_bug_report())
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -711,28 +715,56 @@ class AdvisorGUI:
         self.log_queue.append(text)
 
     def _process_log_queue(self):
-        """Process queued log messages in batches."""
+        """Process queued log messages with adaptive batch sizing."""
         try:
             if hasattr(self, 'log_queue') and self.log_queue:
-                # Only update if window exists
+                queue_depth = len(self.log_queue)
+
+                # Adaptive batch size based on backlog
+                if queue_depth > 5000:
+                    batch_size = 2000  # Aggressive catch-up mode
+                    next_interval = 50  # Process faster when backlogged
+                elif queue_depth > 2000:
+                    batch_size = 1000
+                    next_interval = 100
+                elif queue_depth > 500:
+                    batch_size = 500
+                    next_interval = 150
+                else:
+                    batch_size = min(100, queue_depth)
+                    next_interval = 200  # Normal rate when caught up
+
+                # Show catching-up indicator for large backlogs
+                if queue_depth > 1000:
+                    self.set_status(f"Processing logs... ({queue_depth} remaining)")
+                    # Log performance metrics for debugging
+                    if queue_depth % 1000 == 0:
+                        logging.debug(f"Log queue depth: {queue_depth}, batch_size: {batch_size}")
+
                 if self.log_window and self.log_window.winfo_exists():
                     lines = []
-                    # PERFORMANCE FIX: Process fewer lines to prevent UI starvation
-                    # Reduced from 500 to 100 to allow main thread to handle user input events
-                    for _ in range(min(100, len(self.log_queue))):
+                    for _ in range(min(batch_size, len(self.log_queue))):
                         lines.append(self.log_queue.popleft())
 
-                    # Use batch update
-                    self.log_window.append_batch(lines)
-                else:
-                    # If window doesn't exist, let queue fill (or clear it if it gets too big)
-                    if len(self.log_queue) > 9000:
-                         self.log_queue.clear()
+                    if lines:
+                        self.log_window.append_batch(lines)
 
-            if self.root and self.root.winfo_exists():
-                # PERFORMANCE FIX: Process less frequently (was 50ms, now 200ms)
-                # This gives the UI event loop 200ms of idle time between log updates
-                self.root.after(200, self._process_log_queue)
+                    # Clear status when caught up
+                    if queue_depth > 1000 and len(self.log_queue) <= 1000:
+                        self.set_status("Ready")
+                else:
+                    # Window doesn't exist - prevent unbounded growth
+                    if queue_depth > 9000:
+                        self.log_queue.clear()
+                        logging.debug("Cleared log queue - window not available")
+
+                if self.root and self.root.winfo_exists():
+                    self.root.after(next_interval, self._process_log_queue)
+            else:
+                # No queue or empty - check again later at normal rate
+                if self.root and self.root.winfo_exists():
+                    self.root.after(200, self._process_log_queue)
+
         except Exception as e:
             logging.error(f"Error processing log queue: {e}")
             if self.root and self.root.winfo_exists():
@@ -1046,26 +1078,128 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
         if self.root and self.root.winfo_exists():
             self.root.after(100, self._update_loop)
 
+    # ----------------------------------------------------------------------------------
+    # Performance: Batched UI Update System
+    # ----------------------------------------------------------------------------------
+
+    def _schedule_update(self, key: str, value):
+        """
+        Queue an update to be applied in the next batch.
+
+        This method batches UI updates to reduce scheduler overhead from excessive
+        root.after() calls. Updates are coalesced by key and flushed at ~60fps (16ms).
+
+        Args:
+            key: Update identifier (e.g., "status", "board_state", "deck_content")
+            value: The value to update (type depends on key)
+        """
+        self._pending_updates[key] = value
+        if not self._update_scheduled:
+            self._update_scheduled = True
+            # Flush updates at ~60fps (16ms) for smooth UI
+            self.root.after(16, self._flush_updates)
+
+    def _flush_updates(self):
+        """
+        Apply all pending updates in one batch.
+
+        This method processes all queued updates and applies them to the UI,
+        then clears the pending updates dictionary. Called automatically by
+        _schedule_update() after a brief delay to batch rapid successive updates.
+        """
+        self._update_scheduled = False
+        updates = self._pending_updates.copy()
+        self._pending_updates.clear()
+
+        for key, value in updates.items():
+            self._apply_update(key, value)
+
+    def _apply_update(self, key: str, value):
+        """
+        Apply a single update by key.
+
+        This method maps update keys to their corresponding UI update operations.
+        All updates are executed on the main UI thread.
+
+        Args:
+            key: Update identifier
+            value: The value to apply (type depends on key)
+        """
+        try:
+            if key == "status":
+                if hasattr(self, 'status_label') and self.status_label:
+                    self.status_label.config(text=value)
+
+            elif key == "board_state":
+                if self.board_window and self.board_window.winfo_exists():
+                    self.board_window.update_text(value)
+
+            elif key == "deck_content":
+                if self.deck_window and self.deck_window.winfo_exists():
+                    self.deck_window.update_text(value)
+
+            elif key == "deck_window_title":
+                if self.deck_window and self.deck_window.winfo_exists():
+                    self.deck_window.title(value)
+
+            elif key == "draft_panes":
+                # value is a tuple: (pack_lines, picked_lines, picked_count, total_needed)
+                pack_lines, picked_lines, picked_count, total_needed = value
+                if self.board_window and self.board_window.winfo_exists():
+                    self.board_window.update_text(pack_lines)
+                if self.deck_window and self.deck_window.winfo_exists() and picked_lines:
+                    deck_lines = [f"=== PICKED CARDS ({picked_count}/{total_needed}) ==="] + picked_lines
+                    self.deck_window.update_text(deck_lines)
+
+            elif key == "messages":
+                # value is a list of (msg, color) tuples
+                if not hasattr(self, 'messages_text'):
+                    return
+                self.messages_text.config(state=tk.NORMAL)
+                for msg, color in value:
+                    timestamp = time.strftime("%H:%M:%S")
+                    self.messages_text.insert(tk.END, f"[{timestamp}] ")
+                    if color and isinstance(color, str):
+                        color_tag = color.lower()
+                        if color_tag in ['green', 'blue', 'cyan', 'yellow', 'red', 'white']:
+                            self.messages_text.insert(tk.END, msg + '\n', color_tag)
+                        else:
+                            self.messages_text.insert(tk.END, msg + '\n')
+                    else:
+                        self.messages_text.insert(tk.END, msg + '\n')
+                self.messages_text.config(state=tk.DISABLED)
+                self.messages_text.see(tk.END)
+
+            elif key == "settings":
+                # value is a dict with: models, voices, bark_voices, current_model, current_voice, volume, tts_engine
+                self.voice_dropdown['values'] = list(value['voices']) + list(value['bark_voices'])
+                self.voice_var.set(value['current_voice'])
+                self.volume_var.set(value['volume'])
+                self.volume_label.config(text=f"{value['volume']}%")
+                logging.debug(f"GUI settings updated from advisor.")
+
+        except Exception as e:
+            logging.error(f"Error applying update for key '{key}': {e}")
+
+    # ----------------------------------------------------------------------------------
+    # End of Batched UI Update System
+    # ----------------------------------------------------------------------------------
+
     def update_settings(self, models, voices, bark_voices, current_model, current_voice, volume, tts_engine):
-        """Update GUI settings with current values from advisor (thread-safe)."""
-        def _update():
-            # This method might be simplified as the UI now drives most settings changes
-            self.voice_dropdown['values'] = list(voices) + list(bark_voices)
-            self.voice_var.set(current_voice)
-            self.volume_var.set(volume)
-            self.volume_label.config(text=f"{volume}%")
-            logging.debug(f"GUI settings updated from advisor.")
-        self.root.after(0, _update)
+        """Update GUI settings with current values from advisor (batched, thread-safe)."""
+        self._schedule_update("settings", {
+            'models': models,
+            'voices': voices,
+            'bark_voices': bark_voices,
+            'current_model': current_model,
+            'current_voice': current_voice,
+            'volume': volume,
+            'tts_engine': tts_engine
+        })
 
     def set_status(self, text: str):
-        """Update status label (thread-safe)."""
-        def _update():
-            try:
-                if hasattr(self, 'status_label') and self.status_label:
-                    self.status_label.config(text=text)
-            except Exception as e:
-                logging.error(f"Error updating status: {e}")
-        self.root.after(0, _update)
+        """Update status label (batched, thread-safe)."""
+        self._schedule_update("status", text)
 
     def set_card_database(self, card_db):
         """Set the card database for log highlighting."""
@@ -1073,53 +1207,29 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
             self.log_highlighter.card_db = card_db
 
     def set_board_state(self, lines: list):
-        """Update board state display in external window (thread-safe)."""
-        def _update():
-            if self.board_window and self.board_window.winfo_exists():
-                self.board_window.update_text(lines)
-        self.root.after(0, _update)
+        """Update board state display in external window (batched, thread-safe)."""
+        self._schedule_update("board_state", lines)
 
     def set_draft_panes(self, pack_lines, picked_lines=None, picked_count=0, total_needed=45):
-        """Update draft display (thread-safe)."""
-        def _update():
-            if self.board_window and self.board_window.winfo_exists(): self.board_window.update_text(pack_lines)
-            if self.deck_window and self.deck_window.winfo_exists() and picked_lines:
-                deck_lines = [f"=== PICKED CARDS ({picked_count}/{total_needed}) ==="] + picked_lines
-                self.deck_window.update_text(deck_lines)
-        self.root.after(0, _update)
+        """Update draft display (batched, thread-safe)."""
+        self._schedule_update("draft_panes", (pack_lines, picked_lines, picked_count, total_needed))
 
     def set_deck_window_title(self, title: str):
-        """Update the title of the Deck/Library window (thread-safe)."""
-        def _update():
-            if self.deck_window and self.deck_window.winfo_exists():
-                self.deck_window.title(title)
-        self.root.after(0, _update)
+        """Update the title of the Deck/Library window (batched, thread-safe)."""
+        self._schedule_update("deck_window_title", title)
 
     def set_deck_content(self, lines: list):
-        """Update the content of the Deck/Library window (thread-safe)."""
-        def _update():
-            if self.deck_window and self.deck_window.winfo_exists():
-                self.deck_window.update_text(lines)
-        self.root.after(0, _update)
+        """Update the content of the Deck/Library window (batched, thread-safe)."""
+        self._schedule_update("deck_content", lines)
 
     def add_message(self, msg: str, color=None):
-        """Add message to the advisor messages display (thread-safe)."""
-        def _update():
-            try:
-                if not hasattr(self, 'messages_text'): return
-                timestamp = time.strftime("%H:%M:%S")
-                self.messages_text.config(state=tk.NORMAL)
-                self.messages_text.insert(tk.END, f"[{timestamp}] ")
-                if color and isinstance(color, str):
-                    color_tag = color.lower()
-                    if color_tag in ['green', 'blue', 'cyan', 'yellow', 'red', 'white']:
-                        self.messages_text.insert(tk.END, msg + '\n', color_tag)
-                    else:
-                        self.messages_text.insert(tk.END, msg + '\n')
-                else:
-                    self.messages_text.insert(tk.END, msg + '\n')
-                self.messages_text.config(state=tk.DISABLED)
-                self.messages_text.see(tk.END)
-            except Exception as e:
-                logging.error(f"Error adding message: {e}")
-        self.root.after(0, _update)
+        """Add message to the advisor messages display (batched, thread-safe)."""
+        # Batch messages together - append to existing messages list or create new one
+        if "messages" not in self._pending_updates:
+            self._pending_updates["messages"] = []
+        self._pending_updates["messages"].append((msg, color))
+
+        # Schedule flush if not already scheduled
+        if not self._update_scheduled:
+            self._update_scheduled = True
+            self.root.after(16, self._flush_updates)

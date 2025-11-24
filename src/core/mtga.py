@@ -7,6 +7,38 @@ import dataclasses
 import json
 import re
 from typing import Dict, List, Optional, Callable
+from enum import Enum, auto
+
+# Zone Type Enum for fast comparisons
+class ZoneType(Enum):
+    """Enum representing different zone types in MTG Arena."""
+    UNKNOWN = auto()
+    HAND = auto()
+    BATTLEFIELD = auto()
+    GRAVEYARD = auto()
+    EXILE = auto()
+    LIBRARY = auto()
+    STACK = auto()
+    COMMAND = auto()
+    LIMBO = auto()  # For cards in transition
+    REVEALED = auto()  # For revealed cards
+
+# Map Arena zone type strings to our enum
+ZONE_TYPE_MAP = {
+    "ZoneType_Hand": ZoneType.HAND,
+    "ZoneType_Battlefield": ZoneType.BATTLEFIELD,
+    "ZoneType_Graveyard": ZoneType.GRAVEYARD,
+    "ZoneType_Exile": ZoneType.EXILE,
+    "ZoneType_Library": ZoneType.LIBRARY,
+    "ZoneType_Stack": ZoneType.STACK,
+    "ZoneType_Command": ZoneType.COMMAND,
+    "ZoneType_Limbo": ZoneType.LIMBO,
+    "ZoneType_Revealed": ZoneType.REVEALED,
+}
+
+def get_zone_type(zone_type_str: str) -> ZoneType:
+    """Convert Arena zone type string to ZoneType enum."""
+    return ZONE_TYPE_MAP.get(zone_type_str, ZoneType.UNKNOWN)
 
 # Content of src/log_parser.py
 class LogFollower:
@@ -220,8 +252,10 @@ class MatchScanner:
         self.zone_type_to_ids: Dict[str, int] = {}
         self.observed_zone_ids: set = set()
         self.zone_id_to_type: Dict[int, str] = {}
+        self.zone_id_to_enum: Dict[int, ZoneType] = {}  # P1: Enum-based zone mapping
         self.game_history: GameHistory = GameHistory()
         self.last_event_timestamp: Optional[datetime.datetime] = None # Track when the last event happened
+        self._last_timestamp_str: str = "" # P1 Performance: Cache for timestamp string to avoid redundant parsing
 
         # Phase 3: Deck tracking
         self.submitted_decklist: Dict[int, int] = {}
@@ -245,20 +279,38 @@ class MatchScanner:
         self.card_lookup = card_lookup
 
     def parse_timestamp(self, line: str):
-        """Extract timestamp from log line if present."""
+        """
+        Extract timestamp from log line if present.
+
+        P1 Performance Optimization:
+        - Caches timestamp string to avoid redundant strptime() calls
+        - Only parses when timestamp string actually changes
+        - Reduces CPU usage on every log line
+        """
         # Format: [UnityCrossThreadLogger]11/22/2025 10:20:17 PM: ...
+        if "[UnityCrossThreadLogger]" not in line:
+            return
+
         try:
-            if "[UnityCrossThreadLogger]" in line:
-                # Find the timestamp part
-                start = line.find("]") + 1
-                end = line.find(": Match") 
-                if end == -1: end = line.find(": GRE")
-                if end == -1: end = line.find(": ")
-                
-                if start > 0 and end > start:
-                    ts_str = line[start:end].strip()
-                    # Try parsing "11/22/2025 10:20:17 PM"
+            # Find the timestamp part (fast string operations)
+            start = line.find("]") + 1
+            end = line.find(": ", start)  # Simplified: just find next ": "
+
+            if start <= 0 or end <= start:
+                return
+
+            ts_str = line[start:end].strip()
+
+            # P1 Performance: Only parse if timestamp string changed
+            # This avoids expensive strptime() calls for duplicate timestamps
+            if ts_str != self._last_timestamp_str:
+                self._last_timestamp_str = ts_str
+                try:
+                    # Parse "11/22/2025 10:20:17 PM"
                     self.last_event_timestamp = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+                except ValueError:
+                    # Invalid timestamp format, ignore
+                    pass
         except Exception:
             pass # Ignore parsing errors, timestamp is optional hint
 
@@ -299,6 +351,7 @@ class MatchScanner:
         self.zone_type_to_ids.clear()
         self.observed_zone_ids.clear()
         self.zone_id_to_type.clear()
+        self.zone_id_to_enum.clear()  # P1: Clear enum mapping
         self.game_history = GameHistory()
         self.cards_seen.clear()
         self.library_top_known.clear()
@@ -593,10 +646,15 @@ class MatchScanner:
                 # Map zone type string to zone ID
                 if zone_type_str not in self.zone_type_to_ids or self.zone_type_to_ids[zone_type_str] != zone_id:
                     logging.info(f"Zone mapping found: {zone_type_str} -> zoneId {zone_id} (owner: {owner_seat_id})")
-                
+
                 self.zone_type_to_ids[zone_type_str] = zone_id
                 self.zone_id_to_type[zone_id] = zone_type_str
-                
+                self.zone_id_to_enum[zone_id] = get_zone_type(zone_type_str)  # P1: Populate enum mapping
+
+                # P1: Use enum for visibility logic (faster than string comparisons)
+                zone_enum = get_zone_type(zone_type_str)
+                is_private_zone = zone_enum in (ZoneType.HAND, ZoneType.LIBRARY)
+
                 # Update all cards in this zone with the correct zone ID
                 for card_id in object_instance_ids:
                     if card_id not in self.game_objects:
@@ -607,7 +665,7 @@ class MatchScanner:
                             zone_id=zone_id,
                             owner_seat_id=owner_seat_id,
                             name=f"Unknown Card {card_id}", # Temporary name
-                            visibility="private" if "Hand" in zone_type_str or "Library" in zone_type_str else "public"
+                            visibility="private" if is_private_zone else "public"
                         )
                         logging.debug(f"    -> Created minimal placeholder GameObject {card_id} for zone {zone_id} ({zone_type_str})")
 
@@ -761,18 +819,22 @@ class MatchScanner:
                         if zone_dest is not None:
                             obj.zone_id = zone_dest
 
-                            # Get zone names from mapping
+                            # P1: Get zone enums for fast comparisons
+                            zone_src_enum = self.zone_id_to_enum.get(zone_src, ZoneType.UNKNOWN)
+                            zone_dest_enum = self.zone_id_to_enum.get(zone_dest, ZoneType.UNKNOWN)
+
+                            # Get zone names for logging (still use strings for readability)
                             zone_src_name = self.zone_id_to_type.get(zone_src, f"Zone{zone_src}")
                             zone_dest_name = self.zone_id_to_type.get(zone_dest, f"Zone{zone_dest}")
 
-                            # Track game history events
-                            if "Battlefield" in zone_dest_name:
+                            # P1: Track game history events using enum comparisons (faster)
+                            if zone_dest_enum == ZoneType.BATTLEFIELD:
                                 # Card entered battlefield (played/put into play)
                                 self.game_history.cards_played_this_turn.append(obj)
                                 if hasattr(obj, 'card_types') and "CardType_Land" in str(obj.card_types):
                                     self.game_history.lands_played_this_turn += 1
 
-                            if "Graveyard" in zone_dest_name and "Battlefield" in zone_src_name:
+                            if zone_dest_enum == ZoneType.GRAVEYARD and zone_src_enum == ZoneType.BATTLEFIELD:
                                 # Creature died
                                 card_name = getattr(obj, 'name', f"Card{instance_id}")
                                 self.game_history.died_this_turn.append(card_name)
@@ -1002,9 +1064,12 @@ class GameStateManager:
 
     def parse_log_line(self, line: str) -> bool:
         logging.debug(f"Full log line received by GameStateManager: {line}")
-        
-        # Try to extract timestamp from the line to track event freshness
-        self.scanner.parse_timestamp(line)
+
+        # P1 Performance: Only parse timestamp for lines that trigger game state changes
+        # This reduces unnecessary datetime.strptime() calls from ~1000s/game to ~100s/game
+        # Timestamp is only used for freshness checks in app.py (30-second stale event detection)
+        if "greToClientEvent" in line or "GREMessageType" in line or "gameStateMessage" in line:
+            self.scanner.parse_timestamp(line)
 
         # DRAFT EVENTS: Check if this is the JSON line after an end event marker
         if self._next_line_event:
@@ -1246,11 +1311,11 @@ class GameStateManager:
         # P0 Performance: Use zone-based lookups instead of iterating all objects
         # This changes from O(n) to O(zones * objects_per_zone), which is much faster
 
-        # Helper function to process objects in a zone
-        def process_zone(zone_type_str: str, owner_filter: Optional[int] = None):
+        # P1: Helper function to process objects in a zone using enum comparisons (faster)
+        def process_zone(zone_type_enum: ZoneType, owner_filter: Optional[int] = None):
             """Get all objects in a specific zone type, optionally filtered by owner."""
-            # Find all zone IDs that match this zone type
-            zone_ids = [zid for zid, ztype in self.scanner.zone_id_to_type.items() if zone_type_str in ztype]
+            # P1: Find all zone IDs that match this zone type using enum equality (faster than string substring)
+            zone_ids = [zid for zid, zt in self.scanner.zone_id_to_enum.items() if zt == zone_type_enum]
 
             objects = []
             for zone_id in zone_ids:
@@ -1261,24 +1326,25 @@ class GameStateManager:
                             # Filter by owner if specified
                             if owner_filter is None or obj.owner_seat_id == owner_filter:
                                 objects.append(obj)
-                                logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={zone_id} ({zone_type_str}), owner={obj.owner_seat_id}")
+                                zone_name = self.scanner.zone_id_to_type.get(zone_id, f"Zone{zone_id}")
+                                logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={zone_id} ({zone_name}), owner={obj.owner_seat_id}")
             return objects
 
-        # Process each zone type efficiently
-        board_state.your_hand = process_zone("Hand", your_seat_id)
-        board_state.your_battlefield = process_zone("Battlefield", your_seat_id)
-        board_state.your_graveyard = process_zone("Graveyard", your_seat_id)
-        board_state.your_exile = process_zone("Exile", your_seat_id)
-        board_state.opponent_battlefield = process_zone("Battlefield", opponent_seat_id)
-        board_state.opponent_graveyard = process_zone("Graveyard", opponent_seat_id)
-        board_state.opponent_exile = process_zone("Exile", opponent_seat_id)
-        board_state.stack = process_zone("Stack")  # Stack is shared, no owner filter
+        # P1: Process each zone type efficiently using enum comparisons
+        board_state.your_hand = process_zone(ZoneType.HAND, your_seat_id)
+        board_state.your_battlefield = process_zone(ZoneType.BATTLEFIELD, your_seat_id)
+        board_state.your_graveyard = process_zone(ZoneType.GRAVEYARD, your_seat_id)
+        board_state.your_exile = process_zone(ZoneType.EXILE, your_seat_id)
+        board_state.opponent_battlefield = process_zone(ZoneType.BATTLEFIELD, opponent_seat_id)
+        board_state.opponent_graveyard = process_zone(ZoneType.GRAVEYARD, opponent_seat_id)
+        board_state.opponent_exile = process_zone(ZoneType.EXILE, opponent_seat_id)
+        board_state.stack = process_zone(ZoneType.STACK)  # Stack is shared, no owner filter
 
         # Count library cards (we don't need the full list, just the count)
-        your_library_objects = process_zone("Library", your_seat_id)
+        your_library_objects = process_zone(ZoneType.LIBRARY, your_seat_id)
         board_state.your_library_count = len(your_library_objects)
 
-        opponent_library_objects = process_zone("Library", opponent_seat_id)
+        opponent_library_objects = process_zone(ZoneType.LIBRARY, opponent_seat_id)
         board_state.opponent_library_count = len(opponent_library_objects)
 
         # Log zone contents
