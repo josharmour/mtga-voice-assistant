@@ -1,6 +1,7 @@
 
 import logging
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -11,7 +12,20 @@ from .secondary_window import SecondaryWindow
 import json
 import threading
 
+# ----------------------------------------------------------------------------------
+# Performance: Compiled Regex Patterns for Log Event Detection
+# ----------------------------------------------------------------------------------
+
+# Compiled regex for efficient draft event detection in log filtering
+DRAFT_EVENT_PATTERN = re.compile(r'Draft|PackNumber|PickNumber|DraftId|DraftPack')
+
+# Compiled regex for efficient game event detection in log filtering
+GAME_EVENT_PATTERN = re.compile(r'GameStage|GRE_|Zone|PlayerState|Turn')
+
+
+# ----------------------------------------------------------------------------------
 # Content of src/tts.py
+# ----------------------------------------------------------------------------------
 class TextToSpeech:
     def __init__(self, voice: str = "adam", volume: float = 1.0, force_engine: str = None):
         """
@@ -350,9 +364,8 @@ class LogHighlighter:
                 "position": (match.start(), match.end()),
             })
 
-        # Detect draft events
-        draft_keywords = ["Draft", "PackNumber", "PickNumber", "DraftId", "DraftPack"]
-        if any(keyword in log_line for keyword in draft_keywords):
+        # Detect draft events using compiled regex for efficiency
+        if DRAFT_EVENT_PATTERN.search(log_line):
             detected.append({
                 "text": "DRAFT_EVENT",
                 "type": "draft_event",
@@ -361,9 +374,8 @@ class LogHighlighter:
                 "position": (0, 0),  # Metadata only, not positioned
             })
 
-        # Detect game events
-        game_keywords = ["GameStage", "GRE_", "Zone", "PlayerState", "Turn"]
-        if any(keyword in log_line for keyword in game_keywords):
+        # Detect game events using compiled regex for efficiency
+        if GAME_EVENT_PATTERN.search(log_line):
             detected.append({
                 "text": "GAME_EVENT",
                 "type": "game_event",

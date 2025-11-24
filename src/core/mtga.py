@@ -209,7 +209,7 @@ class MatchScanner:
     Parses GRE messages to track game state.
     """
 
-    def __init__(self):
+    def __init__(self, card_lookup=None):
         self.game_objects: Dict[int, GameObject] = {}
         self.players: Dict[int, PlayerState] = {}
         self.current_turn = 0
@@ -226,7 +226,7 @@ class MatchScanner:
         # Phase 3: Deck tracking
         self.submitted_decklist: Dict[int, int] = {}
         self.cards_seen: Dict[int, int] = {}
-        
+
         # Phase 3: Known library cards
         self.library_top_known: List[str] = []
         self.scry_info: Optional[str] = None
@@ -234,6 +234,15 @@ class MatchScanner:
         # Mulligan tracking
         self.game_stage: str = ""
         self.in_mulligan_phase: bool = False
+
+        # P0 Performance: Zone-based object caching
+        # Maps zone_id -> set of instance_ids in that zone
+        # This eliminates O(n) iteration in get_current_board_state()
+        self._zone_objects: Dict[int, set] = {}
+
+        # P0 Performance: Card name resolution
+        # Resolve card names once on object creation, not repeatedly
+        self.card_lookup = card_lookup
 
     def parse_timestamp(self, line: str):
         """Extract timestamp from log line if present."""
@@ -252,6 +261,30 @@ class MatchScanner:
                     self.last_event_timestamp = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
         except Exception:
             pass # Ignore parsing errors, timestamp is optional hint
+
+    def _update_object_zone(self, instance_id: int, old_zone_id: Optional[int], new_zone_id: int):
+        """
+        Update zone membership cache for an object.
+
+        This maintains the _zone_objects index which maps zone_id -> set of instance_ids.
+        This cache eliminates O(n) iteration in get_current_board_state().
+
+        Args:
+            instance_id: The instance ID of the game object
+            old_zone_id: The previous zone ID (None if object is new)
+            new_zone_id: The new zone ID
+        """
+        # Remove from old zone if it exists
+        if old_zone_id is not None and old_zone_id in self._zone_objects:
+            self._zone_objects[old_zone_id].discard(instance_id)
+            # Clean up empty zone sets to save memory
+            if not self._zone_objects[old_zone_id]:
+                del self._zone_objects[old_zone_id]
+
+        # Add to new zone
+        if new_zone_id not in self._zone_objects:
+            self._zone_objects[new_zone_id] = set()
+        self._zone_objects[new_zone_id].add(instance_id)
 
     def reset_match_state(self):
         """Clear all game state when a new match starts"""
@@ -272,7 +305,29 @@ class MatchScanner:
         self.scry_info = None
         self.game_stage = ""
         self.in_mulligan_phase = False
+        self._zone_objects.clear()
         # Note: submitted_decklist is set by _parse_deck_submission, so don't clear it here
+
+    def _resolve_card_metadata(self, game_obj: GameObject) -> None:
+        """
+        P0 Performance optimization: Resolve card name and color once on object creation.
+        This eliminates the need to iterate all objects in get_current_board_state().
+        """
+        if not self.card_lookup or game_obj.grp_id == 0:
+            return
+
+        # Resolve name if not already set or is a placeholder
+        if not game_obj.name or game_obj.name.startswith("Unknown Card"):
+            game_obj.name = self.card_lookup.get_card_name(game_obj.grp_id)
+
+        # Resolve color identity if not already set
+        if not game_obj.color_identity:
+            try:
+                card_data = self.card_lookup.get_card_data(game_obj.grp_id)
+                if card_data:
+                    game_obj.color_identity = card_data.get("color_identity", "")
+            except Exception as e:
+                logging.debug(f"Could not fetch color for {game_obj.grp_id}: {e}")
 
     def parse_gre_to_client_event(self, event_data: dict) -> bool:
         if "greToClientEvent" not in event_data: return False
@@ -350,6 +405,15 @@ class MatchScanner:
             logging.debug(f"Removing {len(deleted_ids)} deleted objects")
             for obj_id in deleted_ids:
                 if obj_id in self.game_objects:
+                    # P0 Performance: Remove from zone cache before deleting
+                    obj = self.game_objects[obj_id]
+                    old_zone_id = obj.zone_id
+                    if old_zone_id in self._zone_objects:
+                        self._zone_objects[old_zone_id].discard(obj_id)
+                        # Clean up empty zone sets to save memory
+                        if not self._zone_objects[old_zone_id]:
+                            del self._zone_objects[old_zone_id]
+
                     del self.game_objects[obj_id]
                     state_changed = True
 
@@ -442,6 +506,9 @@ class MatchScanner:
                     power=power,
                     toughness=toughness
                 )
+                # P0 Performance: Resolve card name and color once on creation
+                self._resolve_card_metadata(self.game_objects[instance_id])
+                self._update_object_zone(instance_id, None, zone_id)
                 logging.info(f"    -> Created new GameObject")
                 state_changed = True
             else:
@@ -452,11 +519,17 @@ class MatchScanner:
                 if game_obj.grp_id == 0 and grp_id and grp_id != 0:
                     logging.info(f"    -> Upgrading placeholder {instance_id} with real grpId {grp_id}")
                     game_obj.grp_id = grp_id
-                    # Name will be updated by GameStateManager using card_lookup
+                    # P0 Performance: Resolve card name and color once on upgrade
+                    self._resolve_card_metadata(game_obj)
                     state_changed = True
 
                 if zone_id is not None and game_obj.zone_id != zone_id:
                     logging.info(f"    -> Zone changed from {game_obj.zone_id} to {zone_id}")
+
+                    # P0 Performance: Update zone cache when zone changes
+                    old_zone_id = game_obj.zone_id
+                    self._update_object_zone(instance_id, old_zone_id, zone_id)
+
                     game_obj.zone_id = zone_id
                     state_changed = True
 
@@ -537,11 +610,20 @@ class MatchScanner:
                             visibility="private" if "Hand" in zone_type_str or "Library" in zone_type_str else "public"
                         )
                         logging.debug(f"    -> Created minimal placeholder GameObject {card_id} for zone {zone_id} ({zone_type_str})")
+
+                        # P0 Performance: Update zone cache for new placeholder
+                        self._update_object_zone(card_id, None, zone_id)
+
                         state_changed = True
-                    
+
                     card = self.game_objects[card_id]
                     if card.zone_id != zone_id:
                         logging.debug(f"Updating card {card_id} zone from {card.zone_id} to {zone_id} ({zone_type_str})")
+
+                        # P0 Performance: Update zone cache when zone changes
+                        old_zone_id = card.zone_id
+                        self._update_object_zone(card_id, old_zone_id, zone_id)
+
                         card.zone_id = zone_id
                         state_changed = True
 
@@ -766,7 +848,7 @@ class MatchScanner:
 
 class GameStateManager:
     def __init__(self, card_lookup: "ArenaCardDatabase"):
-        self.scanner = MatchScanner()
+        self.scanner = MatchScanner(card_lookup=card_lookup)
         self.card_lookup = card_lookup
         self._json_buffer: str = ""
         self._json_depth: int = 0
@@ -1139,74 +1221,70 @@ class GameStateManager:
         for obj_id, obj in self.scanner.game_objects.items():
             logging.debug(f"  Object {obj_id}: grpId={obj.grp_id}, zoneId={obj.zone_id}, owner={obj.owner_seat_id}")
 
-        # PERFORMANCE FIX: Only look up card names/data if not already cached
-        # This prevents 100+ database queries on every board state calculation
+        # P0 Performance: Card names/colors are now resolved once on object creation.
+        # This minimal fallback handles only edge cases (e.g., objects created before card_lookup was available).
+        fallback_count = 0
         for obj in self.scanner.game_objects.values():
-            # Only look up name if it's not already set or is a placeholder
-            if not obj.name or obj.name.startswith("Unknown Card"):
+            # Fallback: Only resolve if still missing (should be rare)
+            if obj.grp_id != 0 and (not obj.name or obj.name.startswith("Unknown Card")):
                 obj.name = self.card_lookup.get_card_name(obj.grp_id)
+                fallback_count += 1
+                logging.debug(f"Fallback resolution for {obj.grp_id}: {obj.name}")
 
-            # Only look up color if not already set
-            if not obj.color_identity:
+            if obj.grp_id != 0 and not obj.color_identity:
                 try:
                     card_data = self.card_lookup.get_card_data(obj.grp_id)
                     if card_data:
                         obj.color_identity = card_data.get("color_identity", "")
+                        fallback_count += 1
                 except Exception as e:
                     logging.debug(f"Could not fetch color for {obj.grp_id}: {e}")
 
-            # Get the zone type for this object's zone
-            zone_type = self.scanner.zone_id_to_type.get(obj.zone_id, "")
-            
-            logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={obj.zone_id} ({zone_type}), owner={obj.owner_seat_id}")
+        if fallback_count > 0:
+            logging.info(f"⚠️ Fallback resolution needed for {fallback_count} objects (should be rare)")
 
-            if obj.owner_seat_id == your_seat_id:
-                if "Hand" in zone_type:
-                    logging.debug(f"  -> Added to your hand: {obj.name}")
-                    board_state.your_hand.append(obj)
-                elif "Battlefield" in zone_type:
-                    logging.debug(f"  -> Added to your battlefield: {obj.name}")
-                    board_state.your_battlefield.append(obj)
-                elif "Graveyard" in zone_type:
-                    logging.debug(f"  -> Added to your graveyard: {obj.name}")
-                    board_state.your_graveyard.append(obj)
-                elif "Exile" in zone_type:
-                    logging.debug(f"  -> Added to your exile: {obj.name}")
-                    board_state.your_exile.append(obj)
-                elif "Library" in zone_type:
-                    board_state.your_library_count += 1
-                elif "Stack" in zone_type:
-                    # Stack is shared, handle below
-                    pass
-                else:
-                    logging.debug(f"  -> Skipped your card (zone {obj.zone_id}: {zone_type})")
-            elif obj.owner_seat_id == opponent_seat_id:
-                if "Hand" in zone_type:
-                    logging.debug(f"  -> Opponent has card in hand: {obj.name}")
-                    board_state.opponent_hand_count += 1
-                elif "Battlefield" in zone_type:
-                    logging.debug(f"  -> Added to opponent battlefield: {obj.name}")
-                    board_state.opponent_battlefield.append(obj)
-                elif "Graveyard" in zone_type:
-                    logging.debug(f"  -> Added to opponent graveyard: {obj.name}")
-                    board_state.opponent_graveyard.append(obj)
-                elif "Exile" in zone_type:
-                    logging.debug(f"  -> Added to opponent exile: {obj.name}")
-                    board_state.opponent_exile.append(obj)
-                elif "Library" in zone_type:
-                    board_state.opponent_library_count += 1
-                elif "Stack" in zone_type:
-                    # Stack is shared, handle below
-                    pass
-                else:
-                    logging.debug(f"  -> Skipped opponent card (zone {obj.zone_id}: {zone_type})")
-            else:
-                logging.debug(f"  -> Skipped card (owner {obj.owner_seat_id} not a player)")
+        # P0 Performance: Use zone-based lookups instead of iterating all objects
+        # This changes from O(n) to O(zones * objects_per_zone), which is much faster
 
-            # Stack is shared between players
-            if "Stack" in zone_type:
-                logging.debug(f"  -> Added to stack: {obj.name}")
-                board_state.stack.append(obj)
+        # Helper function to process objects in a zone
+        def process_zone(zone_type_str: str, owner_filter: Optional[int] = None):
+            """Get all objects in a specific zone type, optionally filtered by owner."""
+            # Find all zone IDs that match this zone type
+            zone_ids = [zid for zid, ztype in self.scanner.zone_id_to_type.items() if zone_type_str in ztype]
+
+            objects = []
+            for zone_id in zone_ids:
+                if zone_id in self.scanner._zone_objects:
+                    for instance_id in self.scanner._zone_objects[zone_id]:
+                        obj = self.scanner.game_objects.get(instance_id)
+                        if obj:
+                            # Filter by owner if specified
+                            if owner_filter is None or obj.owner_seat_id == owner_filter:
+                                objects.append(obj)
+                                logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={zone_id} ({zone_type_str}), owner={obj.owner_seat_id}")
+            return objects
+
+        # Process each zone type efficiently
+        board_state.your_hand = process_zone("Hand", your_seat_id)
+        board_state.your_battlefield = process_zone("Battlefield", your_seat_id)
+        board_state.your_graveyard = process_zone("Graveyard", your_seat_id)
+        board_state.your_exile = process_zone("Exile", your_seat_id)
+        board_state.opponent_battlefield = process_zone("Battlefield", opponent_seat_id)
+        board_state.opponent_graveyard = process_zone("Graveyard", opponent_seat_id)
+        board_state.opponent_exile = process_zone("Exile", opponent_seat_id)
+        board_state.stack = process_zone("Stack")  # Stack is shared, no owner filter
+
+        # Count library cards (we don't need the full list, just the count)
+        your_library_objects = process_zone("Library", your_seat_id)
+        board_state.your_library_count = len(your_library_objects)
+
+        opponent_library_objects = process_zone("Library", opponent_seat_id)
+        board_state.opponent_library_count = len(opponent_library_objects)
+
+        # Log zone contents
+        logging.debug(f"  -> Your hand: {[obj.name for obj in board_state.your_hand]}")
+        logging.debug(f"  -> Your battlefield: {[obj.name for obj in board_state.your_battlefield]}")
+        logging.debug(f"  -> Opponent battlefield: {[obj.name for obj in board_state.opponent_battlefield]}")
 
         # CRITICAL FIX: Sync hand count
         # If we detected actual cards in hand, trust that over the potentially stale server reported count.

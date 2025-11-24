@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, List, Optional
 import ollama
+from src.data.data_management import ScryfallClient
+from .prompt_builder import MTGPromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -12,19 +14,23 @@ class OllamaAdvisor:
         self.model_name = model_name
         self.client = ollama.Client()
         self.card_db = card_db
-        self.scryfall_client = scryfall_client
+        self.scryfall_client = scryfall_client or ScryfallClient()
+        self.prompt_builder = MTGPromptBuilder(self.scryfall_client)
         logger.info(f"Ollama Advisor initialized with model: {self.model_name}")
 
-    def get_tactical_advice(self, board_state: Dict) -> str:
+    def get_tactical_advice(self, board_state: Dict, game_history: List[str] = None) -> str:
         """
-        Get tactical advice from the AI.
+        Get tactical advice from the AI with rich context.
         """
         try:
+            # Use shared prompt builder for rich context with card text
+            prompt = self.prompt_builder.build_tactical_prompt(board_state, game_history)
+
             response = self.client.chat(
                 model=self.model_name,
                 messages=[
                     {"role": "system", "content": "You are a Magic: The Gathering tactical advisor."},
-                    {"role": "user", "content": f"Here is the board state:\n{board_state}\n\nWhat is the best course of action?"}
+                    {"role": "user", "content": prompt}
                 ]
             )
             return response['message']['content']
@@ -37,11 +43,14 @@ class OllamaAdvisor:
         Get draft pick recommendation.
         """
         try:
+            # Use shared prompt builder for consistent draft prompts
+            prompt = self.prompt_builder.build_draft_prompt(pack_cards, current_pool)
+
             response = self.client.chat(
                 model=self.model_name,
                 messages=[
                     {"role": "system", "content": "You are a Magic: The Gathering draft advisor."},
-                    {"role": "user", "content": f"Here is the current pack:\n{pack_cards}\n\nHere is my current card pool:\n{current_pool}\n\nWhich card should I pick?"}
+                    {"role": "user", "content": prompt}
                 ]
             )
             return response['message']['content']

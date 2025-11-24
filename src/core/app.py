@@ -65,9 +65,26 @@ logging.basicConfig(
     ]
 )
 
-# Set console handler to WARNING to hide debug/info noise on the console if desired, 
+# Set console handler to WARNING to hide debug/info noise on the console if desired,
 # but basicConfig sets it for root. We can adjust specific handlers if needed.
 # For now, keeping it simple.
+
+
+# ----------------------------------------------------------------------------------
+# Performance: Compiled Regex Patterns
+# ----------------------------------------------------------------------------------
+
+# Compiled regex for efficient game state change detection
+# This runs on EVERY log line, so using compiled regex instead of multiple 'in' checks
+# improves performance significantly (single regex search vs. up to 9 substring searches)
+GAME_STATE_CHANGE_PATTERN = re.compile(
+    r'GameStateMessage|ActionsAvailableReq|turnInfo|priorityPlayer|gameObjects|zones|GameStage_Start|mulligan'
+)
+
+# Compiled regex for filtering spammy UI/Hover messages from GUI display
+SPAM_FILTER_PATTERN = re.compile(
+    r'ClientToGreuimessage|GREMessageType_UIMessage|onHover|ClientToMatchServiceMessageType_ClientToGREUIMessage'
+)
 
 
 # ----------------------------------------------------------------------------------
@@ -673,12 +690,7 @@ class CLIVoiceAdvisor:
             # which causes the application to freeze/hang.
             if self.use_gui and self.gui and self.log_follower.is_caught_up:
                 # Filter out spammy UI/Hover messages from the GUI display to reduce noise
-                if not any(spam in line for spam in [
-                    "ClientToGreuimessage", 
-                    "GREMessageType_UIMessage", 
-                    "onHover", 
-                    "ClientToMatchServiceMessageType_ClientToGREUIMessage"
-                ]):
+                if not SPAM_FILTER_PATTERN.search(line):
                     self.gui.append_log(line)
 
             # Process with GameStateManager
@@ -692,17 +704,8 @@ class CLIVoiceAdvisor:
 
             # PERFORMANCE FIX: Only get board state when game state changes
             # This prevents rebuilding the board state thousands of times per second
-            # Check if line contains game state indicators
-            has_game_state_change = any(indicator in line for indicator in [
-                'GameStateMessage',
-                'ActionsAvailableReq',
-                'turnInfo',
-                'priorityPlayer',
-                'gameObjects',
-                'zones',
-                'GameStage_Start',
-                'mulligan'
-            ])
+            # Check if line contains game state indicators using compiled regex for efficiency
+            has_game_state_change = GAME_STATE_CHANGE_PATTERN.search(line) is not None
 
             if has_game_state_change:
                 # Get the board state for display and advice checking

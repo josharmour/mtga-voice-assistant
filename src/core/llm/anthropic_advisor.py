@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, List, Optional
 import anthropic
+from src.data.data_management import ScryfallClient
+from .prompt_builder import MTGPromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -12,21 +14,25 @@ class AnthropicAdvisor:
         self.model_name = model_name
         self.client = anthropic.Anthropic(api_key=api_key)
         self.card_db = card_db
-        self.scryfall_client = scryfall_client
+        self.scryfall_client = scryfall_client or ScryfallClient()
+        self.prompt_builder = MTGPromptBuilder(self.scryfall_client)
         logger.info(f"Anthropic Advisor initialized with model: {self.model_name}")
 
-    def get_tactical_advice(self, board_state: Dict) -> str:
+    def get_tactical_advice(self, board_state: Dict, game_history: List[str] = None) -> str:
         """
-        Get tactical advice from the AI.
+        Get tactical advice from the AI with rich context.
         """
         try:
+            # Use shared prompt builder for rich context with card text
+            prompt = self.prompt_builder.build_tactical_prompt(board_state, game_history)
+
             message = self.client.messages.create(
                 model=self.model_name,
                 max_tokens=1024,
                 messages=[
                     {
                         "role": "user",
-                        "content": f"You are a Magic: The Gathering tactical advisor. Here is the board state:\n{board_state}\n\nWhat is the best course of action?"
+                        "content": prompt
                     }
                 ]
             )
@@ -40,13 +46,16 @@ class AnthropicAdvisor:
         Get draft pick recommendation.
         """
         try:
+            # Use shared prompt builder for consistent draft prompts
+            prompt = self.prompt_builder.build_draft_prompt(pack_cards, current_pool)
+
             message = self.client.messages.create(
                 model=self.model_name,
                 max_tokens=1024,
                 messages=[
                     {
                         "role": "user",
-                        "content": f"You are a Magic: The Gathering draft advisor. Here is the current pack:\n{pack_cards}\n\nHere is my current card pool:\n{current_pool}\n\nWhich card should I pick?"
+                        "content": prompt
                     }
                 ]
             )

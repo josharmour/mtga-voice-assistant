@@ -15,30 +15,12 @@ This document outlines optimization opportunities identified through codebase an
 
 ## 1. Log Parsing (`src/core/mtga.py`)
 
-### P1: Compiled Regex for Game State Detection
+### ~~P1: Compiled Regex for Game State Detection~~ ✅ COMPLETED
 **Location:** `src/core/app.py:696-705`
 
-**Current Issue:**
-```python
-has_game_state_change = any(indicator in line for indicator in [
-    'GameStateMessage',
-    'ActionsAvailableReq',
-    'turnInfo',
-    # ...7 more strings
-])
-```
-This runs on EVERY log line, performing up to 9 substring searches.
+**Status:** Implemented. Added `GAME_STATE_CHANGE_PATTERN` and `SPAM_FILTER_PATTERN` compiled regex patterns at module level. Also added `DRAFT_EVENT_PATTERN` and `GAME_EVENT_PATTERN` to `ui.py`.
 
-**Solution:**
-```python
-import re
-GAME_STATE_PATTERN = re.compile(
-    r'GameStateMessage|ActionsAvailableReq|turnInfo|priorityPlayer|gameObjects|zones|GameStage_Start|mulligan'
-)
-has_game_state_change = GAME_STATE_PATTERN.search(line) is not None
-```
-
-**Files:** `src/core/app.py`
+**Files Modified:** `src/core/app.py`, `src/core/ui.py`
 
 ---
 
@@ -96,49 +78,21 @@ class DraftEventParser:
 
 ## 2. Board State Tracking (`src/core/mtga.py`)
 
-### P0: Zone-Based Object Caching
+### ~~P0: Zone-Based Object Caching~~ ✅ COMPLETED
 **Location:** `src/core/mtga.py:1139-1210`
 
-**Current Issue:**
-Every call to `get_current_board_state()` iterates ALL game objects and performs multiple string comparisons per object. This is O(n) on every board state request.
+**Status:** Implemented. Added `_zone_objects` dict to MatchScanner, `_update_object_zone()` helper method, updated `_parse_game_objects()`, `_parse_zones()`, and `_parse_game_state_message()` to maintain the cache. Updated `get_current_board_state()` to use zone-based lookups instead of O(n) iteration.
 
-**Solution:**
-Maintain pre-sorted zone lists that update incrementally:
-```python
-class MatchScanner:
-    def __init__(self):
-        # Zone-based object caches
-        self._zone_objects: Dict[int, Set[int]] = {}  # zone_id -> set of instance_ids
-
-    def _update_object_zone(self, obj: GameObject, old_zone: int, new_zone: int):
-        if old_zone in self._zone_objects:
-            self._zone_objects[old_zone].discard(obj.instance_id)
-        if new_zone not in self._zone_objects:
-            self._zone_objects[new_zone] = set()
-        self._zone_objects[new_zone].add(obj.instance_id)
-```
-
-**Files:** `src/core/mtga.py`
+**Files Modified:** `src/core/mtga.py`
 
 ---
 
-### P0: Pre-Resolve Card Names on Object Creation
+### ~~P0: Pre-Resolve Card Names on Object Creation~~ ✅ COMPLETED
 **Location:** `src/core/mtga.py:1144-1148`
 
-**Current Issue:**
-```python
-for obj in self.scanner.game_objects.values():
-    if not obj.name or obj.name.startswith("Unknown Card"):
-        obj.name = self.card_lookup.get_card_name(obj.grp_id)
-```
-This iterates all objects on every board state request.
+**Status:** Implemented. Added `card_lookup` parameter to MatchScanner, created `_resolve_card_metadata()` helper method that resolves card name and color identity. Called when creating new GameObjects and when upgrading placeholders. Reduced `get_current_board_state()` name resolution to minimal fallback only.
 
-**Solution:**
-- Resolve card names ONCE when the object is first created or when `grp_id` changes
-- Move name resolution to `_parse_game_objects()` instead of `get_current_board_state()`
-- Add a flag to track if name has been resolved
-
-**Files:** `src/core/mtga.py`
+**Files Modified:** `src/core/mtga.py`
 
 ---
 
@@ -304,46 +258,15 @@ class BoardStateFormatter:
 
 ## 4. AI Context & Prompt Generation (`src/core/llm/`)
 
-### P1: Shared PromptBuilder Class
+### ~~P1: Shared PromptBuilder Class~~ ✅ COMPLETED
 **Location:** `src/core/llm/google_advisor.py` vs `src/core/llm/ollama_advisor.py`
 
-**Current Issue:**
-GeminiAdvisor builds rich context with card text:
-```python
-context = self._build_context(board_state)
-```
+**Status:** Implemented. Created `MTGPromptBuilder` class in new file `src/core/llm/prompt_builder.py` with `build_tactical_prompt()` and `build_draft_prompt()` methods. All four LLM advisors (Google, Ollama, OpenAI, Anthropic) now use the shared PromptBuilder for consistent, rich context building.
 
-OllamaAdvisor sends raw dict dump:
-```python
-content=f"Here is the board state:\n{board_state}\n..."  # Raw dict!
-```
+**Critical Fix:** OllamaAdvisor was sending raw dict strings - now sends properly formatted prompts with card text, mana costs, oracle text, etc.
 
-**Solution:**
-Create shared prompt building infrastructure:
-```python
-# src/core/llm/prompt_builder.py
-class MTGPromptBuilder:
-    def __init__(self, scryfall: ScryfallClient):
-        self.scryfall = scryfall
-
-    def build_tactical_prompt(self, board_state: Dict) -> str:
-        """Build rich context string for any LLM."""
-        context = self._build_context(board_state)
-        return f"""
-        You are a Magic: The Gathering expert advisor...
-        {context}
-        """
-
-    def _build_context(self, board_state: Dict) -> str:
-        # Shared implementation from GeminiAdvisor._build_context
-```
-
-**Files:**
-- Create `src/core/llm/prompt_builder.py`
-- Update `src/core/llm/google_advisor.py`
-- Update `src/core/llm/ollama_advisor.py`
-- Update `src/core/llm/openai_advisor.py`
-- Update `src/core/llm/anthropic_advisor.py`
+**Files Created:** `src/core/llm/prompt_builder.py`
+**Files Modified:** `src/core/llm/google_advisor.py`, `src/core/llm/ollama_advisor.py`, `src/core/llm/openai_advisor.py`, `src/core/llm/anthropic_advisor.py`
 
 ---
 
@@ -610,14 +533,14 @@ class BaseMTGAdvisor:
 
 ## Implementation Order
 
-### Phase 1: Quick Wins (P0 + easy P1)
-1. [ ] Pre-resolve card names on object creation (`mtga.py`)
-2. [ ] Compiled regex for game state detection (`app.py`)
-3. [ ] Create shared PromptBuilder class (`llm/prompt_builder.py`)
-4. [ ] Fix OllamaAdvisor to use proper context building
+### Phase 1: Quick Wins (P0 + easy P1) ✅ COMPLETED
+1. [x] Pre-resolve card names on object creation (`mtga.py`) - **DONE**
+2. [x] Compiled regex for game state detection (`app.py`) - **DONE**
+3. [x] Create shared PromptBuilder class (`llm/prompt_builder.py`) - **DONE**
+4. [x] Fix OllamaAdvisor to use proper context building - **DONE**
+5. [x] Zone-based object caching (`mtga.py`) - **DONE**
 
 ### Phase 2: Performance (remaining P1)
-5. [ ] Zone-based object caching (`mtga.py`)
 6. [ ] Timestamp parsing optimization (`mtga.py`)
 7. [ ] Batch UI updates with dirty flags (`ui.py`)
 8. [ ] Adaptive log queue processing (`ui.py`)
