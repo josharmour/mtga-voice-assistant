@@ -19,8 +19,12 @@ import datetime
 from .mtga import LogFollower, GameStateManager
 from .ai import AIAdvisor
 from .ui import TextToSpeech, AdvisorGUI
+from .formatters import BoardStateFormatter
 from ..data.data_management import ScryfallClient, CardStatsDB
 from ..data.arena_cards import ArenaCardDatabase
+
+# Event system for decoupled communication (future integration)
+# from .events import get_event_bus, EventType, Event
 
 # Import configuration manager for user preferences
 try:
@@ -247,6 +251,9 @@ class CLIVoiceAdvisor:
         print("Initializing Arena card database...")
         self.arena_db = ArenaCardDatabase(scryfall_client=self.scryfall)
 
+        # Initialize board state formatter with card database
+        self.formatter = BoardStateFormatter(card_db=self.arena_db)
+
         # Initialize GameStateManager with Arena card database
         # ArenaCardDatabase has get_card_name and get_card_data methods
         self.game_state_mgr = GameStateManager(self.arena_db)
@@ -277,6 +284,14 @@ class CLIVoiceAdvisor:
                 self.game_state_mgr.register_draft_callback("Draft.Notify", self._on_draft_notify)
                 self.game_state_mgr.register_draft_callback("BotDraftDraftStatus", self._on_quick_draft_status)
                 self.game_state_mgr.register_draft_callback("BotDraftDraftPick", self._on_quick_draft_pick)
+
+                # Future: Subscribe to events for decoupled communication
+                # Example event subscriptions (replacing direct callbacks):
+                # def on_board_state_changed(event: Event):
+                #     self._update_ui(event.data)
+                # get_event_bus().subscribe(EventType.BOARD_STATE_CHANGED, on_board_state_changed)
+                # get_event_bus().subscribe(EventType.DRAFT_PACK_OPENED, self._handle_draft_pack)
+                # get_event_bus().subscribe(EventType.ADVICE_READY, self._display_advice)
 
                 print("[OK] Draft advisor enabled")
             except Exception as e:
@@ -371,129 +386,12 @@ class CLIVoiceAdvisor:
                     self.gui.set_deck_content(["Waiting for deck data...", "(Deck list not yet parsed)"])
 
     def _format_board_state_for_display(self, board_state: "BoardState") -> list:
-        """Format board state as list of strings for terminal/GUI display"""
-        lines = []
-        lines.append("=" * 70)
-        lines.append(f"TURN {board_state.current_turn} - {board_state.current_phase}")
-        lines.append("=" * 70)
-        lines.append("")
-        
-        # Life totals
-        lines.append(f"Your Life: {board_state.your_life}  |  Opponent Life: {board_state.opponent_life}")
-        lines.append("")
-        
-        # Helper to format card line
-        def format_card(card):
-            pt = ""
-            if card.power is not None and card.toughness is not None:
-                pt = f" ({card.power}/{card.toughness})"
-            
-            counters = ""
-            if card.counters:
-                # Format counters like [+1/+1, -1/-1]
-                c_list = []
-                for c_type, c_count in card.counters.items():
-                    if c_count > 0:
-                        c_list.append(f"{c_count} {c_type}")
-                if c_list:
-                    counters = f" [{', '.join(c_list)}]"
-            
-            return f"  • {card.name}{pt}{counters}"
+        """
+        Format board state as list of strings for terminal/GUI display.
 
-        # Your hand
-        hand_count = len(board_state.your_hand) if board_state.your_hand else board_state.your_hand_count
-        lines.append(f"YOUR HAND ({hand_count} cards):")
-        if board_state.your_hand:
-            for card in board_state.your_hand:
-                lines.append(format_card(card))
-        else:
-            lines.append("  (Hidden or empty)")
-        lines.append("")
-
-        # Opponent hand count
-        lines.append(f"OPPONENT'S HAND ({board_state.opponent_hand_count} cards)")
-        lines.append("")
-        
-        # Separate battlefield cards into lands and non-lands
-        your_lands = []
-        your_nonlands = []
-        
-        for card in board_state.your_battlefield:
-            # Heuristic: if it has P/T, it's likely a creature. If it's a basic land, it's a land.
-            if card.name in ["Plains", "Island", "Swamp", "Mountain", "Forest"]:
-                your_lands.append(card)
-            elif card.power is not None:
-                your_nonlands.append(card)
-            elif "Land" in card.name:
-                your_lands.append(card)
-            else:
-                your_nonlands.append(card)
-
-        lines.append(f"YOUR BATTLEFIELD ({len(your_nonlands)} non-lands):")
-        for card in your_nonlands:
-            lines.append(format_card(card))
-            
-        # Group lands
-        if your_lands:
-            import collections
-            land_counts = collections.Counter([c.name for c in your_lands])
-            lines.append(f"YOUR LANDS ({len(your_lands)}):")
-            for name, count in land_counts.items():
-                lines.append(f"  • {count}x {name}")
-        lines.append("")
-
-        # Opponent battlefield
-        opp_lands = []
-        opp_nonlands = []
-        for card in board_state.opponent_battlefield:
-            if card.name in ["Plains", "Island", "Swamp", "Mountain", "Forest"]:
-                opp_lands.append(card)
-            elif card.power is not None:
-                opp_nonlands.append(card)
-            elif "Land" in card.name:
-                opp_lands.append(card)
-            else:
-                opp_nonlands.append(card)
-
-        lines.append(f"OPPONENT'S BATTLEFIELD ({len(opp_nonlands)} non-lands):")
-        for card in opp_nonlands:
-            lines.append(format_card(card))
-            
-        if opp_lands:
-            import collections
-            land_counts = collections.Counter([c.name for c in opp_lands])
-            lines.append(f"OPPONENT'S LANDS ({len(opp_lands)}):")
-            for name, count in land_counts.items():
-                lines.append(f"  • {count}x {name}")
-        lines.append("")
-        
-        # Graveyards
-        lines.append(f"YOUR GRAVEYARD ({len(board_state.your_graveyard)} cards):")
-        if board_state.your_graveyard:
-            for card in board_state.your_graveyard[-5:]:  # Last 5
-                lines.append(f"  • {card.name}")
-        lines.append("")
-        
-        lines.append(f"OPPONENT'S GRAVEYARD ({len(board_state.opponent_graveyard)} cards):")
-        if board_state.opponent_graveyard:
-            for card in board_state.opponent_graveyard[-5:]:  # Last 5
-                lines.append(f"  • {card.name}")
-        lines.append("")
-
-        # Exile Zones
-        lines.append(f"YOUR EXILE ({len(board_state.your_exile)} cards):")
-        if board_state.your_exile:
-            for card in board_state.your_exile[-5:]:
-                lines.append(f"  • {card.name}")
-        lines.append("")
-
-        lines.append(f"OPPONENT'S EXILE ({len(board_state.opponent_exile)} cards):")
-        if board_state.opponent_exile:
-            for card in board_state.opponent_exile[-5:]:
-                lines.append(f"  • {card.name}")
-        lines.append("")
-        
-        return lines
+        Delegates to BoardStateFormatter for actual formatting logic.
+        """
+        return self.formatter.format_for_display(board_state)
 
     # GUI Callback Methods
     def _on_gui_model_change(self, model):

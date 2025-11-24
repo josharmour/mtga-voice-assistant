@@ -9,6 +9,9 @@ import re
 from typing import Dict, List, Optional, Callable
 from enum import Enum, auto
 
+# Event system for decoupled communication (future integration)
+# from .events import get_event_bus, EventType
+
 # Zone Type Enum for fast comparisons
 class ZoneType(Enum):
     """Enum representing different zone types in MTG Arena."""
@@ -1100,6 +1103,8 @@ class GameStateManager:
                     if event_type in self._draft_callbacks:
                         # Debug: Calling callback for event
                         self._draft_callbacks[event_type](parsed_data)
+                        # Future: Also emit draft event for decoupled communication
+                        # get_event_bus().emit_simple(EventType.DRAFT_PACK_OPENED, parsed_data, source="GameStateManager")
                     else:
                         # Debug: No callback registered for draft event
                         logging.debug(f"No callback registered for draft event: {event_type}")
@@ -1416,7 +1421,10 @@ class GameStateManager:
         
         elapsed = time.time() - start_time
         logging.debug(f"PERFORMANCE: get_current_board_state took {elapsed:.4f} seconds")
-        
+
+        # Future: Emit board state changed event for decoupled communication
+        # get_event_bus().emit_simple(EventType.BOARD_STATE_CHANGED, board_state, source="GameStateManager")
+
         return board_state
 
     def validate_board_state(self, board_state: BoardState) -> bool:
