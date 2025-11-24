@@ -2,7 +2,7 @@
 import logging
 import os
 import time
-from typing import Callable
+from typing import Callable, Any
 import dataclasses
 import json
 import re
@@ -238,6 +238,266 @@ class BoardState:
     game_stage: str = ""  # "GameStage_Start" or "GameStage_Play"
 
 import datetime
+
+@dataclasses.dataclass
+class DraftEvent:
+    """Represents a parsed draft event."""
+    event_type: str  # Event type name (e.g., 'Draft.Notify', 'LogBusinessEvents')
+    data: Dict[str, Any]  # Parsed event data
+    raw_line: str  # Original log line
+
+class DraftEventParser:
+    """
+    Consolidated parser for all draft-related events in MTGA logs.
+
+    This class handles all draft event detection and parsing, consolidating
+    the scattered regex patterns and conditional logic from parse_log_line.
+
+    Supported event types:
+    - Draft.Notify: Premier draft pack notifications
+    - LogBusinessEvents: Premier draft picks
+    - BotDraftDraftStatus: Quick draft status updates
+    - BotDraftDraftPick: Quick draft picks
+    - EventGetCoursesV2: Draft pool updates
+    - Generic <== events: Various draft-related events
+    """
+
+    # Compiled regex patterns for efficiency
+    PATTERNS = {
+        'draft_notify': re.compile(r'\[UnityCrossThreadLogger\]Draft\.Notify (.+)'),
+        'start_event': re.compile(r'\[UnityCrossThreadLogger\]==> (\w+) (.*)'),
+        'end_event': re.compile(r'<== (\w+)\(([a-f0-9-]+)\)'),
+    }
+
+    # Quick string checks before expensive regex (performance optimization)
+    DRAFT_KEYWORDS = ('Draft', 'Pick', 'Pack', 'EventGetCourses', 'Event_GetCourses', 'BotDraft')
+
+    def __init__(self, callbacks: Optional[Dict[str, Callable]] = None):
+        """
+        Initialize with optional callbacks for each event type.
+
+        Args:
+            callbacks: Dict mapping event type to callback function.
+                      Event types: 'Draft.Notify', 'LogBusinessEvents', 'BotDraftDraftStatus',
+                                  'BotDraftDraftPick', 'EventGetCoursesV2', or any <== event name
+        """
+        self.callbacks = callbacks or {}
+        self._next_line_event: Optional[str] = None  # For <== events with JSON on next line
+
+    def register_callback(self, event_type: str, callback: Callable):
+        """Register a callback for a specific draft event type."""
+        self.callbacks[event_type] = callback
+        logging.info(f"Registered draft callback for event type: {event_type}")
+
+    def parse(self, line: str) -> Optional[DraftEvent]:
+        """
+        Parse a log line for draft events.
+
+        Returns DraftEvent if line contains a draft event, None otherwise.
+        Also triggers registered callbacks.
+
+        Args:
+            line: Log line to parse
+
+        Returns:
+            DraftEvent if a draft event was detected and parsed, None otherwise
+        """
+        # Quick pre-check to avoid regex on non-draft lines
+        if not self._quick_draft_check(line):
+            return None
+
+        event = None
+
+        # PATTERN 1: JSON line after <== event marker
+        if self._next_line_event:
+            event = self._parse_deferred_event(line)
+            return event
+
+        # PATTERN 2: Draft.Notify messages (Premier Draft)
+        # Format: [UnityCrossThreadLogger]Draft.Notify {"draftId":"...","SelfPick":5,"SelfPack":1,"PackCards":"..."}
+        if "[UnityCrossThreadLogger]Draft.Notify" in line:
+            event = self._parse_draft_notify(line)
+            if event:
+                self._trigger_callback(event)
+            return event
+
+        # PATTERN 3: Start events with JSON in same line
+        # Format: [UnityCrossThreadLogger]==> EventName {...}
+        if line.startswith("[UnityCrossThreadLogger]==>"):
+            event = self._parse_start_event(line)
+            if event:
+                self._trigger_callback(event)
+            return event
+
+        # PATTERN 4: End event markers (JSON on next line)
+        # Format: <== EventName(uuid)
+        if line.startswith("<=="):
+            self._parse_end_event_marker(line)
+            return None  # Event will be parsed when we see the next line
+
+        return None
+
+    def _quick_draft_check(self, line: str) -> bool:
+        """Quick string check before expensive regex."""
+        return any(kw in line for kw in self.DRAFT_KEYWORDS)
+
+    def _parse_draft_notify(self, line: str) -> Optional[DraftEvent]:
+        """
+        Parse Draft.Notify event (Premier Draft).
+
+        Format: [UnityCrossThreadLogger]Draft.Notify {"draftId":"...","SelfPick":5,"SelfPack":1,"PackCards":"..."}
+        """
+        match = self.PATTERNS['draft_notify'].search(line)
+        if not match:
+            return None
+
+        json_str = match.group(1)
+        try:
+            draft_data = json.loads(json_str)
+
+            # Extract pack and pick numbers (1-indexed)
+            pack_num = draft_data.get("SelfPack", 1)
+            pick_num = draft_data.get("SelfPick", 1)
+
+            # Parse PackCards string (comma-separated card IDs)
+            pack_cards_str = draft_data.get("PackCards", "")
+            pack_arena_ids = []
+            if pack_cards_str:
+                pack_arena_ids = [int(card_id) for card_id in pack_cards_str.split(",")]
+
+            logging.info(f"Draft.Notify: Pack {pack_num}, Pick {pick_num}, {len(pack_arena_ids)} cards")
+
+            # Normalize data format
+            data = {
+                "PackNumber": pack_num,
+                "PickNumber": pick_num,
+                "PackCards": pack_arena_ids,
+                "DraftId": draft_data.get("draftId", "")
+            }
+
+            return DraftEvent(
+                event_type="Draft.Notify",
+                data=data,
+                raw_line=line
+            )
+
+        except (json.JSONDecodeError, ValueError) as e:
+            logging.warning(f"Failed to parse Draft.Notify JSON: {e}")
+            return None
+
+    def _parse_start_event(self, line: str) -> Optional[DraftEvent]:
+        """
+        Parse start event with JSON in same line.
+
+        Format: [UnityCrossThreadLogger]==> EventName {"request": "{...}"}
+        """
+        match = self.PATTERNS['start_event'].search(line)
+        if not match:
+            return None
+
+        event_type = match.group(1)
+        outer_json_str = match.group(2)
+
+        try:
+            outer_json = json.loads(outer_json_str)
+            if "request" in outer_json:
+                inner_json = json.loads(outer_json["request"])
+
+                logging.info(f"Detected start event: {event_type}")
+
+                # Handle LogBusinessEvents (Premier Draft picks)
+                if event_type == "LogBusinessEvents" and "DraftId" in inner_json:
+                    logging.info("Premier Draft pick detected")
+                    return DraftEvent(
+                        event_type=event_type,
+                        data=inner_json,
+                        raw_line=line
+                    )
+
+                # Generic start event
+                return DraftEvent(
+                    event_type=event_type,
+                    data=inner_json,
+                    raw_line=line
+                )
+
+        except (json.JSONDecodeError, ValueError) as e:
+            logging.debug(f"Failed to parse start event JSON: {e}")
+
+        return None
+
+    def _parse_end_event_marker(self, line: str):
+        """
+        Parse end event marker and flag that next line contains JSON.
+
+        Format: <== EventName(uuid)
+        """
+        match = self.PATTERNS['end_event'].search(line)
+        if match:
+            event_type = match.group(1)
+            # Mark that the next line contains the JSON for this event
+            self._next_line_event = event_type
+            logging.debug(f"Detected end event marker: {event_type}, expecting JSON on next line")
+
+    def _parse_deferred_event(self, line: str) -> Optional[DraftEvent]:
+        """
+        Parse the JSON line that follows a <== event marker.
+        """
+        event_type = self._next_line_event
+        self._next_line_event = None  # Clear the flag
+
+        # Try to parse the JSON on this line
+        try:
+            json_start = line.find("{")
+            if json_start == -1:
+                # Some events like LogBusinessEvents return a status string, not JSON
+                logging.debug(f"No JSON found in line after {event_type}, might be status string: {line[:100]}")
+                return None
+
+            parsed_data = json.loads(line[json_start:])
+            logging.info(f"Parsed draft event: {event_type}")
+
+            # Check if data is wrapped in a Payload field (common for BotDraft events)
+            if "Payload" in parsed_data and isinstance(parsed_data["Payload"], str):
+                try:
+                    # Parse the escaped JSON in Payload field
+                    payload_str = parsed_data["Payload"]
+                    if payload_str and payload_str.strip():
+                        inner_data = json.loads(payload_str)
+                        logging.debug(f"Unpacked Payload for {event_type}")
+                        parsed_data = inner_data
+                except json.JSONDecodeError as e:
+                    # Suppress warning for common empty/invalid payloads
+                    logging.debug(f"Failed to parse Payload JSON: {e}")
+
+            event = DraftEvent(
+                event_type=event_type,
+                data=parsed_data,
+                raw_line=line
+            )
+
+            # Trigger callback
+            self._trigger_callback(event)
+
+            return event
+
+        except json.JSONDecodeError as e:
+            logging.warning(f"Failed to parse JSON for draft event {event_type}: {e}")
+            return None
+
+    def _trigger_callback(self, event: DraftEvent):
+        """Trigger registered callback for an event."""
+        if event.event_type in self.callbacks:
+            try:
+                self.callbacks[event.event_type](event.data)
+            except Exception as e:
+                logging.error(f"Error in draft callback for {event.event_type}: {e}")
+        else:
+            logging.debug(f"No callback registered for draft event: {event.event_type}")
+
+    def reset(self):
+        """Reset parser state."""
+        self._next_line_event = None
 
 class MatchScanner:
     """
@@ -918,14 +1178,50 @@ class GameStateManager:
         self._json_buffer: str = ""
         self._json_depth: int = 0
 
-        # Draft event detection
-        self._next_line_event: Optional[str] = None  # For <== events with JSON on next line
-        self._draft_callbacks: Dict[str, Callable] = {}  # Event type -> callback function
+        # P2: Consolidated draft event parser
+        self.draft_parser = DraftEventParser()
+
+        # P2 Performance: BoardState caching
+        self._cached_board_state: Optional[BoardState] = None
+        self._board_state_dirty: bool = True
+        self._last_board_state_hash: int = 0
 
     def register_draft_callback(self, event_type: str, callback: Callable):
-        """Register a callback for a specific draft event type"""
-        self._draft_callbacks[event_type] = callback
-        logging.info(f"Registered draft callback for event type: {event_type}")
+        """Register a callback for a specific draft event type."""
+        self.draft_parser.register_callback(event_type, callback)
+
+    def _mark_board_state_dirty(self):
+        """
+        Mark board state as needing recalculation.
+
+        P2 Performance: This flag prevents redundant board state construction
+        when no game state changes have occurred.
+        """
+        self._board_state_dirty = True
+
+    def _compute_state_hash(self, board_state: BoardState) -> int:
+        """
+        Quick hash to detect meaningful changes in board state.
+
+        P2 Performance: This hash allows us to skip updates when the state
+        hasn't actually changed, even if marked dirty.
+
+        Args:
+            board_state: The board state to hash
+
+        Returns:
+            Integer hash representing the current state
+        """
+        return hash((
+            board_state.your_life,
+            board_state.opponent_life,
+            board_state.current_turn,
+            board_state.current_phase,
+            len(board_state.your_battlefield),
+            len(board_state.opponent_battlefield),
+            board_state.your_hand_count,
+            board_state.has_priority,
+        ))
 
     def _find_gre_event(self, data: dict) -> Optional[dict]:
         """Recursively searches for 'greToClientEvent' within a dictionary."""
@@ -1001,6 +1297,9 @@ class GameStateManager:
                 # New match detected - clear all previous state
                 self.scanner.reset_match_state()
 
+                # P2 Performance: Mark board state dirty on match reset
+                self._mark_board_state_dirty()
+
                 # Count occurrences of each grpId
                 deck_composition = {}
                 for grp_id in deck_cards:
@@ -1074,122 +1373,11 @@ class GameStateManager:
         if "greToClientEvent" in line or "GREMessageType" in line or "gameStateMessage" in line:
             self.scanner.parse_timestamp(line)
 
-        # DRAFT EVENTS: Check if this is the JSON line after an end event marker
-        if self._next_line_event:
-            event_type = self._next_line_event
-            self._next_line_event = None  # Clear the flag
-
-            # Try to parse the JSON on this line
-            try:
-                json_start = line.find("{")
-                if json_start != -1:
-                    parsed_data = json.loads(line[json_start:])
-                    logging.info(f"Parsed draft event: {event_type}")
-
-                    # Check if data is wrapped in a Payload field (common for BotDraft events)
-                    if "Payload" in parsed_data and isinstance(parsed_data["Payload"], str):
-                        try:
-                            # Parse the escaped JSON in Payload field
-                            payload_str = parsed_data["Payload"]
-                            if payload_str and payload_str.strip():
-                                inner_data = json.loads(payload_str)
-                                logging.debug(f"Unpacked Payload for {event_type}")
-                                parsed_data = inner_data
-                        except json.JSONDecodeError as e:
-                            # Suppress warning for common empty/invalid payloads
-                            logging.debug(f"Failed to parse Payload JSON: {e}")
-
-                    # Call the registered callback if it exists
-                    if event_type in self._draft_callbacks:
-                        # Debug: Calling callback for event
-                        self._draft_callbacks[event_type](parsed_data)
-                        # Future: Also emit draft event for decoupled communication
-                        # get_event_bus().emit_simple(EventType.DRAFT_PACK_OPENED, parsed_data, source="GameStateManager")
-                    else:
-                        # Debug: No callback registered for draft event
-                        logging.debug(f"No callback registered for draft event: {event_type}")
-                else:
-                    # Some events like LogBusinessEvents return a status string, not JSON
-                    logging.debug(f"No JSON found in line after {event_type}, might be status string: {line[:100]}")
-            except json.JSONDecodeError as e:
-                logging.warning(f"Failed to parse JSON for draft event {event_type}: {e}")
-
-            return False  # Draft events don't change game state
-
-        # DRAFT EVENTS: Check for Draft.Notify messages (Premier Draft)
-        # Format: [UnityCrossThreadLogger]Draft.Notify {"draftId":"...","SelfPick":5,"SelfPack":1,"PackCards":"..."}
-        if "[UnityCrossThreadLogger]Draft.Notify" in line:
-            match = re.search(r'\[UnityCrossThreadLogger\]Draft\.Notify (.+)', line)
-            if match:
-                json_str = match.group(1)
-                try:
-                    draft_data = json.loads(json_str)
-
-                    # Extract pack and pick numbers (1-indexed)
-                    pack_num = draft_data.get("SelfPack", 1)
-                    pick_num = draft_data.get("SelfPick", 1)
-
-                    # Parse PackCards string (comma-separated card IDs)
-                    pack_cards_str = draft_data.get("PackCards", "")
-                    if pack_cards_str:
-                        pack_arena_ids = [int(card_id) for card_id in pack_cards_str.split(",")]
-
-                        logging.info(f"Draft.Notify: Pack {pack_num}, Pick {pick_num}, {len(pack_arena_ids)} cards")
-                        # Debug: Draft.Notify detected
-
-                        # Call Draft.Notify callback if registered
-                        if "Draft.Notify" in self._draft_callbacks:
-                            callback_data = {
-                                "PackNumber": pack_num,
-                                "PickNumber": pick_num,
-                                "PackCards": pack_arena_ids,
-                                "DraftId": draft_data.get("draftId", "")
-                            }
-                            self._draft_callbacks["Draft.Notify"](callback_data)
-
-                except json.JSONDecodeError as e:
-                    logging.warning(f"Failed to parse Draft.Notify JSON: {e}")
-
-            return False  # Draft events don't change game state
-
-        # DRAFT EVENTS: Check for start events with JSON in same line
-        # Format: [UnityCrossThreadLogger]==> EventName {...}
-        if line.startswith("[UnityCrossThreadLogger]==>"):
-            match = re.search(r'\[UnityCrossThreadLogger\]==> (\w+) (.*)', line)
-            if match:
-                event_type = match.group(1)
-                outer_json_str = match.group(2)
-
-                try:
-                    outer_json = json.loads(outer_json_str)
-                    if "request" in outer_json:
-                        inner_json = json.loads(outer_json["request"])
-
-                        logging.info(f"Detected start event: {event_type}")
-
-                        # Handle LogBusinessEvents (Premier Draft picks)
-                        if event_type == "LogBusinessEvents" and "DraftId" in inner_json:
-                            logging.info(f"Premier Draft pick detected")
-                            if "LogBusinessEvents" in self._draft_callbacks:
-                                self._draft_callbacks["LogBusinessEvents"](inner_json)
-                except json.JSONDecodeError as e:
-                    logging.debug(f"Failed to parse start event JSON: {e}")
-
-            return False  # Draft events don't change game state
-
-        # DRAFT EVENTS: Check for end event markers
-        # Format: <== EventName(uuid)
-        if line.startswith("<=="):
-            match = re.search(r'<== (\w+)\(([a-f0-9-]+)\)', line)
-            if match:
-                event_type = match.group(1)
-                # event_id = match.group(2)  # UUID, not currently used
-
-                # Mark that the next line contains the JSON for this event
-                self._next_line_event = event_type
-                # Debug: Detected end event marker
-                logging.debug(f"Detected end event marker: {event_type}, expecting JSON on next line")
-
+        # P2: Consolidated draft event detection
+        # Use DraftEventParser to handle all draft-related log lines
+        draft_event = self.draft_parser.parse(line)
+        if draft_event is not None:
+            # Draft event was detected and callbacks were triggered
             return False  # Draft events don't change game state
 
         # If we are not building a JSON object, look for the start
@@ -1235,7 +1423,11 @@ class GameStateManager:
 
                 if gre_event_data:
                     logging.debug("Successfully found and parsed GreToClientEvent JSON.")
-                    return self.scanner.parse_gre_to_client_event(gre_event_data)
+                    state_changed = self.scanner.parse_gre_to_client_event(gre_event_data)
+                    # P2 Performance: Mark board state dirty when GRE event changes state
+                    if state_changed:
+                        self._mark_board_state_dirty()
+                    return state_changed
                 else:
                     logging.debug("Parsed JSON but 'greToClientEvent' not found within the object.")
                     return False
@@ -1247,6 +1439,52 @@ class GameStateManager:
         return False
 
     def get_current_board_state(self) -> Optional[BoardState]:
+        """
+        Get current board state with caching.
+
+        P2 Performance: Uses dirty flag to avoid rebuilding board state when nothing changed.
+        If the state hasn't changed since last call, returns cached copy.
+        """
+        start_time = time.time()
+
+        # If not dirty and we have a cached state, return it
+        if not self._board_state_dirty and self._cached_board_state is not None:
+            logging.debug("PERFORMANCE: Returning cached board state (no changes detected)")
+            return self._cached_board_state
+
+        # Build new board state
+        board_state = self._build_board_state()
+
+        if board_state is None:
+            # Can't build state yet (missing player data, etc.)
+            return None
+
+        # Compute hash to detect if state actually changed
+        new_hash = self._compute_state_hash(board_state)
+
+        if new_hash == self._last_board_state_hash and self._cached_board_state is not None:
+            # State hash hasn't changed - return cached version
+            logging.debug("PERFORMANCE: State hash unchanged, returning cached board state")
+            self._board_state_dirty = False
+            return self._cached_board_state
+
+        # State actually changed - cache it
+        self._cached_board_state = board_state
+        self._board_state_dirty = False
+        self._last_board_state_hash = new_hash
+
+        elapsed = time.time() - start_time
+        logging.debug(f"PERFORMANCE: Built new board state in {elapsed:.4f} seconds")
+
+        return board_state
+
+    def _build_board_state(self) -> Optional[BoardState]:
+        """
+        Actually build the board state (existing logic).
+
+        P2 Performance: This method contains the heavy lifting that was previously
+        in get_current_board_state(). It's now only called when state is dirty.
+        """
         start_time = time.time()
         # logging.debug("Attempting to get current board state.")
         if not self.scanner.local_player_seat_id:
@@ -1418,9 +1656,6 @@ class GameStateManager:
                     f"Graveyard: {len(board_state.your_graveyard)}, "
                     f"Exile: {len(board_state.your_exile)}, "
                     f"Library: {board_state.your_library_count}")
-        
-        elapsed = time.time() - start_time
-        logging.debug(f"PERFORMANCE: get_current_board_state took {elapsed:.4f} seconds")
 
         # Future: Emit board state changed event for decoupled communication
         # get_event_bus().emit_simple(EventType.BOARD_STATE_CHANGED, board_state, source="GameStateManager")
