@@ -485,13 +485,83 @@ class AdvisorGUI:
             self.api_key_var.set(api_key)
 
     def _initialize_secondary_windows(self):
-        """Create and configure secondary windows."""
+        """Create and configure secondary windows with close handlers."""
+        # Track which windows are popped out (True = separate window, False = embedded)
+        self._board_popped_out = True
+        self._deck_popped_out = True
+        self._log_popped_out = True
+
         self.board_window = SecondaryWindow(self.root, "Board State",
-            self.prefs.board_window_geometry if self.prefs and hasattr(self.prefs, 'board_window_geometry') else "600x800")
+            self.prefs.board_window_geometry if self.prefs and hasattr(self.prefs, 'board_window_geometry') else "600x800+50+50",
+            on_close=self._on_board_window_close)
         self.deck_window = SecondaryWindow(self.root, "Library",
-            self.prefs.deck_window_geometry if self.prefs and hasattr(self.prefs, 'deck_window_geometry') else "400x600")
+            self.prefs.deck_window_geometry if self.prefs and hasattr(self.prefs, 'deck_window_geometry') else "400x600+700+50",
+            on_close=self._on_deck_window_close)
         self.log_window = SecondaryWindow(self.root, "MTGA Logs",
-            self.prefs.log_window_geometry if self.prefs and hasattr(self.prefs, 'log_window_geometry') else "800x200")
+            self.prefs.log_window_geometry if self.prefs and hasattr(self.prefs, 'log_window_geometry') else "800x200+50+700",
+            on_close=self._on_log_window_close)
+
+    def _on_board_window_close(self):
+        """Handle board window close - save geometry and show embedded version."""
+        if self.board_window and self.board_window.winfo_exists():
+            # Save geometry before hiding
+            if self.prefs:
+                self.prefs.board_window_geometry = self.board_window.geometry()
+            self.board_window.withdraw()
+            self._board_popped_out = False
+            # Show embedded board panel
+            if hasattr(self, '_embedded_board_frame'):
+                self._embedded_board_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+                # Copy current content to embedded view
+                if self.board_state_lines:
+                    self._update_embedded_board(self.board_state_lines)
+
+    def _on_deck_window_close(self):
+        """Handle deck window close - save geometry and show embedded version."""
+        if self.deck_window and self.deck_window.winfo_exists():
+            if self.prefs:
+                self.prefs.deck_window_geometry = self.deck_window.geometry()
+            self.deck_window.withdraw()
+            self._deck_popped_out = False
+            if hasattr(self, '_embedded_deck_frame'):
+                self._embedded_deck_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+
+    def _on_log_window_close(self):
+        """Handle log window close - save geometry and show embedded version."""
+        if self.log_window and self.log_window.winfo_exists():
+            if self.prefs:
+                self.prefs.log_window_geometry = self.log_window.geometry()
+            self.log_window.withdraw()
+            self._log_popped_out = False
+            if hasattr(self, '_embedded_log_frame'):
+                self._embedded_log_frame.pack(fill=tk.X, pady=(5, 0))
+
+    def _pop_out_board(self):
+        """Pop out the board panel to a separate window."""
+        if hasattr(self, '_embedded_board_frame'):
+            self._embedded_board_frame.pack_forget()
+        self._board_popped_out = True
+        if self.board_window:
+            self.board_window.deiconify()
+            self.board_window.lift()
+
+    def _pop_out_deck(self):
+        """Pop out the deck panel to a separate window."""
+        if hasattr(self, '_embedded_deck_frame'):
+            self._embedded_deck_frame.pack_forget()
+        self._deck_popped_out = True
+        if self.deck_window:
+            self.deck_window.deiconify()
+            self.deck_window.lift()
+
+    def _pop_out_log(self):
+        """Pop out the log panel to a separate window."""
+        if hasattr(self, '_embedded_log_frame'):
+            self._embedded_log_frame.pack_forget()
+        self._log_popped_out = True
+        if self.log_window:
+            self.log_window.deiconify()
+            self.log_window.lift()
 
     def _ensure_windows_visible(self):
         """Ensure secondary windows are visible on startup."""
@@ -587,9 +657,9 @@ class AdvisorGUI:
         tk.Label(settings_frame, text="Windows:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
         windows_frame = tk.Frame(settings_frame, bg=self.bg_color)
         windows_frame.pack(fill=tk.X, pady=5)
-        tk.Button(windows_frame, text="Board", command=lambda: self.board_window.deiconify(), bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
-        tk.Button(windows_frame, text="Deck", command=lambda: self.deck_window.deiconify(), bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
-        tk.Button(windows_frame, text="Logs", command=lambda: self.log_window.deiconify(), bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        tk.Button(windows_frame, text="Board", command=self._pop_out_board, bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        tk.Button(windows_frame, text="Deck", command=self._pop_out_deck, bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        tk.Button(windows_frame, text="Logs", command=self._pop_out_log, bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
         tk.Button(settings_frame, text="Clear Messages", command=self._clear_messages, bg='#3a3a3a', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=(20, 5), fill=tk.X)
         tk.Button(settings_frame, text="🐛 Bug Report (F12)", command=self._capture_bug_report, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
         button_frame = tk.Frame(settings_frame, bg=self.bg_color)
@@ -600,6 +670,8 @@ class AdvisorGUI:
         # Main content area
         content_frame = tk.Frame(self.root, bg=self.bg_color)
         content_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self._content_frame = content_frame  # Store reference for embedded panels
+
         self.advisor_label = tk.Label(content_frame, text="═══ ADVISOR MESSAGES ═══", bg=self.bg_color, fg=self.accent_color, font=('Consolas', 10, 'bold'))
         self.advisor_label.pack(pady=(0, 5))
         self.messages_text = scrolledtext.ScrolledText(content_frame, height=20, bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 9), relief=tk.FLAT, padx=10, pady=10)
@@ -612,7 +684,64 @@ class AdvisorGUI:
         self.messages_text.tag_config('red', foreground='#ff5555')
         self.messages_text.tag_config('white', foreground='#ffffff')
 
+        # Create embedded panels (initially hidden - shown when windows are closed)
+        self._create_embedded_panels(content_frame)
+
         self.log_highlighter = LogHighlighter(card_db=None)
+
+    def _create_embedded_panels(self, parent):
+        """Create embedded panels that show when secondary windows are closed."""
+        # Embedded Board State Panel
+        self._embedded_board_frame = tk.LabelFrame(parent, text="📋 Board State (click 'Board' to pop out)",
+            bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+        self._embedded_board_text = scrolledtext.ScrolledText(self._embedded_board_frame, height=8,
+            bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
+        self._embedded_board_text.pack(fill=tk.BOTH, expand=True)
+        self._embedded_board_text.config(state=tk.DISABLED)
+        # Don't pack yet - will be shown when board window is closed
+
+        # Embedded Deck/Library Panel
+        self._embedded_deck_frame = tk.LabelFrame(parent, text="📚 Library (click 'Deck' to pop out)",
+            bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+        self._embedded_deck_text = scrolledtext.ScrolledText(self._embedded_deck_frame, height=6,
+            bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
+        self._embedded_deck_text.pack(fill=tk.BOTH, expand=True)
+        self._embedded_deck_text.config(state=tk.DISABLED)
+        # Don't pack yet
+
+        # Embedded Log Panel
+        self._embedded_log_frame = tk.LabelFrame(parent, text="📜 MTGA Logs (click 'Logs' to pop out)",
+            bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+        self._embedded_log_text = scrolledtext.ScrolledText(self._embedded_log_frame, height=4,
+            bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
+        self._embedded_log_text.pack(fill=tk.BOTH, expand=True)
+        self._embedded_log_text.config(state=tk.DISABLED)
+        # Don't pack yet
+
+    def _update_embedded_board(self, lines):
+        """Update the embedded board state panel."""
+        if hasattr(self, '_embedded_board_text'):
+            self._embedded_board_text.config(state=tk.NORMAL)
+            self._embedded_board_text.delete(1.0, tk.END)
+            self._embedded_board_text.insert(tk.END, '\n'.join(lines))
+            self._embedded_board_text.config(state=tk.DISABLED)
+
+    def _update_embedded_deck(self, lines):
+        """Update the embedded deck panel."""
+        if hasattr(self, '_embedded_deck_text'):
+            self._embedded_deck_text.config(state=tk.NORMAL)
+            self._embedded_deck_text.delete(1.0, tk.END)
+            self._embedded_deck_text.insert(tk.END, '\n'.join(lines))
+            self._embedded_deck_text.config(state=tk.DISABLED)
+
+    def _update_embedded_log(self, text):
+        """Update the embedded log panel."""
+        if hasattr(self, '_embedded_log_text'):
+            self._embedded_log_text.config(state=tk.NORMAL)
+            self._embedded_log_text.delete(1.0, tk.END)
+            self._embedded_log_text.insert(tk.END, text)
+            self._embedded_log_text.see(tk.END)
+            self._embedded_log_text.config(state=tk.DISABLED)
 
     def _on_provider_change(self, event=None):
         """Handle provider selection change."""
@@ -1149,12 +1278,20 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
                     self.status_label.config(text=value)
 
             elif key == "board_state":
-                if self.board_window and self.board_window.winfo_exists():
+                # Update secondary window if popped out
+                if self._board_popped_out and self.board_window and self.board_window.winfo_exists():
                     self.board_window.update_text(value)
+                # Also update embedded panel if visible
+                elif not self._board_popped_out:
+                    self._update_embedded_board(value)
 
             elif key == "deck_content":
-                if self.deck_window and self.deck_window.winfo_exists():
+                # Update secondary window if popped out
+                if self._deck_popped_out and self.deck_window and self.deck_window.winfo_exists():
                     self.deck_window.update_text(value)
+                # Also update embedded panel if visible
+                elif not self._deck_popped_out:
+                    self._update_embedded_deck(value)
 
             elif key == "deck_window_title":
                 if self.deck_window and self.deck_window.winfo_exists():
@@ -1163,11 +1300,18 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
             elif key == "draft_panes":
                 # value is a tuple: (pack_lines, picked_lines, picked_count, total_needed)
                 pack_lines, picked_lines, picked_count, total_needed = value
-                if self.board_window and self.board_window.winfo_exists():
+                # Update board/pack window
+                if self._board_popped_out and self.board_window and self.board_window.winfo_exists():
                     self.board_window.update_text(pack_lines)
-                if self.deck_window and self.deck_window.winfo_exists() and picked_lines:
+                elif not self._board_popped_out:
+                    self._update_embedded_board(pack_lines)
+                # Update deck/picked window
+                if picked_lines:
                     deck_lines = [f"=== PICKED CARDS ({picked_count}/{total_needed}) ==="] + picked_lines
-                    self.deck_window.update_text(deck_lines)
+                    if self._deck_popped_out and self.deck_window and self.deck_window.winfo_exists():
+                        self.deck_window.update_text(deck_lines)
+                    elif not self._deck_popped_out:
+                        self._update_embedded_deck(deck_lines)
 
             elif key == "messages":
                 # value is a list of (msg, color) tuples
