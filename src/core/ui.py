@@ -486,10 +486,11 @@ class AdvisorGUI:
 
     def _initialize_secondary_windows(self):
         """Create and configure secondary windows with close handlers."""
-        # Track which windows are popped out (True = separate window, False = embedded)
-        self._board_popped_out = True
-        self._deck_popped_out = True
-        self._log_popped_out = True
+        # Track which windows are popped out (True = separate window, False = docked/embedded)
+        # Default to docked (False) - load from preferences
+        self._board_popped_out = not (self.prefs.board_window_docked if self.prefs and hasattr(self.prefs, 'board_window_docked') else True)
+        self._deck_popped_out = not (self.prefs.deck_window_docked if self.prefs and hasattr(self.prefs, 'deck_window_docked') else True)
+        self._log_popped_out = not (self.prefs.log_window_docked if self.prefs and hasattr(self.prefs, 'log_window_docked') else True)
 
         self.board_window = SecondaryWindow(self.root, "Board State",
             self.prefs.board_window_geometry if self.prefs and hasattr(self.prefs, 'board_window_geometry') else "600x800+50+50",
@@ -507,6 +508,7 @@ class AdvisorGUI:
             # Save geometry before hiding
             if self.prefs:
                 self.prefs.board_window_geometry = self.board_window.geometry()
+                self.prefs.board_window_docked = True  # Save docked state
             self.board_window.withdraw()
             self._board_popped_out = False
             # Show embedded board panel in paned window
@@ -521,6 +523,7 @@ class AdvisorGUI:
         if self.deck_window and self.deck_window.winfo_exists():
             if self.prefs:
                 self.prefs.deck_window_geometry = self.deck_window.geometry()
+                self.prefs.deck_window_docked = True  # Save docked state
             self.deck_window.withdraw()
             self._deck_popped_out = False
             if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned'):
@@ -531,6 +534,7 @@ class AdvisorGUI:
         if self.log_window and self.log_window.winfo_exists():
             if self.prefs:
                 self.prefs.log_window_geometry = self.log_window.geometry()
+                self.prefs.log_window_docked = True  # Save docked state
             self.log_window.withdraw()
             self._log_popped_out = False
             if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned'):
@@ -544,6 +548,8 @@ class AdvisorGUI:
             except tk.TclError:
                 pass  # Already removed
         self._board_popped_out = True
+        if self.prefs:
+            self.prefs.board_window_docked = False  # Save popped out state
         if self.board_window:
             self.board_window.deiconify()
             self.board_window.lift()
@@ -556,6 +562,8 @@ class AdvisorGUI:
             except tk.TclError:
                 pass  # Already removed
         self._deck_popped_out = True
+        if self.prefs:
+            self.prefs.deck_window_docked = False  # Save popped out state
         if self.deck_window:
             self.deck_window.deiconify()
             self.deck_window.lift()
@@ -568,18 +576,44 @@ class AdvisorGUI:
             except tk.TclError:
                 pass  # Already removed
         self._log_popped_out = True
+        if self.prefs:
+            self.prefs.log_window_docked = False  # Save popped out state
         if self.log_window:
             self.log_window.deiconify()
             self.log_window.lift()
 
     def _ensure_windows_visible(self):
-        """Ensure secondary windows are visible on startup."""
+        """Show windows based on saved docked state preferences."""
         try:
-            if self.board_window: self.board_window.deiconify()
-            if self.deck_window: self.deck_window.deiconify()
-            if self.log_window: self.log_window.deiconify()
+            # Only show popped-out windows if they were previously popped out
+            if self._board_popped_out and self.board_window:
+                self.board_window.deiconify()
+            elif not self._board_popped_out:
+                # Dock the board window
+                if self.board_window:
+                    self.board_window.withdraw()
+                if hasattr(self, '_embedded_board_frame') and hasattr(self, '_content_paned'):
+                    self._content_paned.add(self._embedded_board_frame, stretch="always", minsize=80)
+
+            if self._deck_popped_out and self.deck_window:
+                self.deck_window.deiconify()
+            elif not self._deck_popped_out:
+                # Dock the deck window
+                if self.deck_window:
+                    self.deck_window.withdraw()
+                if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned'):
+                    self._content_paned.add(self._embedded_deck_frame, stretch="always", minsize=80)
+
+            if self._log_popped_out and self.log_window:
+                self.log_window.deiconify()
+            elif not self._log_popped_out:
+                # Dock the log window
+                if self.log_window:
+                    self.log_window.withdraw()
+                if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned'):
+                    self._content_paned.add(self._embedded_log_frame, stretch="never", minsize=60)
         except Exception as e:
-            logging.error(f"Error showing secondary windows: {e}")
+            logging.error(f"Error setting up window visibility: {e}")
 
     def _create_widgets(self):
         """Create all GUI widgets"""

@@ -37,6 +37,11 @@ class UserPreferences:
     board_window_geometry: str = "600x800+50+50"
     log_window_geometry: str = "800x400+50+600"
 
+    # Secondary window docked state (True = docked/embedded, False = popped out)
+    board_window_docked: bool = True
+    deck_window_docked: bool = True
+    log_window_docked: bool = True
+
     # UI preferences
     theme: str = "dark"  # dark/light
     show_board_state: bool = True
