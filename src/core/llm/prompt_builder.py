@@ -379,6 +379,7 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
             # Count lands on battlefield using card database lookup
             total_lands = 0
             untapped_lands = 0
+            logger.debug(f"Counting lands from {len(my_battlefield)} battlefield cards")
             for card in my_battlefield:
                 is_dict = isinstance(card, dict)
                 grp_id = card.get('grp_id') if is_dict else getattr(card, 'grp_id', None)
@@ -392,12 +393,14 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
                         type_line = card_data.get('type_line', '')
                         if 'Land' in type_line:
                             is_land = True
+                            logger.debug(f"Found land: {card_data.get('name')} (grp_id={grp_id}, tapped={is_tapped})")
 
                 if is_land:
                     total_lands += 1
                     if not is_tapped:
                         untapped_lands += 1
 
+            logger.info(f"Mana availability: {total_lands} lands total, {untapped_lands} untapped")
             context_lines.append(f"  Lands: {total_lands} total, {untapped_lands} untapped (mana available)")
 
         context_lines.append("\n**My Hand:**")
