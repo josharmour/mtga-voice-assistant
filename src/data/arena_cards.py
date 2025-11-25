@@ -19,14 +19,40 @@ class ArenaCardDatabase:
     To update this database when new sets release, run:
         python tools/build_unified_card_database.py
     """
+
+    # Threshold for warning about unknown cards
+    UNKNOWN_CARD_WARNING_THRESHOLD = 5
+
     def __init__(self, db_path: str = "data/unified_cards.db"):
         self.db_path = Path(db_path)
         self._cache = {}  # In-memory cache: grpId -> dict
+        self._unknown_cards = set()  # Track unique unknown grpIds
+        self._unknown_card_callback = None  # Callback when threshold exceeded
 
         if not self.db_path.exists():
             logger.warning(f"Arena card database not found at {db_path}. Run 'python tools/build_unified_card_database.py' to create it.")
 
         self._load_database()
+
+    def set_unknown_card_callback(self, callback):
+        """Set a callback function to be called when unknown card threshold is exceeded.
+
+        The callback receives the count of unknown cards as an argument.
+        """
+        self._unknown_card_callback = callback
+
+    @property
+    def unknown_card_count(self) -> int:
+        """Return the number of unique unknown cards encountered."""
+        return len(self._unknown_cards)
+
+    def get_unknown_cards(self) -> set:
+        """Return the set of unknown grpIds."""
+        return self._unknown_cards.copy()
+
+    def clear_unknown_cards(self):
+        """Clear the unknown cards tracking."""
+        self._unknown_cards.clear()
 
     def _load_database(self):
         """Load the entire database into memory for fast lookups."""
@@ -60,21 +86,37 @@ class ArenaCardDatabase:
         # Fast memory lookup
         if grp_id in self._cache:
             return self._cache[grp_id]["name"]
-        
-        # BLOCKING FALLBACK REMOVED: Rely on local DB to prevent performance issues.
-        # if self.scryfall_client: ...
-        
-        logger.debug(f"Cache miss for grpId {grp_id}")
+
+        # Track unknown card
+        self._track_unknown_card(grp_id)
         return f"Unknown Card {grp_id}"
 
     def get_card_data(self, grp_id: int) -> Optional[Dict]:
         """Get full card data by Arena grpId."""
         if grp_id in self._cache:
             return self._cache[grp_id]
-            
-        # BLOCKING FALLBACK REMOVED
-                
+
+        # Track unknown card
+        if grp_id and grp_id != 0:
+            self._track_unknown_card(grp_id)
+
         return None
+
+    def _track_unknown_card(self, grp_id: int):
+        """Track an unknown card and trigger callback if threshold exceeded."""
+        if grp_id in self._unknown_cards:
+            return  # Already tracked
+
+        self._unknown_cards.add(grp_id)
+        logger.warning(f"Unknown card grpId {grp_id} - total unknown: {len(self._unknown_cards)}")
+
+        # Trigger callback if threshold exceeded
+        if (self._unknown_card_callback and
+            len(self._unknown_cards) >= self.UNKNOWN_CARD_WARNING_THRESHOLD):
+            try:
+                self._unknown_card_callback(len(self._unknown_cards))
+            except Exception as e:
+                logger.error(f"Error in unknown card callback: {e}")
 
     def close(self):
         # No connection to close anymore

@@ -641,7 +641,13 @@ class CLIVoiceAdvisor:
         if self.use_gui:
             self.tk_root = tk.Tk()
             self.gui = AdvisorGUI(self.tk_root, self)
-            
+
+            # Set up unknown card warning callback
+            if self.arena_db:
+                self.arena_db.set_unknown_card_callback(
+                    lambda count: self.gui.show_unknown_cards_warning(count)
+                )
+
             # Initialize GUI with current settings
             self.gui.update_settings(
                 models=self.available_models,
@@ -652,14 +658,14 @@ class CLIVoiceAdvisor:
                 volume=int(self.tts.volume * 100) if self.tts else (self.prefs.volume if self.prefs else 80),
                 tts_engine=self.tts.tts_engine if self.tts else "kokoro"
             )
-            
+
             # Set initial status
             self._update_status()
-            
+
             # Start log following in a separate thread
             log_thread = threading.Thread(target=self._follow_log, daemon=True)
             log_thread.start()
-            
+
             self.tk_root.mainloop()
         else:
             # CLI mode

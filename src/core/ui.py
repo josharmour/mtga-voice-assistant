@@ -671,6 +671,27 @@ class AdvisorGUI:
         tk.Button(windows_frame, text="Logs", command=self._pop_out_log, bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
         tk.Button(settings_frame, text="Clear Messages", command=self._clear_messages, bg='#3a3a3a', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=(20, 5), fill=tk.X)
         tk.Button(settings_frame, text="🐛 Bug Report (F12)", command=self._capture_bug_report, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
+
+        # Unknown cards warning frame (initially hidden)
+        self._unknown_cards_frame = tk.Frame(settings_frame, bg='#553300')
+        self._unknown_cards_label = tk.Label(
+            self._unknown_cards_frame,
+            text="⚠ Unknown cards detected!",
+            bg='#553300', fg='#ffaa00',
+            font=('Consolas', 9, 'bold'),
+            wraplength=220
+        )
+        self._unknown_cards_label.pack(pady=5, padx=5)
+        tk.Button(
+            self._unknown_cards_frame,
+            text="📥 Update Card Database",
+            command=self._update_card_database,
+            bg='#ffaa00', fg='#1a1a1a',
+            relief=tk.FLAT, padx=10, pady=5,
+            font=('Consolas', 9, 'bold')
+        ).pack(pady=(0, 5), fill=tk.X, padx=5)
+        # Don't pack yet - shown when unknown cards are detected
+
         button_frame = tk.Frame(settings_frame, bg=self.bg_color)
         button_frame.pack(pady=5, fill=tk.X)
         tk.Button(button_frame, text="🔄 Restart App", command=self._on_restart, bg=self.info_color, fg='#1a1a1a', relief=tk.FLAT, padx=10, pady=5, font=('Consolas', 9, 'bold')).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
@@ -926,6 +947,96 @@ class AdvisorGUI:
                 logging.error(f"Error processing log queue: {e}")
                 if self.root and self.root.winfo_exists():
                     self.root.after(500, self._process_log_queue)
+
+    def show_unknown_cards_warning(self, count: int):
+        """Show the unknown cards warning in the UI.
+
+        Called by ArenaCardDatabase when unknown card threshold is exceeded.
+        Must be called from the main thread via root.after().
+        """
+        def _show():
+            if hasattr(self, '_unknown_cards_frame'):
+                self._unknown_cards_label.config(
+                    text=f"⚠ {count} unknown cards!\nUpdate database for new sets."
+                )
+                self._unknown_cards_frame.pack(pady=5, fill=tk.X, before=self._get_button_frame())
+
+        # Schedule on main thread if called from callback
+        if self.root and self.root.winfo_exists():
+            self.root.after(0, _show)
+
+    def _get_button_frame(self):
+        """Get the button frame widget for positioning."""
+        # Find the frame containing Restart/Exit buttons
+        for child in self._unknown_cards_frame.master.winfo_children():
+            if isinstance(child, tk.Frame):
+                for subchild in child.winfo_children():
+                    if isinstance(subchild, tk.Button) and "Restart" in str(subchild.cget('text')):
+                        return child
+        return None
+
+    def hide_unknown_cards_warning(self):
+        """Hide the unknown cards warning."""
+        if hasattr(self, '_unknown_cards_frame'):
+            self._unknown_cards_frame.pack_forget()
+
+    def _update_card_database(self):
+        """Run the card database update script."""
+        import sys
+        from tkinter import messagebox
+
+        # Confirm with user
+        result = messagebox.askyesno(
+            "Update Card Database",
+            "This will update the card database from your MTGA installation.\n\n"
+            "Make sure MTGA is installed and has been run at least once.\n\n"
+            "The app will restart after the update.\n\n"
+            "Continue?",
+            parent=self.root
+        )
+
+        if not result:
+            return
+
+        self.add_message("📥 Starting card database update...", "cyan")
+        logging.info("User initiated card database update")
+
+        def run_update():
+            try:
+                # Run the build script
+                script_path = Path(__file__).parent.parent.parent / "tools" / "build_unified_card_database.py"
+
+                if not script_path.exists():
+                    self.root.after(0, lambda: self.add_message(f"❌ Build script not found at {script_path}", "red"))
+                    return
+
+                result = subprocess.run(
+                    [sys.executable, str(script_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 minute timeout
+                )
+
+                if result.returncode == 0:
+                    self.root.after(0, lambda: self.add_message("✅ Card database updated successfully!", "green"))
+                    self.root.after(0, lambda: self.add_message("🔄 Restarting to load new cards...", "cyan"))
+                    # Hide the warning
+                    self.root.after(0, self.hide_unknown_cards_warning)
+                    # Restart after a brief delay
+                    self.root.after(1500, self._on_restart)
+                else:
+                    error_msg = result.stderr[:200] if result.stderr else "Unknown error"
+                    self.root.after(0, lambda: self.add_message(f"❌ Update failed: {error_msg}", "red"))
+                    logging.error(f"Card database update failed: {result.stderr}")
+
+            except subprocess.TimeoutExpired:
+                self.root.after(0, lambda: self.add_message("❌ Update timed out after 5 minutes", "red"))
+            except Exception as e:
+                self.root.after(0, lambda: self.add_message(f"❌ Update error: {e}", "red"))
+                logging.error(f"Card database update error: {e}")
+
+        # Run in background thread
+        threading.Thread(target=run_update, daemon=True).start()
 
     def _on_restart(self):
         """Handle restart button click - restarts the application."""
