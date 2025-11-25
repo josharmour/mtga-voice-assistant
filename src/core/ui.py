@@ -509,9 +509,9 @@ class AdvisorGUI:
                 self.prefs.board_window_geometry = self.board_window.geometry()
             self.board_window.withdraw()
             self._board_popped_out = False
-            # Show embedded board panel
-            if hasattr(self, '_embedded_board_frame'):
-                self._embedded_board_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+            # Show embedded board panel in paned window
+            if hasattr(self, '_embedded_board_frame') and hasattr(self, '_content_paned'):
+                self._content_paned.add(self._embedded_board_frame, stretch="always", minsize=80)
                 # Copy current content to embedded view
                 if self.board_state_lines:
                     self._update_embedded_board(self.board_state_lines)
@@ -523,8 +523,8 @@ class AdvisorGUI:
                 self.prefs.deck_window_geometry = self.deck_window.geometry()
             self.deck_window.withdraw()
             self._deck_popped_out = False
-            if hasattr(self, '_embedded_deck_frame'):
-                self._embedded_deck_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+            if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned'):
+                self._content_paned.add(self._embedded_deck_frame, stretch="always", minsize=80)
 
     def _on_log_window_close(self):
         """Handle log window close - save geometry and show embedded version."""
@@ -533,13 +533,16 @@ class AdvisorGUI:
                 self.prefs.log_window_geometry = self.log_window.geometry()
             self.log_window.withdraw()
             self._log_popped_out = False
-            if hasattr(self, '_embedded_log_frame'):
-                self._embedded_log_frame.pack(fill=tk.X, pady=(5, 0))
+            if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned'):
+                self._content_paned.add(self._embedded_log_frame, stretch="never", minsize=60)
 
     def _pop_out_board(self):
         """Pop out the board panel to a separate window."""
-        if hasattr(self, '_embedded_board_frame'):
-            self._embedded_board_frame.pack_forget()
+        if hasattr(self, '_embedded_board_frame') and hasattr(self, '_content_paned'):
+            try:
+                self._content_paned.forget(self._embedded_board_frame)
+            except tk.TclError:
+                pass  # Already removed
         self._board_popped_out = True
         if self.board_window:
             self.board_window.deiconify()
@@ -547,8 +550,11 @@ class AdvisorGUI:
 
     def _pop_out_deck(self):
         """Pop out the deck panel to a separate window."""
-        if hasattr(self, '_embedded_deck_frame'):
-            self._embedded_deck_frame.pack_forget()
+        if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned'):
+            try:
+                self._content_paned.forget(self._embedded_deck_frame)
+            except tk.TclError:
+                pass  # Already removed
         self._deck_popped_out = True
         if self.deck_window:
             self.deck_window.deiconify()
@@ -556,8 +562,11 @@ class AdvisorGUI:
 
     def _pop_out_log(self):
         """Pop out the log panel to a separate window."""
-        if hasattr(self, '_embedded_log_frame'):
-            self._embedded_log_frame.pack_forget()
+        if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned'):
+            try:
+                self._content_paned.forget(self._embedded_log_frame)
+            except tk.TclError:
+                pass  # Already removed
         self._log_popped_out = True
         if self.log_window:
             self.log_window.deiconify()
@@ -667,14 +676,16 @@ class AdvisorGUI:
         tk.Button(button_frame, text="🔄 Restart App", command=self._on_restart, bg=self.info_color, fg='#1a1a1a', relief=tk.FLAT, padx=10, pady=5, font=('Consolas', 9, 'bold')).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         tk.Button(button_frame, text="Exit", command=self._on_exit, bg=self.warning_color, fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
-        # Main content area
-        content_frame = tk.Frame(self.root, bg=self.bg_color)
-        content_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self._content_frame = content_frame  # Store reference for embedded panels
+        # Main content area with resizable panes
+        self._content_paned = tk.PanedWindow(self.root, orient=tk.VERTICAL, bg=self.bg_color,
+            sashwidth=6, sashrelief=tk.RAISED, sashpad=2)
+        self._content_paned.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        self.advisor_label = tk.Label(content_frame, text="═══ ADVISOR MESSAGES ═══", bg=self.bg_color, fg=self.accent_color, font=('Consolas', 10, 'bold'))
+        # Messages pane (always visible)
+        messages_frame = tk.Frame(self._content_paned, bg=self.bg_color)
+        self.advisor_label = tk.Label(messages_frame, text="═══ ADVISOR MESSAGES ═══", bg=self.bg_color, fg=self.accent_color, font=('Consolas', 10, 'bold'))
         self.advisor_label.pack(pady=(0, 5))
-        self.messages_text = scrolledtext.ScrolledText(content_frame, height=20, bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 9), relief=tk.FLAT, padx=10, pady=10)
+        self.messages_text = scrolledtext.ScrolledText(messages_frame, height=20, bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 9), relief=tk.FLAT, padx=10, pady=10)
         self.messages_text.pack(fill=tk.BOTH, expand=True)
         self.messages_text.config(state=tk.DISABLED)
         self.messages_text.tag_config('green', foreground='#00ff88')
@@ -683,40 +694,41 @@ class AdvisorGUI:
         self.messages_text.tag_config('yellow', foreground='#ffff00')
         self.messages_text.tag_config('red', foreground='#ff5555')
         self.messages_text.tag_config('white', foreground='#ffffff')
+        self._content_paned.add(messages_frame, stretch="always", minsize=100)
 
-        # Create embedded panels (initially hidden - shown when windows are closed)
-        self._create_embedded_panels(content_frame)
+        # Create embedded panels (initially hidden - added to paned window when windows are closed)
+        self._create_embedded_panels()
 
         self.log_highlighter = LogHighlighter(card_db=None)
 
-    def _create_embedded_panels(self, parent):
+    def _create_embedded_panels(self):
         """Create embedded panels that show when secondary windows are closed."""
         # Embedded Board State Panel
-        self._embedded_board_frame = tk.LabelFrame(parent, text="📋 Board State (click 'Board' to pop out)",
+        self._embedded_board_frame = tk.LabelFrame(self._content_paned, text="📋 Board State (click 'Board' to pop out)",
             bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
         self._embedded_board_text = scrolledtext.ScrolledText(self._embedded_board_frame, height=8,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_board_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_board_text.config(state=tk.DISABLED)
-        # Don't pack yet - will be shown when board window is closed
+        # Don't add to paned window yet - will be added when board window is closed
 
         # Embedded Deck/Library Panel
-        self._embedded_deck_frame = tk.LabelFrame(parent, text="📚 Library (click 'Deck' to pop out)",
+        self._embedded_deck_frame = tk.LabelFrame(self._content_paned, text="📚 Library (click 'Deck' to pop out)",
             bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
         self._embedded_deck_text = scrolledtext.ScrolledText(self._embedded_deck_frame, height=6,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_deck_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_deck_text.config(state=tk.DISABLED)
-        # Don't pack yet
+        # Don't add yet
 
         # Embedded Log Panel
-        self._embedded_log_frame = tk.LabelFrame(parent, text="📜 MTGA Logs (click 'Logs' to pop out)",
+        self._embedded_log_frame = tk.LabelFrame(self._content_paned, text="📜 MTGA Logs (click 'Logs' to pop out)",
             bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
         self._embedded_log_text = scrolledtext.ScrolledText(self._embedded_log_frame, height=4,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_log_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_log_text.config(state=tk.DISABLED)
-        # Don't pack yet
+        # Don't add yet
 
     def _update_embedded_board(self, lines):
         """Update the embedded board state panel."""
