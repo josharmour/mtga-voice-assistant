@@ -144,35 +144,31 @@ class BoardStateFormatter:
 
     def _is_land(self, card) -> bool:
         """
-        Determine if a card is a land using multiple checks.
+        Determine if a card is a land by looking up its type in the card database.
 
         Args:
             card: Card object to check
 
         Returns:
-            True if the card appears to be a land
+            True if the card is a land
         """
-        # Check card_types for Land (Arena format: CardType_Land)
+        # Use card database lookup if available
+        grp_id = getattr(card, 'grp_id', None)
+        if grp_id and self.card_db:
+            card_data = self.card_db.get_card_data(grp_id)
+            if card_data:
+                type_line = card_data.get('type_line', '')
+                if 'Land' in type_line:
+                    return True
+
+        # Fallback: Check card_types for Land (Arena format: CardType_Land)
         card_types = getattr(card, 'card_types', []) or []
         if any('Land' in str(ct) for ct in card_types):
             return True
 
-        # Check type_line for Land
-        type_line = getattr(card, 'type_line', '') or ''
-        if 'Land' in type_line:
-            return True
-
-        # Check for basic lands by name
+        # Fallback: Check for basic lands by name
         if card.name in ["Plains", "Island", "Swamp", "Mountain", "Forest"]:
             return True
-
-        # Check if "Land" is in the card name (dual lands like "Sun-Blessed Peak" won't match this)
-        if "Land" in card.name:
-            return True
-
-        # If it has power/toughness, it's likely not a land (probably a creature)
-        if card.power is not None:
-            return False
 
         return False
 

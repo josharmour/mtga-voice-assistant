@@ -376,39 +376,22 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
             mana_str = ", ".join([f"{k}:{v}" for k, v in your_mana.items() if v > 0])
             context_lines.append(f"  Current Mana Pool: {mana_str}")
         else:
-            # Count lands on battlefield by checking card_types, type_line, and name
-            basic_land_names = ["Plains", "Island", "Swamp", "Mountain", "Forest"]
+            # Count lands on battlefield using card database lookup
             total_lands = 0
             untapped_lands = 0
             for card in my_battlefield:
                 is_dict = isinstance(card, dict)
-                card_name = str(card.get('name', '') if is_dict else getattr(card, 'name', ''))
-                card_types = card.get('card_types', []) if is_dict else getattr(card, 'card_types', [])
-                type_line = str(card.get('type_line', '') if is_dict else getattr(card, 'type_line', ''))
+                grp_id = card.get('grp_id') if is_dict else getattr(card, 'grp_id', None)
                 is_tapped = card.get('is_tapped', False) if is_dict else getattr(card, 'is_tapped', False)
 
-                # Check if it's a land - multiple methods
+                # Look up card data to check if it's a land
                 is_land = False
-
-                # Method 1: Check card_types list for CardType_Land
-                if card_types:
-                    if any('Land' in str(ct) for ct in card_types):
-                        is_land = True
-
-                # Method 2: Check type_line string for Land
-                if not is_land and 'Land' in type_line:
-                    is_land = True
-
-                # Method 3: Check if it's a basic land by name
-                if not is_land and card_name in basic_land_names:
-                    is_land = True
-
-                # Method 4: Check if name contains common dual land patterns
-                if not is_land and any(pattern in card_name for pattern in ['Peak', 'Shore', 'Falls', 'Grove', 'Pass', 'Gate', 'Temple']):
-                    # Could be a dual land - check if it has no power (creatures have power)
-                    power = card.get('power') if is_dict else getattr(card, 'power', None)
-                    if power is None:
-                        is_land = True
+                if grp_id and self.arena_db:
+                    card_data = self.arena_db.get_card_data(grp_id)
+                    if card_data:
+                        type_line = card_data.get('type_line', '')
+                        if 'Land' in type_line:
+                            is_land = True
 
                 if is_land:
                     total_lands += 1
