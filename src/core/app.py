@@ -285,6 +285,9 @@ class CLIVoiceAdvisor:
                 self.game_state_mgr.register_draft_callback("BotDraftDraftStatus", self._on_quick_draft_status)
                 self.game_state_mgr.register_draft_callback("BotDraftDraftPick", self._on_quick_draft_pick)
 
+                # Recover draft state if app is started mid-draft
+                self.game_state_mgr.recover_draft_state(self.log_follower)
+
                 # Future: Subscribe to events for decoupled communication
                 # Example event subscriptions (replacing direct callbacks):
                 # def on_board_state_changed(event: Event):

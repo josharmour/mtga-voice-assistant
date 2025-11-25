@@ -167,6 +167,67 @@ class LogFollower:
             logging.error(f"Error finding session start: {e}")
             return 0
 
+    def _log_draft_context_near_offset(self, offset: int):
+        """Log any Draft.Notify events near the start offset for debugging."""
+        try:
+            with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
+                # Read a chunk around the offset to see what draft events exist
+                search_start = max(0, offset - 50000)  # Look back 50KB
+                f.seek(search_start)
+                chunk = f.read(100000)  # Read 100KB total
+
+                # Find Draft.Notify events in this chunk
+                import re
+                draft_matches = re.findall(r'Draft\.Notify.*?PackCards[^}]+', chunk)
+                if draft_matches:
+                    logging.info(f"Found {len(draft_matches)} Draft.Notify event(s) near offset {offset}")
+                    for match in draft_matches[-3:]:  # Log last 3
+                        logging.info(f"  Draft context: {match[:100]}...")
+                else:
+                    logging.info(f"No Draft.Notify events found near offset {offset}")
+
+                # Also check for scene changes to Draft
+                scene_matches = re.findall(r'toSceneName":"Draft"', chunk)
+                if scene_matches:
+                    logging.info(f"Found {len(scene_matches)} Draft scene change(s) - user may be in draft")
+        except Exception as e:
+            logging.debug(f"Error checking draft context: {e}")
+
+    def find_last_draft_notify(self) -> Optional[str]:
+        """
+        Scan the log file backwards to find the most recent Draft.Notify event.
+        Returns the full line if found, None otherwise.
+        Used to recover draft state when app is started mid-draft.
+        """
+        try:
+            with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
+                f.seek(0, 2)  # Seek to end
+                file_size = f.tell()
+
+                # Read backwards in chunks
+                chunk_size = 100000
+                pos = max(0, file_size - chunk_size)
+
+                while pos >= 0:
+                    f.seek(pos)
+                    chunk = f.read(min(chunk_size, file_size - pos))
+
+                    # Look for Draft.Notify (search from end of chunk)
+                    lines = chunk.split('\n')
+                    for line in reversed(lines):
+                        if 'Draft.Notify' in line and 'PackCards' in line:
+                            logging.info(f"Found last Draft.Notify at approx offset {pos}")
+                            return line
+
+                    if pos == 0:
+                        break
+                    pos = max(0, pos - chunk_size + 1000)  # Overlap
+
+                return None
+        except Exception as e:
+            logging.error(f"Error finding last Draft.Notify: {e}")
+            return None
+
     def follow(self, callback: Callable[[str], None]):
         """Follow the log file indefinitely, calling the callback for each new line."""
         # Debug output disabled for cleaner console
@@ -211,7 +272,10 @@ class LogFollower:
                         self.file.seek(start_offset)
                         self.offset = start_offset
                         self.first_open = False
-                        logging.info(f"Log file opened - starting from offset {start_offset} to process current session only.")
+                        logging.info(f"Log file opened - starting from offset {start_offset} (file size: {file_size}) to process current session only.")
+
+                        # Scan backwards from start_offset to find any Draft.Notify we might process
+                        self._log_draft_context_near_offset(start_offset)
                     else:
                         # Log rotation - start from beginning of new file
                         self.offset = 0
@@ -1455,6 +1519,21 @@ class GameStateManager:
     def register_draft_callback(self, event_type: str, callback: Callable):
         """Register a callback for a specific draft event type."""
         self.draft_parser.register_callback(event_type, callback)
+
+    def recover_draft_state(self, log_follower: "LogFollower"):
+        """
+        Attempt to recover draft state by finding the last Draft.Notify in the log.
+        Call this after registering draft callbacks to catch mid-draft restarts.
+        """
+        last_notify = log_follower.find_last_draft_notify()
+        if last_notify:
+            logging.info("Attempting to recover draft state from last Draft.Notify...")
+            # Process the line through the draft parser
+            event = self.draft_parser.parse(last_notify)
+            if event:
+                logging.info(f"Successfully recovered draft state: {event.event_type}")
+            else:
+                logging.warning("Found Draft.Notify but failed to parse it")
 
     def _mark_board_state_dirty(self):
         """
