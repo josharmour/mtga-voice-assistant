@@ -276,7 +276,7 @@ class CLIVoiceAdvisor:
         if DRAFT_ADVISOR_AVAILABLE:
             try:
                 # Pass ScryfallClient, CardStatsDB, and ArenaCardDatabase to DraftAdvisor
-                self.draft_advisor = DraftAdvisor(self.scryfall, self.card_stats, self.ai_advisor, self.card_db)
+                self.draft_advisor = DraftAdvisor(self.scryfall, self.card_stats, self.ai_advisor, self.arena_db)
                 self.deck_builder = DeckBuilderV2()
 
                 self.game_state_mgr.register_draft_callback("EventGetCoursesV2", self._on_draft_pool)
@@ -442,7 +442,7 @@ class CLIVoiceAdvisor:
             # Reset state for new draft
             if pack_num == 1 and pick_num == 1:
                 self._last_announced_pick = None
-                self.draft_advisor.picked_cards = []
+                self.draft_advisor.reset_draft()
 
             pack_cards, recommendation = self.draft_advisor.recommend_pick(
                 pack_arena_ids, pack_num, pick_num, draft_id
@@ -466,7 +466,7 @@ class CLIVoiceAdvisor:
 
             if pack_num == 1 and pick_num == 1:
                 self._last_announced_pick = None
-                self.draft_advisor.picked_cards = []
+                self.draft_advisor.reset_draft()
 
             pack_cards, recommendation = self.draft_advisor.recommend_pick(
                 pack_arena_ids, pack_num, pick_num, event_id
@@ -490,7 +490,7 @@ class CLIVoiceAdvisor:
 
             if pack_num == 1 and pick_num == 1:
                 self._last_announced_pick = None
-                self.draft_advisor.picked_cards = []
+                self.draft_advisor.reset_draft()
 
             pack_cards, recommendation = self.draft_advisor.recommend_pick(
                 pack_arena_ids, pack_num, pick_num, event_name
@@ -514,13 +514,15 @@ class CLIVoiceAdvisor:
             pack_num = data.get("Pack", 0)
             pick_num = data.get("Pick", 0)
 
-            if grp_ids and self.card_db:
+            if grp_ids and self.arena_db:
                 for grp_id in grp_ids:
-                    card_data = self.card_db.get_card_data(grp_id)
+                    card_data = self.arena_db.get_card_data(grp_id)
                     if card_data:
                         card_name = card_data.get("name", f"Card {grp_id}")
-                        self.draft_advisor.picked_cards.append(card_name)
-                        logging.info(f"Tracked pick: {card_name} (Pack {pack_num}, Pick {pick_num})")
+                        card_colors = card_data.get("colors", "")
+                        # Use record_pick to track both name and colors
+                        self.draft_advisor.record_pick(card_name, card_colors)
+                        logging.info(f"Tracked pick: {card_name} [{card_colors}] (Pack {pack_num}, Pick {pick_num})")
                         self._output(f"Picked: {card_name}", "green")
                     else:
                         logging.warning(f"Could not resolve picked card ID: {grp_id}")

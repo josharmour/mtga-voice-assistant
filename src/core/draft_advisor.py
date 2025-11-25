@@ -58,7 +58,8 @@ class DraftAdvisor:
         self.stats_db = card_stats_db
         self.ai_advisor = ai_advisor
         self.arena_db = arena_card_db  # Local Arena card database (fast, always available)
-        self.picked_cards = []
+        self.picked_cards = []  # List of card names
+        self.picked_colors = {}  # Track color counts: {"W": 3, "U": 5, ...}
         self.current_pack_num = 0
         self.current_pick_num = 0
         self.current_set = ""
@@ -96,10 +97,13 @@ class DraftAdvisor:
         # 3. Calculate grades
         pack_cards = self._calculate_grades(pack_cards)
 
-        # 4. Sort by grade/score (best first)
+        # 4. Apply color-based scoring adjustments
+        pack_cards = self._apply_color_weighting(pack_cards, pack_num, pick_num)
+
+        # 5. Sort by grade/score (best first)
         pack_cards.sort(key=lambda c: (c.score if c.score else 0), reverse=True)
 
-        # 5. Generate recommendation
+        # 6. Generate recommendation
         recommendation = self._generate_recommendation(pack_cards, pack_num, pick_num)
 
         return pack_cards, recommendation
@@ -213,6 +217,80 @@ class DraftAdvisor:
                 return grade
         return "F"
 
+    def _apply_color_weighting(self, cards: List[DraftCard], pack_num: int, pick_num: int) -> List[DraftCard]:
+        """
+        Apply color-based score adjustments to favor cards that match the deck's colors.
+
+        Strategy:
+        - First few picks (P1P1-P1P3): No color adjustment, pick best card
+        - Early picks (P1P4-P1P8): Light color bonus (+5-10 points for on-color)
+        - Mid picks (P1P9+, P2): Moderate color bonus (+10-15 points)
+        - Late picks (P3): Strong color bonus (+15-20 points), penalize off-color
+        """
+        if not self.picked_colors:
+            # No colors established yet, no adjustments
+            return cards
+
+        # Determine how committed we are to colors
+        total_colored_picks = sum(self.picked_colors.values())
+
+        # Find the dominant colors (top 2)
+        sorted_colors = sorted(self.picked_colors.items(), key=lambda x: x[1], reverse=True)
+        dominant_colors = set()
+        if sorted_colors:
+            dominant_colors.add(sorted_colors[0][0])
+            if len(sorted_colors) > 1 and sorted_colors[1][1] >= 2:
+                dominant_colors.add(sorted_colors[1][0])
+
+        # Calculate weight based on how far into draft we are
+        # Pack 1: picks 1-14, Pack 2: picks 15-28, Pack 3: picks 29-42
+        total_pick = (pack_num - 1) * 14 + pick_num
+
+        # Weight increases as draft progresses
+        if total_pick <= 3:
+            # P1P1-P1P3: No color weighting, pick best card
+            color_weight = 0
+        elif total_pick <= 8:
+            # P1P4-P1P8: Light weighting
+            color_weight = 0.05 + (total_pick - 3) * 0.01  # 5-10%
+        elif total_pick <= 14:
+            # P1P9-P1P14: Moderate weighting
+            color_weight = 0.10 + (total_pick - 8) * 0.01  # 10-16%
+        elif total_pick <= 28:
+            # Pack 2: Strong weighting
+            color_weight = 0.15 + (total_pick - 14) * 0.005  # 15-22%
+        else:
+            # Pack 3: Maximum weighting
+            color_weight = 0.25  # 25%
+
+        logger.debug(f"Color weighting: {color_weight:.0%}, dominant colors: {dominant_colors}, picked colors: {self.picked_colors}")
+
+        for card in cards:
+            if not card.score:
+                continue
+
+            card_colors = set(card.colors) if card.colors else set()
+
+            if not card_colors:
+                # Colorless cards - slight bonus as they fit any deck
+                card.score += card.score * (color_weight * 0.3)
+            elif card_colors.issubset(dominant_colors):
+                # On-color: full bonus
+                card.score += card.score * color_weight
+            elif card_colors & dominant_colors:
+                # Partially on-color (e.g., Gruul card in a mostly Green deck)
+                overlap_ratio = len(card_colors & dominant_colors) / len(card_colors)
+                card.score += card.score * (color_weight * overlap_ratio)
+            else:
+                # Off-color: penalty (increases as draft progresses)
+                if total_pick > 14:  # Only penalize after pack 1
+                    card.score -= card.score * (color_weight * 0.5)
+
+            # Recalculate grade based on new score
+            card.grade = self._score_to_grade(card.score)
+
+        return cards
+
     def _generate_recommendation(self, cards: List[DraftCard], pack_num: int, pick_num: int) -> str:
         if not cards: return "No cards available"
         top_card = cards[0]
@@ -221,8 +299,22 @@ class DraftAdvisor:
         if top_card.ata > 0: rec += f" (ATA: {top_card.ata:.1f})"
         return rec
 
-    def record_pick(self, card_name: str):
+    def record_pick(self, card_name: str, card_colors: str = ""):
+        """Record a picked card and its colors"""
         self.picked_cards.append(card_name)
+        if card_colors:
+            for color in card_colors:
+                if color in "WUBRG":
+                    self.picked_colors[color] = self.picked_colors.get(color, 0) + 1
+            logger.info(f"Updated picked colors: {self.picked_colors}")
+
+    def reset_draft(self):
+        """Reset state for a new draft"""
+        self.picked_cards = []
+        self.picked_colors = {}
+        self.current_pack_num = 0
+        self.current_pick_num = 0
+        logger.info("Draft advisor state reset for new draft")
 
 
 def display_draft_pack(cards: List[DraftCard], pack_num: int, pick_num: int, recommendation: str, show_count: int = 15):

@@ -1097,7 +1097,7 @@ class AdvisorGUI:
                 # Collect current state
                 board_state_text = "\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
 
-                # Read recent logs (last 1000 lines for better context)
+                # Read recent logs (last 2000 lines for better context)
                 recent_logs = ""
                 log_paths = [
                     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "logs", "advisor.log"),
@@ -1106,14 +1106,15 @@ class AdvisorGUI:
                 for log_path in log_paths:
                     try:
                         if os.path.exists(log_path):
-                            # Copy the full log file
-                            import shutil
-                            shutil.copy2(log_path, log_file_copy)
-                            
-                            # Also read for the summary text file
+                            # Read last 2000 lines (tail) instead of copying entire log
                             with open(log_path, "r", encoding='utf-8', errors='replace') as f:
                                 lines = f.readlines()
-                                recent_logs = "".join(lines[-1000:])
+                                tail_lines = lines[-2000:]  # Last 2000 lines
+                                recent_logs = "".join(lines[-1000:])  # Summary uses last 1000
+
+                            # Write only the tail to the bug report (not the full log)
+                            with open(log_file_copy, "w", encoding='utf-8') as f:
+                                f.writelines(tail_lines)
                             break
                     except Exception as e:
                         logging.error(f"Error reading/copying log file: {e}")
