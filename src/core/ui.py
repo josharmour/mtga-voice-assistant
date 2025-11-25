@@ -1300,8 +1300,9 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
 
             elif key == "deck_content":
                 # Update secondary window if popped out
+                # Use force_full_update to avoid diff issues when switching from draft picks to library
                 if self._deck_popped_out and self.deck_window and self.deck_window.winfo_exists():
-                    self.deck_window.update_text(value)
+                    self.deck_window.force_full_update(value)
                 # Also update embedded panel if visible
                 elif not self._deck_popped_out:
                     self._update_embedded_deck(value)
