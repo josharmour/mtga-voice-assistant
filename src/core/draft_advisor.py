@@ -127,10 +127,8 @@ class DraftAdvisor:
                         }
                         logger.debug(f"Resolved {arena_id} -> {card_data['name']} (local DB)")
 
-                # Fallback to Scryfall API if not in local DB
-                if not card_data and self.scryfall:
-                    logger.info(f"Card {arena_id} not in local DB, fetching from Scryfall...")
-                    card_data = self.scryfall.get_card_by_arena_id(arena_id)
+                # REMOVED: Scryfall API fallback - too slow and blocks during draft
+                # Local arena_db should have all cards from current sets
 
                 if card_data:
                     card = DraftCard(

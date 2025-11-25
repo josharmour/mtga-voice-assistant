@@ -320,9 +320,8 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
                             "oracle_text": local_data.get("oracle_text", ""),
                         }
 
-                # Fallback to Scryfall API if not in local DB
-                if not card_data:
-                    card_data = self.scryfall.get_card_by_arena_id(grp_id)
+                # REMOVED: Scryfall API fallback - too slow and blocks the main thread
+                # Local arena_db should have all cards; if not, we skip the card details
 
                 if card_data:
                     # Prefer name from Scryfall if local name is unknown
@@ -591,9 +590,5 @@ Recent Events:
                     local_data = self.arena_db.get_card_data(grp_id)
                     if local_data and local_data.get('name'):
                         return local_data['name']
-                # Fallback to Scryfall API
-                if self.scryfall:
-                    card_data = self.scryfall.get_card_by_arena_id(grp_id)
-                    if card_data and card_data.get('name'):
-                        return card_data['name']
+                # REMOVED: Scryfall API fallback - too slow and blocks the main thread
         return name
