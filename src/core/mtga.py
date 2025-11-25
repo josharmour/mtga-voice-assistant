@@ -1216,9 +1216,12 @@ class MatchScanner:
                 state_changed = True
 
             # Parse hand count
-            if "handCardCount" in player_data and player.hand_count != player_data["handCardCount"]:
-                player.hand_count = player_data["handCardCount"]
-                state_changed = True
+            if "handCardCount" in player_data:
+                new_count = player_data["handCardCount"]
+                if player.hand_count != new_count:
+                    logging.info(f"Player {seat_id} hand count changed: {player.hand_count} -> {new_count}")
+                    player.hand_count = new_count
+                    state_changed = True
 
             # Parse mana pool (e.g., {"W": 2, "U": 1, "G": 0})
             if "manaPool" in player_data:
@@ -1965,6 +1968,14 @@ class GameStateManager:
         if real_hand_count > board_state.your_hand_count:
             logging.info(f"Correcting hand count from {board_state.your_hand_count} to {real_hand_count} based on detected cards.")
             board_state.your_hand_count = real_hand_count
+
+        # CRITICAL FIX: Count opponent's hand from zone objects
+        # Opponent hand cards are hidden (grpId=0) but still tracked as objects in the hand zone
+        opponent_hand_objects = process_zone(ZoneType.HAND, opponent_seat_id)
+        real_opp_hand_count = len(opponent_hand_objects)
+        if real_opp_hand_count != board_state.opponent_hand_count:
+            logging.info(f"Correcting opponent hand count from {board_state.opponent_hand_count} to {real_opp_hand_count} based on zone objects.")
+            board_state.opponent_hand_count = real_opp_hand_count
 
         # Add game history to board state
         board_state.history = self.scanner.game_history

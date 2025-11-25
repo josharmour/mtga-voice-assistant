@@ -17,7 +17,7 @@ class GeminiAdvisor:
         self.model_name = model_name
         self.scryfall = scryfall_client or ScryfallClient()
         self.card_db = card_db
-        self.prompt_builder = MTGPromptBuilder(self.scryfall)
+        self.prompt_builder = MTGPromptBuilder(self.scryfall, arena_db=card_db)
         self._setup_api()
 
     def _setup_api(self):

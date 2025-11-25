@@ -15,7 +15,7 @@ class OllamaAdvisor:
         self.client = ollama.Client()
         self.card_db = card_db
         self.scryfall_client = scryfall_client or ScryfallClient()
-        self.prompt_builder = MTGPromptBuilder(self.scryfall_client)
+        self.prompt_builder = MTGPromptBuilder(self.scryfall_client, arena_db=card_db)
         logger.info(f"Ollama Advisor initialized with model: {self.model_name}")
 
     def get_tactical_advice(self, board_state: Dict, game_history: List[str] = None) -> str:

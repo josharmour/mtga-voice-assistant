@@ -3,6 +3,7 @@ import hashlib
 import json
 from typing import Dict, List, Optional
 from src.data.data_management import ScryfallClient
+from src.data.arena_cards import ArenaCardDatabase
 from src.core.monitoring import get_monitor
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,9 @@ class MTGPromptBuilder:
     MAX_PROMPT_TOKENS = 4000  # Default budget, configurable
     CHARS_PER_TOKEN = 4  # Rough estimate for English text
 
-    def __init__(self, scryfall: ScryfallClient = None, max_tokens: int = None):
+    def __init__(self, scryfall: ScryfallClient = None, arena_db: ArenaCardDatabase = None, max_tokens: int = None):
         self.scryfall = scryfall or ScryfallClient()
+        self.arena_db = arena_db  # Local arena card database (fast, always has latest cards)
         self.max_tokens = max_tokens or self.MAX_PROMPT_TOKENS
 
         # Prompt caching
@@ -304,7 +306,24 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
             obj_toughness = card_obj.get('toughness') if is_dict else getattr(card_obj, 'toughness', None)
 
             if grp_id:
-                card_data = self.scryfall.get_card_by_arena_id(grp_id)
+                # Try local arena database first (fast, always has latest cards)
+                card_data = None
+                if self.arena_db:
+                    local_data = self.arena_db.get_card_data(grp_id)
+                    if local_data:
+                        card_data = {
+                            "name": local_data.get("name", ""),
+                            "power": local_data.get("power", ""),
+                            "toughness": local_data.get("toughness", ""),
+                            "mana_cost": local_data.get("mana_cost", ""),
+                            "type_line": local_data.get("type_line", ""),
+                            "oracle_text": local_data.get("oracle_text", ""),
+                        }
+
+                # Fallback to Scryfall API if not in local DB
+                if not card_data:
+                    card_data = self.scryfall.get_card_by_arena_id(grp_id)
+
                 if card_data:
                     # Prefer name from Scryfall if local name is unknown
                     if name.startswith("Unknown") and card_data.get("name"):
@@ -529,8 +548,15 @@ Recent Events:
         name = card.get('name') if is_dict else getattr(card, 'name', 'Unknown')
         if name.startswith("Unknown"):
             grp_id = card.get('grp_id') if is_dict else getattr(card, 'grp_id', None)
-            if grp_id and self.scryfall:
-                card_data = self.scryfall.get_card_by_arena_id(grp_id)
-                if card_data and card_data.get('name'):
-                    return card_data['name']
+            if grp_id:
+                # Try local arena database first (fast)
+                if self.arena_db:
+                    local_data = self.arena_db.get_card_data(grp_id)
+                    if local_data and local_data.get('name'):
+                        return local_data['name']
+                # Fallback to Scryfall API
+                if self.scryfall:
+                    card_data = self.scryfall.get_card_by_arena_id(grp_id)
+                    if card_data and card_data.get('name'):
+                        return card_data['name']
         return name
