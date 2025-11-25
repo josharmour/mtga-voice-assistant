@@ -458,7 +458,11 @@ class AdvisorGUI:
         self._update_scheduled = False
 
         self.root.bind('<F12>', lambda e: self._capture_bug_report())
+        self.root.bind('<space>', self._on_push_to_talk)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        # Push-to-talk callback (set by app.py)
+        self._push_to_talk_callback = None
 
         self.running = True
         self._update_loop()
@@ -1071,6 +1075,31 @@ class AdvisorGUI:
 
         # Run in background thread
         threading.Thread(target=run_update, daemon=True).start()
+
+    def _on_push_to_talk(self, event=None):
+        """Handle push-to-talk (spacebar) press for manual advice."""
+        # Ignore if focus is in a text entry widget
+        focused = self.root.focus_get()
+        if focused and (isinstance(focused, tk.Entry) or
+                       isinstance(focused, tk.Text) or
+                       (hasattr(focused, 'winfo_class') and focused.winfo_class() in ('Entry', 'Text', 'TEntry'))):
+            return  # Let the entry handle the space
+
+        logging.info("Push-to-talk triggered (spacebar)")
+        self.add_message("🎤 Requesting advice...", "cyan")
+
+        if self._push_to_talk_callback:
+            try:
+                self._push_to_talk_callback()
+            except Exception as e:
+                logging.error(f"Push-to-talk callback error: {e}")
+                self.add_message(f"❌ Error getting advice: {e}", "red")
+        else:
+            self.add_message("⚠ Advice system not ready", "yellow")
+
+    def set_push_to_talk_callback(self, callback):
+        """Set the callback for push-to-talk advice requests."""
+        self._push_to_talk_callback = callback
 
     def _on_restart(self):
         """Handle restart button click - restarts the application."""

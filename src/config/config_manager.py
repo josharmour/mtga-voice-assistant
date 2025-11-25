@@ -64,6 +64,23 @@ class UserPreferences:
     opponent_turn_alerts: bool = True
     show_thinking: bool = True
 
+    # Advice trigger preferences
+    # Automatic triggers (always recommended)
+    advice_on_turn_start: bool = True       # Beginning of your turn
+    advice_on_mulligan: bool = True         # Mulligan decisions
+    advice_on_draft: bool = True            # Draft pick decisions
+
+    # Optional triggers (user configurable)
+    advice_on_main_phase_1: bool = False    # First main phase
+    advice_on_declare_attackers: bool = False  # When declaring attackers
+    advice_on_declare_blockers: bool = False   # When declaring blockers (opponent attacks)
+    advice_on_main_phase_2: bool = False    # Second main phase (post-combat)
+    advice_on_opponent_end_step: bool = False  # Opponent's end step (instant window)
+    advice_on_response_window: bool = False    # When opponent casts spell (counter opportunity)
+
+    # Push-to-talk settings
+    push_to_talk_key: str = "space"         # Key for push-to-talk (spacebar)
+
     # API Keys (stored securely in user preferences)
     github_token: str = ""
     github_owner: str = ""

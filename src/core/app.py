@@ -20,6 +20,7 @@ from .mtga import LogFollower, GameStateManager
 from .ai import AIAdvisor
 from .ui import TextToSpeech, AdvisorGUI
 from .formatters import BoardStateFormatter
+from .advice_triggers import AdviceTriggerManager, TriggerType, TriggerEvent
 from ..data.data_management import CardStatsDB
 from ..data.arena_cards import ArenaCardDatabase
 
@@ -300,12 +301,16 @@ class CLIVoiceAdvisor:
             except Exception as e:
                 logging.warning(f"Failed to initialize draft advisor: {e}")
 
+        # Initialize advice trigger manager for smart advice timing
+        self.advice_trigger_mgr = AdviceTriggerManager(prefs=self.prefs)
+
         self.last_turn_advised = ""
         self.advice_thread = None
         self.first_turn_detected = False
         self.cli_thread = None
         self.running = True
         self._last_announced_pick = None
+        self._current_board_state = None  # Cache for manual advice requests
 
 
 
@@ -648,6 +653,9 @@ class CLIVoiceAdvisor:
                     lambda count: self.gui.show_unknown_cards_warning(count)
                 )
 
+            # Set up push-to-talk callback for manual advice
+            self.gui.set_push_to_talk_callback(self._on_push_to_talk)
+
             # Initialize GUI with current settings
             self.gui.update_settings(
                 models=self.available_models,
@@ -675,6 +683,74 @@ class CLIVoiceAdvisor:
                 self._follow_log()
             except KeyboardInterrupt:
                 print("\nExiting...")
+
+    def _on_push_to_talk(self, user_query: str = None):
+        """Handle push-to-talk request for manual advice."""
+        logging.info(f"Push-to-talk requested (query: {user_query})")
+
+        # Get current board state
+        board_state = self._current_board_state
+        if not board_state:
+            # Try to get current state from game manager
+            try:
+                board_state = self.game_state_mgr.get_board_state()
+            except Exception as e:
+                logging.warning(f"Could not get board state: {e}")
+
+        if not board_state:
+            self._output("⚠ No game state available. Start or join a match first.", "yellow")
+            return
+
+        # Create manual trigger event
+        trigger_event = self.advice_trigger_mgr.trigger_manual(user_query)
+
+        # Get advice
+        self._get_advice_for_trigger(board_state, trigger_event)
+
+    def _get_advice_for_trigger(self, board_state, trigger_event: TriggerEvent):
+        """Get and output advice for a trigger event."""
+        def get_advice():
+            try:
+                logging.info(f"Getting advice for trigger: {trigger_event.trigger_type.name}")
+
+                # Convert BoardState dataclass to dict for AI advisor
+                board_state_dict = dataclasses.asdict(board_state)
+
+                # Add trigger context to help AI understand the situation
+                if trigger_event.user_query:
+                    board_state_dict['user_query'] = trigger_event.user_query
+                board_state_dict['trigger_type'] = trigger_event.trigger_type.name
+
+                advice = self.ai_advisor.get_tactical_advice(board_state_dict)
+
+                if advice:
+                    self._output(f"\n🤖 Advisor: {advice}", "green")
+
+                    # TTS output
+                    if self.tts:
+                        verbose_speech = True
+                        if self.gui and hasattr(self.gui, 'verbose_speech_var'):
+                            verbose_speech = self.gui.verbose_speech_var.get()
+
+                        import re
+                        clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)
+                        clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)
+                        clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)
+                        clean_advice = re.sub(r'^(Recommendation|Advice|Suggestion|Note|Tip):\s*', '', clean_advice, flags=re.IGNORECASE)
+
+                        if verbose_speech:
+                            self.tts.speak(clean_advice)
+                        else:
+                            first_sentence = re.split(r'[.!?]', clean_advice)[0].strip()
+                            if first_sentence:
+                                self.tts.speak(first_sentence)
+
+            except Exception as e:
+                error_msg = remove_emojis(str(e)) if os.name == 'nt' else str(e)
+                logging.error(f"Error getting advice: {error_msg}")
+                self._output(f"Error: {error_msg}", "red")
+
+        threading.Thread(target=get_advice, daemon=True).start()
 
     def _follow_log(self):
         """Follow log and process lines"""
@@ -721,93 +797,31 @@ class CLIVoiceAdvisor:
                 # No game state change - skip board state calculation entirely
                 board_state = None
 
-            # Trigger advice if player has priority OR is in mulligan phase
+            # Cache board state for manual (push-to-talk) advice requests
+            if board_state:
+                self._current_board_state = board_state
+
+            # Use AdviceTriggerManager for smart advice timing
             # CRITICAL: Only trigger advice if we are caught up to live events!
-            # Otherwise, we will spam advice for every historical turn processed on startup.
-            should_trigger = (
-                board_state and
-                self.log_follower.is_caught_up and
-                (board_state.has_priority or board_state.in_mulligan_phase)
-            )
-            
-            if should_trigger:
+            if board_state and self.log_follower.is_caught_up:
                 # Check for event freshness to avoid advising on old log data
                 is_fresh = True
                 if self.game_state_mgr.scanner.last_event_timestamp:
-                    import datetime
                     now = datetime.datetime.now()
                     diff = (now - self.game_state_mgr.scanner.last_event_timestamp).total_seconds()
-                    if diff > 30: # If event is older than 30 seconds, ignore it
-                        logging.info(f"Skipping advice for stale event (delay: {diff:.1f}s)")
+                    if diff > 30:
+                        logging.debug(f"Skipping advice for stale event (delay: {diff:.1f}s)")
                         is_fresh = False
-                
-                if not is_fresh:
-                    return
 
-                # Trigger advice if needed
-                current_turn = board_state.current_turn
-                current_phase = board_state.current_phase
-                
-                # Advice key: Turn + Phase (advise once per phase)
-                if board_state.in_mulligan_phase:
-                     # Use a specific key for mulligan to ensure it triggers even if turn/phase strings are generic
-                     # Append hand count to key so it re-triggers if they take a mulligan and get a new hand?
-                     # Actually, usually you mulligan once per decision.
-                     # Let's just use "Mulligan" combined with hand count to allow advice for each new hand.
-                     advice_key = f"Mulligan_{len(board_state.your_hand)}"
-                else:
-                    advice_key = f"{current_turn}_{current_phase}"
-                
-                if advice_key != self.last_turn_advised:
-                    self.last_turn_advised = advice_key
-                    
-                    print(f"\n[Thinking] Analyzing board state for Turn {current_turn} - {current_phase}...")
-                    
-                    # self._update_status(board_state) # Already updated above
-                    
-                    # Run in thread to not block log parsing
-                    def get_advice():
-                        try:
-                            # Debug: Log battlefield size before converting to dict
-                            logging.info(f"AI Advice: Board state has {len(board_state.your_battlefield)} battlefield cards")
-                            # Convert BoardState dataclass to dict for AI advisor
-                            board_state_dict = dataclasses.asdict(board_state)
-                            # Debug: Calling AI Advisor for advice
-                            advice = self.ai_advisor.get_tactical_advice(board_state_dict)
-                            # Debug: AI Advisor returned advice
-                            if advice:
-                                self._output(f"\n🤖 Advisor: {advice}", "green")
+                if is_fresh:
+                    # Check if any automatic trigger should fire
+                    trigger_event = self.advice_trigger_mgr.check_triggers(board_state)
 
-                                # Check if TTS is available and not muted
-                                if self.tts:
-                                    # Check verbose setting from GUI
-                                    verbose_speech = True  # Default to verbose if no GUI
-                                    if self.gui and hasattr(self.gui, 'verbose_speech_var'):
-                                        verbose_speech = self.gui.verbose_speech_var.get()
-
-                                    import re
-                                    # Strip markdown formatting
-                                    clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)  # Remove **bold**
-                                    clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)  # Remove *italic*
-                                    clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)  # Remove `code`
-                                    # Remove common prefix words that sound redundant when spoken
-                                    clean_advice = re.sub(r'^(Recommendation|Advice|Suggestion|Note|Tip):\s*', '', clean_advice, flags=re.IGNORECASE)
-
-                                    if verbose_speech:
-                                        # Full advice
-                                        self.tts.speak(clean_advice)
-                                    else:
-                                        # Brief summary only - extract first sentence
-                                        first_sentence = re.split(r'[.!?]', clean_advice)[0].strip()
-                                        if first_sentence:
-                                            self.tts.speak(first_sentence)
-                        except Exception as e:
-                            # Remove emojis from error message for Windows console
-                            error_msg = remove_emojis(str(e)) if os.name == 'nt' else str(e)
-                            logging.error(f"Error getting advice: {error_msg}")
-                            self._output(f"Error: {error_msg}", "red")
-
-                    threading.Thread(target=get_advice, daemon=True).start()
+                    if trigger_event:
+                        current_turn = board_state.current_turn
+                        current_phase = board_state.current_phase
+                        print(f"\n[{trigger_event.trigger_type.name}] Analyzing Turn {current_turn} - {current_phase}...")
+                        self._get_advice_for_trigger(board_state, trigger_event)
 
         self.log_follower.follow(callback)
 
