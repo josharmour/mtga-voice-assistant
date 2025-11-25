@@ -2,7 +2,6 @@ import logging
 import hashlib
 import json
 from typing import Dict, List, Optional
-from src.data.data_management import ScryfallClient
 from src.data.arena_cards import ArenaCardDatabase
 from src.core.monitoring import get_monitor
 
@@ -21,8 +20,7 @@ class MTGPromptBuilder:
     MAX_PROMPT_TOKENS = 4000  # Default budget, configurable
     CHARS_PER_TOKEN = 4  # Rough estimate for English text
 
-    def __init__(self, scryfall: ScryfallClient = None, arena_db: ArenaCardDatabase = None, max_tokens: int = None):
-        self.scryfall = scryfall or ScryfallClient()
+    def __init__(self, arena_db: ArenaCardDatabase = None, max_tokens: int = None):
         self.arena_db = arena_db  # Local arena card database (fast, always has latest cards)
         self.max_tokens = max_tokens or self.MAX_PROMPT_TOKENS
 

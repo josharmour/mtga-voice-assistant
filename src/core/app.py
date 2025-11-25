@@ -20,7 +20,7 @@ from .mtga import LogFollower, GameStateManager
 from .ai import AIAdvisor
 from .ui import TextToSpeech, AdvisorGUI
 from .formatters import BoardStateFormatter
-from ..data.data_management import ScryfallClient, CardStatsDB
+from ..data.data_management import CardStatsDB
 from ..data.arena_cards import ArenaCardDatabase
 
 # Event system for decoupled communication (future integration)
@@ -241,15 +241,13 @@ class CLIVoiceAdvisor:
             print("ERROR: Could not find Arena Player.log.")
             exit(1)
 
-        # Initialize Scryfall Client (for AI advisor context - card text, oracle, etc.)
-        print("Initializing Scryfall client...")
-        self.scryfall = ScryfallClient()
+        # Initialize card stats database for 17lands data
         self.card_stats = CardStatsDB()
 
         # Initialize Arena Card Database (for local card name lookups)
-        # Pass scryfall client for fallback
+        # Uses unified_cards.db built from MTGA's Raw_CardDatabase
         print("Initializing Arena card database...")
-        self.arena_db = ArenaCardDatabase(scryfall_client=self.scryfall)
+        self.arena_db = ArenaCardDatabase()
 
         # Initialize board state formatter with card database
         self.formatter = BoardStateFormatter(card_db=self.arena_db)
@@ -275,8 +273,8 @@ class CLIVoiceAdvisor:
         self.deck_builder = None
         if DRAFT_ADVISOR_AVAILABLE:
             try:
-                # Pass ScryfallClient, CardStatsDB, and ArenaCardDatabase to DraftAdvisor
-                self.draft_advisor = DraftAdvisor(self.scryfall, self.card_stats, self.ai_advisor, self.arena_db)
+                # Pass CardStatsDB and ArenaCardDatabase to DraftAdvisor
+                self.draft_advisor = DraftAdvisor(self.card_stats, self.ai_advisor, self.arena_db)
                 self.deck_builder = DeckBuilderV2()
 
                 self.game_state_mgr.register_draft_callback("EventGetCoursesV2", self._on_draft_pool)

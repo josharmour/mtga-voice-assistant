@@ -169,18 +169,16 @@ class BaseMTGAdvisor:
     3. Optionally override is_available() for provider-specific checks
     """
 
-    def __init__(self, config: LLMConfig, card_db=None, scryfall_client=None):
+    def __init__(self, config: LLMConfig, card_db=None, **kwargs):
         """
         Initialize base advisor with configuration.
 
         Args:
             config: LLMConfig instance with provider settings
             card_db: Optional card database instance
-            scryfall_client: Optional Scryfall client instance
         """
         self.config = config
         self.card_db = card_db
-        self.scryfall_client = scryfall_client
 
         logger.info(
             f"Initializing {config.provider.capitalize()} advisor "
@@ -259,8 +257,7 @@ class BaseMTGAdvisor:
 
 def create_advisor(
     config: LLMConfig,
-    card_db=None,
-    scryfall_client=None
+    card_db=None
 ) -> BaseMTGAdvisor:
     """
     Factory function to create the appropriate advisor based on configuration.
@@ -271,7 +268,6 @@ def create_advisor(
     Args:
         config: LLMConfig instance specifying provider and model
         card_db: Optional card database instance
-        scryfall_client: Optional Scryfall client instance
 
     Returns:
         Initialized advisor instance
@@ -293,7 +289,6 @@ def create_advisor(
             from .google_advisor import GeminiAdvisor
             return GeminiAdvisor(
                 model_name=config.model,
-                scryfall_client=scryfall_client,
                 card_db=card_db
             )
 
@@ -302,8 +297,7 @@ def create_advisor(
             return OpenAIAdvisor(
                 model_name=config.model,
                 api_key=config.api_key,
-                card_db=card_db,
-                scryfall_client=scryfall_client
+                card_db=card_db
             )
 
         elif provider == "anthropic":
@@ -311,16 +305,14 @@ def create_advisor(
             return AnthropicAdvisor(
                 model_name=config.model,
                 api_key=config.api_key,
-                card_db=card_db,
-                scryfall_client=scryfall_client
+                card_db=card_db
             )
 
         elif provider == "ollama":
             from .ollama_advisor import OllamaAdvisor
             return OllamaAdvisor(
                 model_name=config.model,
-                card_db=card_db,
-                scryfall_client=scryfall_client
+                card_db=card_db
             )
 
         else:
@@ -342,7 +334,7 @@ def create_advisor(
 
 
 # Convenience function for common use case
-def create_advisor_from_preferences(prefs, card_db=None, scryfall_client=None) -> BaseMTGAdvisor:
+def create_advisor_from_preferences(prefs, card_db=None) -> BaseMTGAdvisor:
     """
     Create an advisor directly from UserPreferences.
 
@@ -352,7 +344,6 @@ def create_advisor_from_preferences(prefs, card_db=None, scryfall_client=None) -
     Args:
         prefs: UserPreferences instance with model settings
         card_db: Optional card database instance
-        scryfall_client: Optional Scryfall client instance
 
     Returns:
         Initialized advisor instance
@@ -363,4 +354,4 @@ def create_advisor_from_preferences(prefs, card_db=None, scryfall_client=None) -
         >>> advisor = create_advisor_from_preferences(prefs)
     """
     config = LLMConfig.from_preferences(prefs)
-    return create_advisor(config, card_db=card_db, scryfall_client=scryfall_client)
+    return create_advisor(config, card_db=card_db)

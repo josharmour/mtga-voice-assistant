@@ -2,7 +2,6 @@ import logging
 from typing import Dict, List
 
 from ..config.config_manager import UserPreferences
-from ..data.data_management import ScryfallClient
 from .llm.google_advisor import GeminiAdvisor
 from .llm.openai_advisor import OpenAIAdvisor
 from .llm.anthropic_advisor import AnthropicAdvisor
@@ -20,7 +19,6 @@ class AIAdvisor:
             logger.warning("AIAdvisor initialized without preferences. Loading defaults.")
             prefs = UserPreferences.load()
 
-        self.scryfall = ScryfallClient()
         self.advisor = None
 
         provider = prefs.model_provider.lower()
@@ -39,7 +37,6 @@ class AIAdvisor:
                 self.advisor = AdvisorClass(
                     model_name=model,
                     card_db=card_db,
-                    scryfall_client=self.scryfall,
                     **kwargs
                 )
                 logger.info(f"{provider.capitalize()} Advisor initialized with model: {model}")

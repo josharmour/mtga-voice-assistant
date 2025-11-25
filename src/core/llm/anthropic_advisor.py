@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, List, Optional
 import anthropic
-from src.data.data_management import ScryfallClient
 from .prompt_builder import MTGPromptBuilder
 
 logger = logging.getLogger(__name__)
@@ -10,12 +9,11 @@ class AnthropicAdvisor:
     """
     Advisor powered by Anthropic's models.
     """
-    def __init__(self, model_name: str = "claude-3-opus-20240229", api_key: str = None, card_db=None, scryfall_client=None):
+    def __init__(self, model_name: str = "claude-3-opus-20240229", api_key: str = None, card_db=None, **kwargs):
         self.model_name = model_name
         self.client = anthropic.Anthropic(api_key=api_key)
         self.card_db = card_db
-        self.scryfall_client = scryfall_client or ScryfallClient()
-        self.prompt_builder = MTGPromptBuilder(self.scryfall_client, arena_db=card_db)
+        self.prompt_builder = MTGPromptBuilder(arena_db=card_db)
         logger.info(f"Anthropic Advisor initialized with model: {self.model_name}")
 
     def get_tactical_advice(self, board_state: Dict, game_history: List[str] = None) -> str:

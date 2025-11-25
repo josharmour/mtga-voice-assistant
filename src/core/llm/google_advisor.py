@@ -3,7 +3,6 @@ import logging
 from google import genai
 from google.genai import types
 from typing import Dict, List, Optional
-from src.data.data_management import ScryfallClient
 from .prompt_builder import MTGPromptBuilder
 
 logger = logging.getLogger(__name__)
@@ -13,11 +12,10 @@ class GeminiAdvisor:
     AI Advisor powered by Google's Gemini 3 models.
     Provides tactical advice and draft recommendations.
     """
-    def __init__(self, model_name: str = "gemini-3-pro-preview", scryfall_client: ScryfallClient = None, card_db=None):
+    def __init__(self, model_name: str = "gemini-3-pro-preview", card_db=None, **kwargs):
         self.model_name = model_name
-        self.scryfall = scryfall_client or ScryfallClient()
         self.card_db = card_db
-        self.prompt_builder = MTGPromptBuilder(self.scryfall, arena_db=card_db)
+        self.prompt_builder = MTGPromptBuilder(arena_db=card_db)
         self._setup_api()
 
     def _setup_api(self):

@@ -14,7 +14,7 @@ from scipy.stats import norm
 from tabulate import tabulate
 from termcolor import colored
 
-from ..data.data_management import ScryfallClient, CardStatsDB
+from ..data.data_management import CardStatsDB
 from ..data.arena_cards import ArenaCardDatabase
 
 logger = logging.getLogger(__name__)
@@ -53,8 +53,7 @@ class DraftAdvisor:
         "F": 0,
     }
 
-    def __init__(self, scryfall_client: ScryfallClient, card_stats_db: CardStatsDB, ai_advisor=None, arena_card_db: ArenaCardDatabase = None):
-        self.scryfall = scryfall_client
+    def __init__(self, card_stats_db: CardStatsDB, ai_advisor=None, arena_card_db: ArenaCardDatabase = None):
         self.stats_db = card_stats_db
         self.ai_advisor = ai_advisor
         self.arena_db = arena_card_db  # Local Arena card database (fast, always available)

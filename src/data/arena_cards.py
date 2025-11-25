@@ -8,9 +8,6 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-# Avoid circular import by using TYPE_CHECKING if needed, or just import safely
-# from .data_management import ScryfallClient # This might cause circular import if not careful
-
 logger = logging.getLogger(__name__)
 
 
@@ -18,15 +15,16 @@ class ArenaCardDatabase:
     """
     Provides access to the local unified_cards.db database.
     This database maps Arena grpIds to card names and metadata.
+
+    To update this database when new sets release, run:
+        python tools/build_unified_card_database.py
     """
-    def __init__(self, db_path: str = "data/unified_cards.db", scryfall_client=None):
+    def __init__(self, db_path: str = "data/unified_cards.db"):
         self.db_path = Path(db_path)
         self._cache = {}  # In-memory cache: grpId -> dict
-        self.scryfall_client = scryfall_client
-        
+
         if not self.db_path.exists():
-            logger.warning(f"Arena card database not found at {db_path}")
-            # Don't return, continue to initialization so we can use scryfall fallback
+            logger.warning(f"Arena card database not found at {db_path}. Run 'python tools/build_unified_card_database.py' to create it.")
 
         self._load_database()
 
