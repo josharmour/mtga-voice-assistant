@@ -199,6 +199,14 @@ class LogFollower:
                         # BUG FIX: Find the current session start to avoid processing stale data
                         # from old games that are still in the log file
                         start_offset = self._find_current_session_start()
+
+                        # CRITICAL: Check if offset is valid (file may have been truncated/rotated)
+                        self.file.seek(0, 2)  # Seek to end
+                        file_size = self.file.tell()
+                        if start_offset >= file_size:
+                            logging.warning(f"Calculated offset {start_offset} exceeds file size {file_size}, starting from beginning")
+                            start_offset = 0
+
                         self.file.seek(start_offset)
                         self.offset = start_offset
                         self.first_open = False
