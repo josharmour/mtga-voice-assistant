@@ -15,6 +15,7 @@ from tabulate import tabulate
 from termcolor import colored
 
 from ..data.data_management import ScryfallClient, CardStatsDB
+from ..data.arena_cards import ArenaCardDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +53,11 @@ class DraftAdvisor:
         "F": 0,
     }
 
-    def __init__(self, scryfall_client: ScryfallClient, card_stats_db: CardStatsDB, ai_advisor=None):
+    def __init__(self, scryfall_client: ScryfallClient, card_stats_db: CardStatsDB, ai_advisor=None, arena_card_db: ArenaCardDatabase = None):
         self.scryfall = scryfall_client
         self.stats_db = card_stats_db
         self.ai_advisor = ai_advisor
+        self.arena_db = arena_card_db  # Local Arena card database (fast, always available)
         self.picked_cards = []
         self.current_pack_num = 0
         self.current_pick_num = 0
@@ -103,20 +105,40 @@ class DraftAdvisor:
         return pack_cards, recommendation
 
     def _resolve_cards(self, arena_ids: List[int]) -> List[DraftCard]:
-        """Resolve Arena IDs to card names using Scryfall"""
+        """Resolve Arena IDs to card names using local Arena DB first, then Scryfall fallback"""
         cards = []
         for arena_id in arena_ids:
             try:
-                card_data = self.scryfall.get_card_by_arena_id(arena_id)
+                card_data = None
+
+                # Try local Arena database first (fast, always has latest cards)
+                if self.arena_db:
+                    local_data = self.arena_db.get_card_data(arena_id)
+                    if local_data:
+                        card_data = {
+                            "name": local_data.get("name", f"Card {arena_id}"),
+                            "colors": local_data.get("colors", ""),
+                            "rarity": local_data.get("rarity", ""),
+                            "type_line": local_data.get("type", ""),
+                        }
+
+                # Fallback to Scryfall API if not in local DB
+                if not card_data and self.scryfall:
+                    card_data = self.scryfall.get_card_by_arena_id(arena_id)
+
                 if card_data:
                     card = DraftCard(
                         arena_id=arena_id,
-                        name=card_data.get("name"),
+                        name=card_data.get("name", f"Card {arena_id}"),
                         colors=card_data.get("colors", ""),
                         rarity=card_data.get("rarity", ""),
                         types=card_data.get("type_line", "").split() if card_data.get("type_line") else []
                     )
                     cards.append(card)
+                else:
+                    # Still create a card entry even if we can't resolve it
+                    logger.warning(f"Could not resolve arena ID {arena_id}")
+                    cards.append(DraftCard(arena_id=arena_id, name=f"Unknown Card {arena_id}"))
             except Exception as e:
                 logger.error(f"Error resolving arena ID {arena_id}: {e}")
         return cards

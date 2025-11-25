@@ -275,8 +275,8 @@ class CLIVoiceAdvisor:
         self.deck_builder = None
         if DRAFT_ADVISOR_AVAILABLE:
             try:
-                # Pass ScryfallClient and CardStatsDB to DraftAdvisor
-                self.draft_advisor = DraftAdvisor(self.scryfall, self.card_stats, self.ai_advisor)
+                # Pass ScryfallClient, CardStatsDB, and ArenaCardDatabase to DraftAdvisor
+                self.draft_advisor = DraftAdvisor(self.scryfall, self.card_stats, self.ai_advisor, self.card_db)
                 self.deck_builder = DeckBuilderV2()
 
                 self.game_state_mgr.register_draft_callback("EventGetCoursesV2", self._on_draft_pool)

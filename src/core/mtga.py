@@ -95,7 +95,8 @@ class LogFollower:
                 # or just look for date patterns
                 timestamp_pattern = re.compile(r'\[UnityCrossThreadLogger\](\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)')
                 session_start_pattern = re.compile(r'Client\.Connected|Connecting to matchmaker|"authenticateResponse"')
-                match_start_pattern = re.compile(r'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp')
+                # Match start includes both gameplay matches AND draft events
+                match_start_pattern = re.compile(r'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp|Draft\.Notify|BotDraft|DraftStatus|"draftId"')
 
                 # Read from end backwards in chunks
                 pos = max(0, file_size - chunk_size)
