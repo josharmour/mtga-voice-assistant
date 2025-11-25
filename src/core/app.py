@@ -764,6 +764,8 @@ class CLIVoiceAdvisor:
                     # Run in thread to not block log parsing
                     def get_advice():
                         try:
+                            # Debug: Log battlefield size before converting to dict
+                            logging.info(f"AI Advice: Board state has {len(board_state.your_battlefield)} battlefield cards")
                             # Convert BoardState dataclass to dict for AI advisor
                             board_state_dict = dataclasses.asdict(board_state)
                             # Debug: Calling AI Advisor for advice
