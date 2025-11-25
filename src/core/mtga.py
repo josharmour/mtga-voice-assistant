@@ -818,6 +818,16 @@ class MatchScanner:
                 logging.info(f"Inferred existence of Player {owner_seat_id} from object {instance_id}")
                 self.players[owner_seat_id] = PlayerState(seat_id=owner_seat_id)
 
+            # BUG FIX #11: Infer local_player_seat_id from visible hand cards
+            # If we can see a card with a real grpId in a hand zone, it must be our hand
+            # (opponent's hand cards are hidden/face-down with grpId=0)
+            if not self.local_player_seat_id and owner_seat_id and grp_id and grp_id != 0:
+                # Check if this card is in a hand zone
+                zone_type = self.zone_id_to_type.get(zone_id, "")
+                if "Hand" in zone_type:
+                    self.local_player_seat_id = owner_seat_id
+                    logging.info(f"BUG FIX #11: Inferred local_player_seat_id={owner_seat_id} from visible hand card (grpId={grp_id})")
+
             if instance_id not in self.game_objects:
                 self.game_objects[instance_id] = GameObject(
                     instance_id=instance_id,
