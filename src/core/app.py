@@ -605,8 +605,8 @@ class CLIVoiceAdvisor:
             from .draft_advisor import display_draft_pack
             display_draft_pack(pack_cards, pack_num, pick_num, recommendation)
 
-        # TTS
-        if self.tts and pack_cards:
+        # TTS - only announce if caught up to live events (avoid spam on startup)
+        if self.tts and pack_cards and self.log_follower.is_caught_up:
             current_pick = (pack_num, pick_num)
             if current_pick != self._last_announced_pick:
                 self._last_announced_pick = current_pick
