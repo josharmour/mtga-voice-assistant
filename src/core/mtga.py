@@ -57,6 +57,115 @@ class LogFollower:
         self.first_open = True  # Track if this is first time opening
         self.is_caught_up = False # Track if we have processed the backlog
 
+    def _find_current_session_start(self) -> int:
+        """
+        Find the byte offset where the current/most recent MTGA session begins.
+
+        This prevents processing stale data from old game sessions that are
+        still in the log file. We look for recent timestamps and session markers.
+
+        Returns the byte offset to start reading from.
+        """
+        import datetime
+        import re
+
+        try:
+            with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
+                # Get file size
+                f.seek(0, 2)  # Seek to end
+                file_size = f.tell()
+
+                if file_size == 0:
+                    return 0
+
+                # Strategy: Read backwards in chunks to find session markers
+                # Look for patterns that indicate a new MTGA session:
+                # - "Client.Connected" or "Connecting to"
+                # - Recent timestamps (within last few hours)
+                # - "Auth: " login messages
+
+                chunk_size = 100000  # 100KB chunks
+                current_time = datetime.datetime.now()
+                max_age_hours = 6  # Only process logs from last 6 hours
+
+                best_offset = 0
+                last_good_match_offset = 0
+
+                # Timestamp pattern: [UnityCrossThreadLogger]MM/DD/YYYY HH:MM:SS AM/PM
+                # or just look for date patterns
+                timestamp_pattern = re.compile(r'\[UnityCrossThreadLogger\](\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)')
+                session_start_pattern = re.compile(r'Client\.Connected|Connecting to matchmaker|"authenticateResponse"')
+                match_start_pattern = re.compile(r'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp')
+
+                # Read from end backwards in chunks
+                pos = max(0, file_size - chunk_size)
+
+                while pos >= 0:
+                    f.seek(pos)
+                    chunk = f.read(min(chunk_size, file_size - pos))
+                    lines = chunk.split('\n')
+
+                    for i, line in enumerate(lines):
+                        # Check for session start markers
+                        if session_start_pattern.search(line):
+                            # Calculate approximate offset
+                            line_offset = pos + sum(len(l) + 1 for l in lines[:i])
+                            best_offset = line_offset
+
+                        # Check for match start (more granular)
+                        if match_start_pattern.search(line):
+                            line_offset = pos + sum(len(l) + 1 for l in lines[:i])
+                            last_good_match_offset = line_offset
+
+                        # Check timestamp freshness
+                        ts_match = timestamp_pattern.search(line)
+                        if ts_match:
+                            try:
+                                ts_str = ts_match.group(1)
+                                log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+                                age_hours = (current_time - log_time).total_seconds() / 3600
+
+                                if age_hours <= max_age_hours:
+                                    # This is recent enough, use the earlier of session or match start
+                                    if best_offset > 0:
+                                        logging.info(f"Found recent session start at offset {best_offset} (age: {age_hours:.1f}h)")
+                                        return best_offset
+                                    elif last_good_match_offset > 0:
+                                        logging.info(f"Found recent match start at offset {last_good_match_offset} (age: {age_hours:.1f}h)")
+                                        return last_good_match_offset
+                            except ValueError:
+                                pass
+
+                    if pos == 0:
+                        break
+                    pos = max(0, pos - chunk_size + 1000)  # Overlap to avoid splitting lines
+
+                # Fallback: if file is small or we found nothing, check timestamps from start
+                # If the log is very old, just start from end (live data only)
+                f.seek(0)
+                first_chunk = f.read(10000)
+                ts_match = timestamp_pattern.search(first_chunk)
+                if ts_match:
+                    try:
+                        ts_str = ts_match.group(1)
+                        log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+                        age_hours = (current_time - log_time).total_seconds() / 3600
+
+                        if age_hours > max_age_hours:
+                            # Log is old, skip to near end to only get live data
+                            skip_to = max(0, file_size - 50000)  # Last 50KB
+                            logging.info(f"Log file is {age_hours:.1f}h old, skipping to offset {skip_to}")
+                            return skip_to
+                    except ValueError:
+                        pass
+
+                logging.info("No session markers found, starting from beginning")
+                return 0
+
+        except Exception as e:
+            logging.error(f"Error finding session start: {e}")
+            return 0
+
     def follow(self, callback: Callable[[str], None]):
         """Follow the log file indefinitely, calling the callback for each new line."""
         # Debug output disabled for cleaner console
@@ -87,13 +196,13 @@ class LogFollower:
                     # On first open, seek to end to ignore old matches
                     # On log rotation, start from beginning of new file
                     if self.first_open:
-                        # PERFORMANCE FIX: Read from beginning to get card definitions,
-                        # but we won't trigger expensive board state calculations until caught up
-                        # (handled in app.py callback with is_caught_up flag)
-                        self.file.seek(0, 0)
-                        self.offset = 0
+                        # BUG FIX: Find the current session start to avoid processing stale data
+                        # from old games that are still in the log file
+                        start_offset = self._find_current_session_start()
+                        self.file.seek(start_offset)
+                        self.offset = start_offset
                         self.first_open = False
-                        logging.info("Log file opened - starting from beginning to rebuild state.")
+                        logging.info(f"Log file opened - starting from offset {start_offset} to process current session only.")
                     else:
                         # Log rotation - start from beginning of new file
                         self.offset = 0
@@ -613,7 +722,10 @@ class MatchScanner:
         self.current_phase = ""
         self.active_player_seat = None
         self.priority_player_seat = None
-        # Keep local_player_seat_id - it persists across matches
+        # BUG FIX: Reset local_player_seat_id on new match
+        # Seat IDs can change between matches (sometimes you're seat 1, sometimes seat 2)
+        # It will be re-set when we receive the systemSeatIds message for the new match
+        self.local_player_seat_id = None
         self.zone_type_to_ids.clear()
         self.observed_zone_ids.clear()
         self.zone_id_to_type.clear()
