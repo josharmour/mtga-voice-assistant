@@ -168,60 +168,52 @@ class LogFollower:
             return 0
 
     def _log_draft_context_near_offset(self, offset: int):
-        """Log any Draft.Notify events near the start offset for debugging."""
-        try:
-            with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
-                # Read a chunk around the offset to see what draft events exist
-                search_start = max(0, offset - 50000)  # Look back 50KB
-                f.seek(search_start)
-                chunk = f.read(100000)  # Read 100KB total
+        """Log any Draft.Notify events near the start offset for debugging.
 
-                # Find Draft.Notify events in this chunk
-                import re
-                draft_matches = re.findall(r'Draft\.Notify.*?PackCards[^}]+', chunk)
-                if draft_matches:
-                    logging.info(f"Found {len(draft_matches)} Draft.Notify event(s) near offset {offset}")
-                    for match in draft_matches[-3:]:  # Log last 3
-                        logging.info(f"  Draft context: {match[:100]}...")
-                else:
-                    logging.info(f"No Draft.Notify events found near offset {offset}")
-
-                # Also check for scene changes to Draft
-                scene_matches = re.findall(r'toSceneName":"Draft"', chunk)
-                if scene_matches:
-                    logging.info(f"Found {len(scene_matches)} Draft scene change(s) - user may be in draft")
-        except Exception as e:
-            logging.debug(f"Error checking draft context: {e}")
+        NOTE: Disabled for performance - this adds ~100ms+ of file I/O on startup.
+        Enable only for debugging draft detection issues.
+        """
+        # Disabled for performance - uncomment to debug draft detection
+        # try:
+        #     with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
+        #         search_start = max(0, offset - 50000)
+        #         f.seek(search_start)
+        #         chunk = f.read(100000)
+        #         import re
+        #         draft_matches = re.findall(r'Draft\.Notify.*?PackCards[^}]+', chunk)
+        #         if draft_matches:
+        #             logging.info(f"Found {len(draft_matches)} Draft.Notify event(s) near offset {offset}")
+        # except Exception as e:
+        #     logging.debug(f"Error checking draft context: {e}")
+        pass
 
     def find_last_draft_notify(self) -> Optional[str]:
         """
         Scan the log file backwards to find the most recent Draft.Notify event.
         Returns the full line if found, None otherwise.
         Used to recover draft state when app is started mid-draft.
+
+        Performance: Only scans last 50KB to minimize I/O impact on startup.
         """
         try:
             with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
                 f.seek(0, 2)  # Seek to end
                 file_size = f.tell()
 
-                # Read backwards in chunks
-                chunk_size = 100000
+                # Only scan last 50KB - draft events are recent if user is mid-draft
+                # This is a significant performance optimization vs scanning entire log
+                chunk_size = 50000
                 pos = max(0, file_size - chunk_size)
 
-                while pos >= 0:
-                    f.seek(pos)
-                    chunk = f.read(min(chunk_size, file_size - pos))
+                f.seek(pos)
+                chunk = f.read(file_size - pos)
 
-                    # Look for Draft.Notify (search from end of chunk)
-                    lines = chunk.split('\n')
-                    for line in reversed(lines):
-                        if 'Draft.Notify' in line and 'PackCards' in line:
-                            logging.info(f"Found last Draft.Notify at approx offset {pos}")
-                            return line
-
-                    if pos == 0:
-                        break
-                    pos = max(0, pos - chunk_size + 1000)  # Overlap
+                # Look for Draft.Notify (search from end of chunk)
+                lines = chunk.split('\n')
+                for line in reversed(lines):
+                    if 'Draft.Notify' in line and 'PackCards' in line:
+                        logging.debug(f"Found last Draft.Notify in last {chunk_size // 1000}KB")
+                        return line
 
                 return None
         except Exception as e:
@@ -455,7 +447,7 @@ class DraftEventParser:
     }
 
     # Quick string checks before expensive regex (performance optimization)
-    DRAFT_KEYWORDS = ('Draft', 'Pick', 'Pack', 'EventGetCourses', 'Event_GetCourses', 'BotDraft')
+    DRAFT_KEYWORDS = ('Draft', 'Pick', 'Pack', 'EventGetCourses', 'Event_GetCourses', 'BotDraft', 'toSceneName', 'DeckBuilder')
 
     def __init__(self, callbacks: Optional[Dict[str, Callable]] = None):
         """
@@ -519,6 +511,14 @@ class DraftEventParser:
         if line.startswith("<=="):
             self._parse_end_event_marker(line)
             return None  # Event will be parsed when we see the next line
+
+        # PATTERN 5: Scene change (Draft -> DeckBuilder triggers deck building)
+        # Format: {"fromSceneName":"Draft","toSceneName":"DeckBuilder",...}
+        if '"toSceneName"' in line and '"DeckBuilder"' in line:
+            event = self._parse_scene_change(line)
+            if event:
+                self._trigger_callback(event)
+            return event
 
         return None
 
@@ -599,6 +599,15 @@ class DraftEventParser:
                         raw_line=line
                     )
 
+                # Handle EventPlayerDraftMakePick (user made a pick - contains picked card IDs)
+                if event_type == "EventPlayerDraftMakePick" and "GrpIds" in inner_json:
+                    logging.info(f"Draft pick made: Pack {inner_json.get('Pack')}, Pick {inner_json.get('Pick')}, Cards: {inner_json.get('GrpIds')}")
+                    return DraftEvent(
+                        event_type=event_type,
+                        data=inner_json,
+                        raw_line=line
+                    )
+
                 # Generic start event
                 return DraftEvent(
                     event_type=event_type,
@@ -608,6 +617,35 @@ class DraftEventParser:
 
         except (json.JSONDecodeError, ValueError) as e:
             logging.debug(f"Failed to parse start event JSON: {e}")
+
+        return None
+
+    def _parse_scene_change(self, line: str) -> Optional[DraftEvent]:
+        """
+        Parse scene change event, particularly Draft -> DeckBuilder transition.
+
+        Format: {"fromSceneName":"Draft","toSceneName":"DeckBuilder","initiator":"System","context":"deck builder"}
+        """
+        try:
+            json_start = line.find("{")
+            if json_start == -1:
+                return None
+
+            parsed_data = json.loads(line[json_start:])
+
+            from_scene = parsed_data.get("fromSceneName", "")
+            to_scene = parsed_data.get("toSceneName", "")
+
+            if from_scene == "Draft" and to_scene == "DeckBuilder":
+                logging.info(f"Scene change detected: {from_scene} -> {to_scene} (deck building phase)")
+                return DraftEvent(
+                    event_type="SceneChange_DraftToDeckBuilder",
+                    data=parsed_data,
+                    raw_line=line
+                )
+
+        except (json.JSONDecodeError, ValueError) as e:
+            logging.debug(f"Failed to parse scene change JSON: {e}")
 
         return None
 

@@ -121,9 +121,11 @@ class DraftAdvisor:
                             "rarity": local_data.get("rarity", ""),
                             "type_line": local_data.get("type", ""),
                         }
+                        logger.debug(f"Resolved {arena_id} -> {card_data['name']} (local DB)")
 
                 # Fallback to Scryfall API if not in local DB
                 if not card_data and self.scryfall:
+                    logger.info(f"Card {arena_id} not in local DB, fetching from Scryfall...")
                     card_data = self.scryfall.get_card_by_arena_id(arena_id)
 
                 if card_data:

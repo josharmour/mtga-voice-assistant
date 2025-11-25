@@ -284,9 +284,11 @@ class CLIVoiceAdvisor:
                 self.game_state_mgr.register_draft_callback("Draft.Notify", self._on_draft_notify)
                 self.game_state_mgr.register_draft_callback("BotDraftDraftStatus", self._on_quick_draft_status)
                 self.game_state_mgr.register_draft_callback("BotDraftDraftPick", self._on_quick_draft_pick)
+                self.game_state_mgr.register_draft_callback("EventPlayerDraftMakePick", self._on_draft_make_pick)
+                self.game_state_mgr.register_draft_callback("SceneChange_DraftToDeckBuilder", self._on_deck_builder_entered)
 
-                # Recover draft state if app is started mid-draft
-                self.game_state_mgr.recover_draft_state(self.log_follower)
+                # NOTE: Draft state recovery moved to _follow_log() to avoid blocking startup
+                # self.game_state_mgr.recover_draft_state(self.log_follower)
 
                 # Future: Subscribe to events for decoupled communication
                 # Example event subscriptions (replacing direct callbacks):
@@ -425,12 +427,15 @@ class CLIVoiceAdvisor:
         pass # Pool handling logic if needed
 
     def _on_draft_notify(self, data: dict):
+        """Handle Draft.Notify event - show pick recommendations"""
+        logging.info(f"_on_draft_notify callback triggered with data keys: {data.keys()}")
         if not self.draft_advisor: return
         try:
             pack_num = data.get("PackNumber", 1)
             pick_num = data.get("PickNumber", 1)
             pack_arena_ids = data.get("PackCards", [])
             draft_id = data.get("DraftId", "")
+            logging.info(f"Processing draft notify: Pack {pack_num}, Pick {pick_num}, {len(pack_arena_ids)} cards")
 
             if not pack_arena_ids: return
 
@@ -500,7 +505,90 @@ class CLIVoiceAdvisor:
         # Handle user pick to update picked_cards list
         pass
 
+    def _on_draft_make_pick(self, data: dict):
+        """Handle EventPlayerDraftMakePick - track the card(s) the user picked"""
+        if not self.draft_advisor:
+            return
+        try:
+            grp_ids = data.get("GrpIds", [])
+            pack_num = data.get("Pack", 0)
+            pick_num = data.get("Pick", 0)
+
+            if grp_ids and self.card_db:
+                for grp_id in grp_ids:
+                    card_data = self.card_db.get_card_data(grp_id)
+                    if card_data:
+                        card_name = card_data.get("name", f"Card {grp_id}")
+                        self.draft_advisor.picked_cards.append(card_name)
+                        logging.info(f"Tracked pick: {card_name} (Pack {pack_num}, Pick {pick_num})")
+                        self._output(f"Picked: {card_name}", "green")
+                    else:
+                        logging.warning(f"Could not resolve picked card ID: {grp_id}")
+
+        except Exception as e:
+            logging.error(f"Error tracking draft pick: {e}")
+
+    def _on_deck_builder_entered(self, data: dict):
+        """Handle transition from Draft to DeckBuilder - suggest a deck"""
+        if not self.draft_advisor or not self.deck_builder:
+            return
+
+        try:
+            picked_cards = self.draft_advisor.picked_cards
+            if not picked_cards:
+                self._output("No picked cards tracked - cannot suggest deck", "yellow")
+                return
+
+            self._output(f"Draft complete! Building deck from {len(picked_cards)} cards...", "cyan")
+
+            # Get set code from draft advisor
+            set_code = self.draft_advisor.current_set or "TLA"
+
+            # Get deck suggestions
+            suggestions = self.deck_builder.suggest_deck(picked_cards, set_code, top_n=3)
+
+            if suggestions:
+                self._display_deck_suggestions(suggestions, picked_cards)
+            else:
+                self._output("Could not generate deck suggestions (no card stats found)", "yellow")
+
+        except Exception as e:
+            logging.error(f"Error generating deck suggestions: {e}")
+            self._output(f"Error building deck: {e}", "red")
+
+    def _display_deck_suggestions(self, suggestions, picked_cards):
+        """Display deck building suggestions"""
+        self._output("=" * 60, "white")
+        self._output("DECK BUILDING SUGGESTIONS", "cyan")
+        self._output("=" * 60, "white")
+
+        for i, suggestion in enumerate(suggestions, 1):
+            self._output(f"\nOption {i}: {suggestion.color_pair_name} {suggestion.archetype}", "green")
+            self._output(f"  Average GIHWR: {suggestion.avg_gihwr*100:.1f}%", "white")
+            self._output(f"  Score: {suggestion.score:.2f}", "white")
+
+            # Show maindeck (top cards)
+            self._output(f"\n  Maindeck ({sum(suggestion.maindeck.values())} cards):", "white")
+            sorted_cards = sorted(suggestion.maindeck.items(), key=lambda x: -x[1])
+            for card_name, count in sorted_cards[:10]:
+                self._output(f"    {count}x {card_name}", "white")
+            if len(sorted_cards) > 10:
+                self._output(f"    ... and {len(sorted_cards) - 10} more cards", "white")
+
+            # Show lands
+            self._output(f"\n  Lands ({sum(suggestion.lands.values())}):", "white")
+            for land, count in suggestion.lands.items():
+                self._output(f"    {count}x {land}", "white")
+
+        # TTS announcement
+        if self.tts and suggestions:
+            best = suggestions[0]
+            self.tts.speak(f"Recommended: {best.color_pair_name} {best.archetype}")
+
     def _display_draft_recommendation(self, pack_cards, pack_num, pick_num, recommendation):
+        """Display draft pick recommendation to user"""
+        logging.info(f"Displaying draft recommendation: Pack {pack_num}, Pick {pick_num} - {len(pack_cards)} cards, rec: {recommendation}")
+
         # Display logic for GUI/CLI
         if self.use_gui and self.gui:
             from .draft_advisor import format_draft_pack_for_gui
@@ -584,6 +672,13 @@ class CLIVoiceAdvisor:
 
     def _follow_log(self):
         """Follow log and process lines"""
+        # Recover draft state if app is started mid-draft (moved here from __init__ to avoid blocking startup)
+        if DRAFT_ADVISOR_AVAILABLE and self.draft_advisor:
+            try:
+                self.game_state_mgr.recover_draft_state(self.log_follower)
+            except Exception as e:
+                logging.warning(f"Failed to recover draft state: {e}")
+
         def callback(line):
             # Stream log to GUI if enabled
             # OPTIMIZATION: Only show logs in GUI if we are caught up to live events.
