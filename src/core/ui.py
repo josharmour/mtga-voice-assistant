@@ -11,6 +11,7 @@ from typing import List, Callable
 from .secondary_window import SecondaryWindow
 import json
 import threading
+import multiprocessing
 from .monitoring import get_monitor
 
 # ----------------------------------------------------------------------------------
@@ -27,10 +28,173 @@ GAME_EVENT_PATTERN = re.compile(r'GameStage|GRE_|Zone|PlayerState|Turn')
 # ----------------------------------------------------------------------------------
 # Content of src/tts.py
 # ----------------------------------------------------------------------------------
+
+def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float, force_engine: str):
+    """
+    Worker process for TTS generation.
+    Runs in a separate process to avoid blocking the main UI thread.
+    """
+    import logging
+    logging.basicConfig(level=logging.INFO, format='[TTS Worker] %(message)s')
+
+    tts_engine = None
+    tts = None
+    np = None
+    bark_processor = None
+    bark_model = None
+    torch_module = None
+
+    def init_kokoro():
+        nonlocal tts_engine, tts, np
+        try:
+            from kokoro_onnx import Kokoro
+            import numpy
+            np = numpy
+
+            from pathlib import Path as P
+            models_dir = P.home() / '.local' / 'share' / 'kokoro'
+            model_path = str(models_dir / 'kokoro-v1.0.onnx')
+            voices_path = str(models_dir / 'voices-v1.0.bin')
+
+            tts = Kokoro(model_path=model_path, voices_path=voices_path)
+            tts_engine = "kokoro"
+            logging.info("Kokoro TTS initialized in worker process")
+            return True
+        except Exception as e:
+            logging.debug(f"Kokoro init failed: {e}")
+            return False
+
+    def init_bark():
+        nonlocal tts_engine, bark_processor, bark_model, np, torch_module
+        try:
+            from transformers import AutoProcessor, BarkModel
+            import numpy
+            import torch
+
+            np = numpy
+            torch_module = torch
+
+            bark_processor = AutoProcessor.from_pretrained("suno/bark-small")
+            bark_model = BarkModel.from_pretrained("suno/bark-small")
+
+            if torch.cuda.is_available():
+                bark_model = bark_model.to("cuda")
+
+            tts_engine = "bark"
+            logging.info("BarkTTS initialized in worker process")
+            return True
+        except Exception as e:
+            logging.debug(f"BarkTTS init failed: {e}")
+            return False
+
+    def play_audio(audio_array, sample_rate):
+        """Play audio using sounddevice or fallback"""
+        try:
+            import sounddevice as sd
+            sd.play(audio_array, sample_rate)
+            sd.wait()  # Wait for playback to finish
+        except ImportError:
+            # Fallback to file-based playback
+            import scipy.io.wavfile as wavfile
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+                wavfile.write(tmp_path, sample_rate, (audio_array * 32767).astype(np.int16))
+
+            players = [
+                ["aplay", tmp_path],
+                ["paplay", tmp_path],
+                ["ffplay", "-nodisp", "-autoexit", tmp_path]
+            ]
+            for cmd in players:
+                try:
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    break
+                except:
+                    continue
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+        except Exception as e:
+            logging.error(f"Audio playback error: {e}")
+
+    def speak_kokoro(text, current_voice, current_volume):
+        """Generate and play TTS using Kokoro"""
+        try:
+            clean_text = text.replace('\n', ' ').replace('\r', '').strip()
+            audio_array, sample_rate = tts.create(clean_text, voice=current_voice, speed=1.0)
+            audio_array = audio_array * current_volume
+            play_audio(audio_array, sample_rate)
+        except Exception as e:
+            logging.error(f"Kokoro TTS error: {e}")
+
+    def speak_bark(text, current_voice, current_volume):
+        """Generate and play TTS using BarkTTS"""
+        try:
+            inputs = bark_processor(text, voice_preset=current_voice)
+            if torch_module.cuda.is_available():
+                inputs = {k: v.to("cuda") if hasattr(v, 'to') else v for k, v in inputs.items()}
+
+            with torch_module.no_grad():
+                audio_array = bark_model.generate(**inputs)
+
+            audio_array = audio_array.cpu().numpy().squeeze()
+            sample_rate = bark_model.generation_config.sample_rate
+            audio_array = audio_array * current_volume
+            play_audio(audio_array, sample_rate)
+        except Exception as e:
+            logging.error(f"BarkTTS error: {e}")
+
+    # Initialize TTS engine
+    current_voice = voice
+    current_volume = volume
+
+    if force_engine == "bark":
+        init_bark()
+    elif force_engine == "kokoro":
+        init_kokoro()
+    else:
+        if not init_kokoro():
+            init_bark()
+
+    if not tts_engine:
+        logging.error("No TTS engine available in worker process")
+        return
+
+    logging.info(f"TTS worker ready with engine: {tts_engine}")
+
+    # Process queue messages
+    while True:
+        try:
+            msg = queue.get()
+
+            if msg is None:  # Shutdown signal
+                logging.info("TTS worker shutting down")
+                break
+
+            if isinstance(msg, dict):
+                cmd = msg.get("cmd")
+                if cmd == "speak":
+                    text = msg.get("text", "")
+                    if text and tts_engine:
+                        if tts_engine == "kokoro":
+                            speak_kokoro(text, current_voice, current_volume)
+                        elif tts_engine == "bark":
+                            speak_bark(text, current_voice, current_volume)
+                elif cmd == "set_voice":
+                    current_voice = msg.get("voice", current_voice)
+                    logging.info(f"Voice changed to: {current_voice}")
+                elif cmd == "set_volume":
+                    current_volume = max(0.0, min(1.0, msg.get("volume", current_volume)))
+                    logging.info(f"Volume changed to: {current_volume}")
+        except Exception as e:
+            logging.error(f"TTS worker error: {e}")
+
+
 class TextToSpeech:
     def __init__(self, voice: str = "adam", volume: float = 1.0, force_engine: str = None):
         """
-        Initialize TTS with Kokoro as primary, BarkTTS as fallback.
+        Initialize TTS with a separate worker process to avoid blocking the UI.
 
         Args:
             voice: Voice name
@@ -39,237 +203,86 @@ class TextToSpeech:
         """
         self.voice = voice
         self.volume = max(0.0, min(1.0, volume))  # Clamp volume to 0.0-1.0
-        self.tts_engine = None  # Will be "kokoro" or "bark"
-        self.tts = None
-        self.bark_processor = None
-        self.bark_model = None
+        self.force_engine = force_engine
+        self.tts_engine = "worker"  # Using worker process
 
-        if force_engine == "bark":
-            # Force BarkTTS
-            logging.info(f"Forcing BarkTTS engine")
-            if self._init_bark():
-                logging.info(f"✓ BarkTTS initialized successfully")
-                return
-            logging.error("❌ Failed to initialize BarkTTS")
-        elif force_engine == "kokoro":
-            # Force Kokoro
-            logging.info(f"Forcing Kokoro engine with voice: {voice}, volume: {self.volume}")
-            if self._init_kokoro():
-                logging.info(f"✓ Kokoro TTS initialized successfully")
-                return
-            logging.error("❌ Failed to initialize Kokoro TTS")
-        else:
-            # Try Kokoro first (primary), then fall back
-            logging.info(f"Attempting to initialize Kokoro TTS (primary) with voice: {voice}, volume: {self.volume}")
-            if self._init_kokoro():
-                logging.info(f"✓ Kokoro TTS initialized successfully")
-                return
+        # Multiprocessing components
+        self._queue = None
+        self._process = None
+        self._started = False
 
-            # Fall back to BarkTTS
-            logging.warning("Kokoro TTS failed, falling back to BarkTTS (secondary)")
-            if self._init_bark():
-                logging.info(f"✓ BarkTTS initialized successfully")
-                return
+        # Start the worker process
+        self._start_worker()
 
-            # No TTS available
-            logging.error("❌ Failed to initialize any TTS engine (Kokoro and Bark both failed)")
+    def _start_worker(self):
+        """Start the TTS worker process"""
+        if self._started:
+            return
 
-    def _init_kokoro(self) -> bool:
-        """Try to initialize Kokoro TTS. Returns True on success."""
         try:
-            from kokoro_onnx import Kokoro
-            import numpy as np
-            from pathlib import Path
-            self.np = np
-
-            # Use downloaded models from ~/.local/share/kokoro/
-            models_dir = Path.home() / '.local' / 'share' / 'kokoro'
-            model_path = str(models_dir / 'kokoro-v1.0.onnx')
-            voices_path = str(models_dir / 'voices-v1.0.bin')
-
-            self.tts = Kokoro(model_path=model_path, voices_path=voices_path)
-            self.tts_engine = "kokoro"
-            return True
+            # Use spawn context for Windows compatibility
+            ctx = multiprocessing.get_context('spawn')
+            self._queue = ctx.Queue()
+            self._process = ctx.Process(
+                target=_tts_worker_process,
+                args=(self._queue, self.voice, self.volume, self.force_engine),
+                daemon=True
+            )
+            self._process.start()
+            self._started = True
+            logging.info(f"✓ TTS worker process started (PID: {self._process.pid})")
         except Exception as e:
-            logging.debug(f"Kokoro initialization failed: {e}")
-            return False
-
-    def _init_bark(self) -> bool:
-        """Try to initialize BarkTTS. Returns True on success."""
-        try:
-            from transformers import AutoProcessor, BarkModel
-            import numpy as np
-            import torch
-
-            self.np = np
-            self.torch = torch
-
-            # Load Bark model and processor
-            logging.info("Loading BarkTTS model (this may take a moment)...")
-            self.bark_processor = AutoProcessor.from_pretrained("suno/bark-small")
-            self.bark_model = BarkModel.from_pretrained("suno/bark-small")
-
-            # Move to GPU if available
-            if torch.cuda.is_available():
-                self.bark_model = self.bark_model.to("cuda")
-                logging.info("BarkTTS using GPU acceleration")
-
-            self.tts_engine = "bark"
-            return True
-        except Exception as e:
-            logging.debug(f"BarkTTS initialization failed: {e}")
-            return False
+            logging.error(f"❌ Failed to start TTS worker process: {e}")
+            self._started = False
 
     def set_voice(self, voice: str):
-        """Change voice dynamically"""
+        """Change voice dynamically by notifying the worker process"""
         self.voice = voice
+        if self._started and self._queue:
+            self._queue.put({"cmd": "set_voice", "voice": voice})
         logging.info(f"Voice changed to: {voice}")
 
     def set_volume(self, volume: float):
-        """Set volume (0.0-1.0)"""
+        """Set volume (0.0-1.0) by notifying the worker process"""
         self.volume = max(0.0, min(1.0, volume))
+        if self._started and self._queue:
+            self._queue.put({"cmd": "set_volume", "volume": self.volume})
         logging.info(f"Volume changed to: {self.volume}")
 
     def speak(self, text: str):
-        """Speak text using available TTS engine (Kokoro or Bark)"""
+        """Queue text for speaking in the worker process (non-blocking)"""
         if not text:
             logging.debug("No text provided to speak.")
             return
 
-        if not self.tts_engine:
-            logging.error("No TTS engine initialized, cannot speak.")
+        if not self._started:
+            logging.error("TTS worker not started, cannot speak.")
             return
 
-        # Route to appropriate TTS engine
-        if self.tts_engine == "kokoro":
-            self._speak_kokoro(text)
-        elif self.tts_engine == "bark":
-            self._speak_bark(text)
-
-    def _speak_kokoro(self, text: str):
-        """Speak using Kokoro TTS"""
-        logging.info(f"Speaking with Kokoro ({self.voice}): {text[:100]}...")
+        # Queue the speak request (non-blocking)
         try:
-            # Sanitize text for Kokoro (remove newlines to avoid phonemizer mismatch)
-            clean_text = text.replace('\n', ' ').replace('\r', '').strip()
-            
-            # Generate audio using Kokoro
-            audio_array, sample_rate = self.tts.create(clean_text, voice=self.voice, speed=1.0)
-
-            # Apply volume adjustment
-            audio_array = audio_array * self.volume
-
-            # Save and play
-            self._save_and_play_audio(audio_array, sample_rate, "Kokoro")
-            logging.debug("Successfully spoke text with Kokoro.")
+            self._queue.put({"cmd": "speak", "text": text})
+            logging.info(f"Queued TTS: {text[:100]}...")
         except Exception as e:
-            logging.error(f"Kokoro TTS error: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
+            logging.error(f"Failed to queue TTS: {e}")
 
-    def _speak_bark(self, text: str):
-        """Speak using BarkTTS"""
-        logging.info(f"Speaking with BarkTTS ({self.voice}): {text[:100]}...")
-        try:
-            # Process text input
-            inputs = self.bark_processor(text, voice_preset=self.voice)
-
-            # Move inputs to same device as model
-            if self.torch.cuda.is_available():
-                inputs = {k: v.to("cuda") if hasattr(v, 'to') else v for k, v in inputs.items()}
-
-            # Generate audio
-            with self.torch.no_grad():
-                audio_array = self.bark_model.generate(**inputs)
-
-            # Convert to numpy and get sample rate
-            audio_array = audio_array.cpu().numpy().squeeze()
-            sample_rate = self.bark_model.generation_config.sample_rate
-
-            # Apply volume adjustment
-            audio_array = audio_array * self.volume
-
-            # Save and play
-            self._save_and_play_audio(audio_array, sample_rate, "BarkTTS")
-            logging.debug("Successfully spoke text with BarkTTS.")
-        except Exception as e:
-            logging.error(f"BarkTTS error: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
-
-    def _save_and_play_audio(self, audio_array, sample_rate: int, engine_name: str):
-        """Play audio directly using sounddevice (better for WSL)"""
-        try:
-            import sounddevice as sd
-            
-            logging.info(f"Playing audio with sounddevice ({engine_name})...")
-            
-            # Play audio directly (non-blocking)
-            sd.play(audio_array, sample_rate)
-            
-            logging.info(f"Audio playback started successfully")
-            
-        except ImportError:
-            logging.error("sounddevice not installed. Install with: pip install sounddevice")
-            # Fallback to system players
-            self._save_and_play_audio_fallback(audio_array, sample_rate, engine_name)
-        except Exception as e:
-            logging.error(f"sounddevice playback error: {e}")
-            # Fallback to system players
-            self._save_and_play_audio_fallback(audio_array, sample_rate, engine_name)
-    
-    def _save_and_play_audio_fallback(self, audio_array, sample_rate: int, engine_name: str):
-        """Fallback: Save audio to temp file and play with system commands"""
-        import scipy.io.wavfile as wavfile
-
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = tmp.name
-            wavfile.write(tmp_path, sample_rate, (audio_array * 32767).astype(self.np.int16))
-
-        logging.info(f"Generated audio saved to {tmp_path}, playing...")
-
-        # Try different audio players
-        played = False
-        players = [
-            (["aplay", tmp_path], "aplay"),
-            (["paplay", tmp_path], "paplay"),
-            (["ffplay", "-nodisp", "-autoexit", tmp_path], "ffplay")
-        ]
-
-        for cmd, player_name in players:
+    def shutdown(self):
+        """Shut down the TTS worker process"""
+        if self._started and self._queue and self._process:
             try:
-                # Use Popen instead of run to avoid blocking the UI thread
-                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                played = True
-                logging.info(f"Audio playing with {player_name}")
-                break
-            except FileNotFoundError:
-                continue
+                self._queue.put(None)  # Send shutdown signal
+                self._process.join(timeout=5)  # Wait up to 5 seconds
+                if self._process.is_alive():
+                    self._process.terminate()
+                logging.info("TTS worker process shut down")
             except Exception as e:
-                logging.debug(f"{player_name} error: {e}")
-                continue
+                logging.error(f"Error shutting down TTS worker: {e}")
+            finally:
+                self._started = False
 
-        if not played:
-            logging.error("No audio player found (aplay, paplay, or ffplay). Cannot play audio.")
-            # Clean up temp file immediately if we didn't play
-            try:
-                os.unlink(tmp_path)
-            except:
-                pass
-        else:
-            # Clean up temp file after a delay (audio should be done by then)
-            # Use a background thread to avoid blocking
-            import threading
-            def cleanup_audio_file():
-                import time
-                time.sleep(10)  # Wait 10 seconds for audio to finish
-                try:
-                    os.unlink(tmp_path)
-                    logging.debug(f"Cleaned up temp audio file: {tmp_path}")
-                except:
-                    pass
-            threading.Thread(target=cleanup_audio_file, daemon=True).start()
+    def __del__(self):
+        """Clean up on destruction"""
+        self.shutdown()
 
 # Content of src/ui.py
 # Import Tkinter (optional - for GUI mode)
