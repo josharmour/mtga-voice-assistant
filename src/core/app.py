@@ -781,20 +781,19 @@ class CLIVoiceAdvisor:
                                     if self.gui and hasattr(self.gui, 'verbose_speech_var'):
                                         verbose_speech = self.gui.verbose_speech_var.get()
 
+                                    import re
+                                    # Strip markdown formatting
+                                    clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)  # Remove **bold**
+                                    clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)  # Remove *italic*
+                                    clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)  # Remove `code`
+                                    # Remove common prefix words that sound redundant when spoken
+                                    clean_advice = re.sub(r'^(Recommendation|Advice|Suggestion|Note|Tip):\s*', '', clean_advice, flags=re.IGNORECASE)
+
                                     if verbose_speech:
-                                        # Full advice - strip markdown formatting before TTS
-                                        import re
-                                        clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)  # Remove **bold**
-                                        clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)  # Remove *italic*
-                                        clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)  # Remove `code`
+                                        # Full advice
                                         self.tts.speak(clean_advice)
                                     else:
-                                        # Brief summary only - extract first sentence or key action
-                                        import re
-                                        clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)
-                                        clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)
-                                        clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)
-                                        # Get first sentence (up to first period, exclamation, or question mark)
+                                        # Brief summary only - extract first sentence
                                         first_sentence = re.split(r'[.!?]', clean_advice)[0].strip()
                                         if first_sentence:
                                             self.tts.speak(first_sentence)
