@@ -258,8 +258,8 @@ class CLIVoiceAdvisor:
         # ArenaCardDatabase has get_card_name and get_card_data methods
         self.game_state_mgr = GameStateManager(self.arena_db)
 
-        # Initialize AI advisor
-        self.ai_advisor = AIAdvisor(prefs=self.prefs)
+        # Initialize AI advisor with card database for land detection
+        self.ai_advisor = AIAdvisor(card_db=self.arena_db, prefs=self.prefs)
 
         # Initialize TTS asynchronously to prevent blocking startup
         self.tts = None
