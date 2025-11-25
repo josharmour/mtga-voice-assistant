@@ -372,21 +372,50 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         # Add YOUR mana availability (crucial for play recommendations)
         context_lines.append("\n**My Mana Available:**")
         your_mana = board_state.get('your_mana_pool', {})
-        if your_mana:
+        if your_mana and any(v > 0 for v in your_mana.values()):
             mana_str = ", ".join([f"{k}:{v}" for k, v in your_mana.items() if v > 0])
-            context_lines.append(f"  Current Mana Pool: {mana_str if mana_str else 'Empty (all tapped)'}")
+            context_lines.append(f"  Current Mana Pool: {mana_str}")
         else:
-            # Count untapped lands on battlefield
+            # Count lands on battlefield by checking card_types, type_line, and name
+            basic_land_names = ["Plains", "Island", "Swamp", "Mountain", "Forest"]
+            total_lands = 0
             untapped_lands = 0
             for card in my_battlefield:
                 is_dict = isinstance(card, dict)
-                is_tapped = card.get('is_tapped', False) if is_dict else getattr(card, 'is_tapped', False)
+                card_name = str(card.get('name', '') if is_dict else getattr(card, 'name', ''))
                 card_types = card.get('card_types', []) if is_dict else getattr(card, 'card_types', [])
-                type_line = card.get('type_line', '') if is_dict else getattr(card, 'type_line', '')
-                if not is_tapped and ('Land' in str(card_types) or 'Land' in str(type_line)):
-                    untapped_lands += 1
-            total_lands = sum(1 for card in my_battlefield if 'Land' in str(card.get('card_types', []) if isinstance(card, dict) else getattr(card, 'card_types', [])) or 'Land' in str(card.get('type_line', '') if isinstance(card, dict) else getattr(card, 'type_line', '')))
-            context_lines.append(f"  Lands: {total_lands} total, ~{untapped_lands} untapped (mana available)")
+                type_line = str(card.get('type_line', '') if is_dict else getattr(card, 'type_line', ''))
+                is_tapped = card.get('is_tapped', False) if is_dict else getattr(card, 'is_tapped', False)
+
+                # Check if it's a land - multiple methods
+                is_land = False
+
+                # Method 1: Check card_types list for CardType_Land
+                if card_types:
+                    if any('Land' in str(ct) for ct in card_types):
+                        is_land = True
+
+                # Method 2: Check type_line string for Land
+                if not is_land and 'Land' in type_line:
+                    is_land = True
+
+                # Method 3: Check if it's a basic land by name
+                if not is_land and card_name in basic_land_names:
+                    is_land = True
+
+                # Method 4: Check if name contains common dual land patterns
+                if not is_land and any(pattern in card_name for pattern in ['Peak', 'Shore', 'Falls', 'Grove', 'Pass', 'Gate', 'Temple']):
+                    # Could be a dual land - check if it has no power (creatures have power)
+                    power = card.get('power') if is_dict else getattr(card, 'power', None)
+                    if power is None:
+                        is_land = True
+
+                if is_land:
+                    total_lands += 1
+                    if not is_tapped:
+                        untapped_lands += 1
+
+            context_lines.append(f"  Lands: {total_lands} total, {untapped_lands} untapped (mana available)")
 
         context_lines.append("\n**My Hand:**")
         my_hand = board_state.get('your_hand', [])
