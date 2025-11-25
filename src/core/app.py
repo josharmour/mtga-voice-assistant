@@ -671,14 +671,31 @@ class CLIVoiceAdvisor:
                             # Debug: AI Advisor returned advice
                             if advice:
                                 self._output(f"\n🤖 Advisor: {advice}", "green")
-                                
-                                # Strip markdown formatting before TTS (remove ** and other markdown)
-                                import re
-                                clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)  # Remove **bold**
-                                clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)  # Remove *italic*
-                                clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)  # Remove `code`
-                                
-                                self.tts.speak(clean_advice)
+
+                                # Check if TTS is available and not muted
+                                if self.tts:
+                                    # Check verbose setting from GUI
+                                    verbose_speech = True  # Default to verbose if no GUI
+                                    if self.gui and hasattr(self.gui, 'verbose_speech_var'):
+                                        verbose_speech = self.gui.verbose_speech_var.get()
+
+                                    if verbose_speech:
+                                        # Full advice - strip markdown formatting before TTS
+                                        import re
+                                        clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)  # Remove **bold**
+                                        clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)  # Remove *italic*
+                                        clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)  # Remove `code`
+                                        self.tts.speak(clean_advice)
+                                    else:
+                                        # Brief summary only - extract first sentence or key action
+                                        import re
+                                        clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)
+                                        clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)
+                                        clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)
+                                        # Get first sentence (up to first period, exclamation, or question mark)
+                                        first_sentence = re.split(r'[.!?]', clean_advice)[0].strip()
+                                        if first_sentence:
+                                            self.tts.speak(first_sentence)
                         except Exception as e:
                             # Remove emojis from error message for Windows console
                             error_msg = remove_emojis(str(e)) if os.name == 'nt' else str(e)
