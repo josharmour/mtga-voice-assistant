@@ -12,6 +12,9 @@ from enum import Enum, auto
 # Event system for decoupled communication (future integration)
 # from .events import get_event_bus, EventType
 
+# Performance monitoring
+from .monitoring import get_monitor
+
 # Zone Type Enum for fast comparisons
 class ZoneType(Enum):
     """Enum representing different zone types in MTG Arena."""
@@ -674,97 +677,105 @@ class MatchScanner:
         Parse the massive GameStateMessage.
         This is the primary source of truth for the board state.
         """
-        if "gameStateMessage" not in message:
-            return False
-
-        # Handle potential JSON string within the message
-        game_state_raw = message["gameStateMessage"]
-        game_state = None
-
-        if isinstance(game_state_raw, str):
-            try:
-                # Clean up potential leading/trailing garbage characters if any
-                clean_json = game_state_raw.strip()
-                # Some logs have weird prefixes like "ClientToGREMessage "
-                if "{" in clean_json:
-                    clean_json = clean_json[clean_json.find("{"):]
-                
-                game_state = json.loads(clean_json)
-            except json.JSONDecodeError as e:
-                logging.warning(f"Failed to parse GameStateMessage JSON: {e}")
+        monitor = get_monitor()
+        with monitor.measure("mtga.parse_game_state_message"):
+            if "gameStateMessage" not in message:
                 return False
-        elif isinstance(game_state_raw, dict):
-            game_state = game_state_raw
-        else:
-            logging.warning(f"Unknown GameStateMessage format: {type(game_state_raw)}")
-            return False
 
-        if not game_state:
-            return False
+            # Handle potential JSON string within the message
+            game_state_raw = message["gameStateMessage"]
+            game_state = None
 
-        logging.info(f"GameStateMessage received")
-        logging.info(f"Game State keys: {list(game_state.keys()) if game_state else 'empty'}")
-        state_changed = False
+            if isinstance(game_state_raw, str):
+                try:
+                    # Clean up potential leading/trailing garbage characters if any
+                    clean_json = game_state_raw.strip()
+                    # Some logs have weird prefixes like "ClientToGREMessage "
+                    if "{" in clean_json:
+                        clean_json = clean_json[clean_json.find("{"):]
 
-        # Parse game stage (for mulligan detection)
-        if "gameInfo" in game_state:
-            game_info = game_state["gameInfo"]
-            old_stage = self.game_stage
-            self.game_stage = game_info.get("stage", self.game_stage)
-            if old_stage != self.game_stage:
-                logging.info(f"🎮 Game stage changed: {old_stage} → {self.game_stage}")
-                state_changed = True
+                    game_state = json.loads(clean_json)
+                except json.JSONDecodeError as e:
+                    logging.warning(f"Failed to parse GameStateMessage JSON: {e}")
+                    return False
+            elif isinstance(game_state_raw, dict):
+                game_state = game_state_raw
+            else:
+                logging.warning(f"Unknown GameStateMessage format: {type(game_state_raw)}")
+                return False
 
-        # Handle deleted objects FIRST before processing new ones
-        if "diffDeletedInstanceIds" in game_state:
-            deleted_ids = game_state["diffDeletedInstanceIds"]
-            logging.debug(f"Removing {len(deleted_ids)} deleted objects")
-            for obj_id in deleted_ids:
-                if obj_id in self.game_objects:
-                    # P0 Performance: Remove from zone cache before deleting
-                    obj = self.game_objects[obj_id]
-                    old_zone_id = obj.zone_id
-                    if old_zone_id in self._zone_objects:
-                        self._zone_objects[old_zone_id].discard(obj_id)
-                        # Clean up empty zone sets to save memory
-                        if not self._zone_objects[old_zone_id]:
-                            del self._zone_objects[old_zone_id]
+            if not game_state:
+                return False
 
-                    del self.game_objects[obj_id]
+            logging.info(f"GameStateMessage received")
+            logging.info(f"Game State keys: {list(game_state.keys()) if game_state else 'empty'}")
+            state_changed = False
+
+            # Parse game stage (for mulligan detection)
+            if "gameInfo" in game_state:
+                game_info = game_state["gameInfo"]
+                old_stage = self.game_stage
+                self.game_stage = game_info.get("stage", self.game_stage)
+                if old_stage != self.game_stage:
+                    logging.info(f"🎮 Game stage changed: {old_stage} → {self.game_stage}")
                     state_changed = True
 
-        if "gameObjects" in game_state:
-            logging.info(f"Found gameObjects with {len(game_state['gameObjects'])} items")
-            state_changed |= self._parse_game_objects(game_state["gameObjects"])
-        else:
-            logging.info("No gameObjects in game state message")
-        if "zones" in game_state:
-            logging.info(f"Found zones - THIS IS WHERE CARDS ARE! {type(game_state['zones'])}")
-            state_changed |= self._parse_zones(game_state["zones"])
-        else:
-            logging.info("No zones in game state message")
-        if "players" in game_state:
-            logging.info(f"Found players with {len(game_state['players'])} items")
-            state_changed |= self._parse_players(game_state["players"])
-        else:
-            logging.info("No players in game state message")
-        if "turnInfo" in game_state:
-            logging.info(f"Found turnInfo: {game_state['turnInfo']}")
-            
-            # Detect new match: if turn number goes from high to 1, it's a new game
-            new_turn = game_state['turnInfo'].get('turnNumber', 0)
-            if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
-                logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
-                self.reset_match_state()
-            
-            state_changed |= self._parse_turn_info(game_state["turnInfo"])
-        else:
-            logging.info("No turnInfo in game state message")
-        return state_changed
+            # Handle deleted objects FIRST before processing new ones
+            if "diffDeletedInstanceIds" in game_state:
+                deleted_ids = game_state["diffDeletedInstanceIds"]
+                logging.debug(f"Removing {len(deleted_ids)} deleted objects")
+                for obj_id in deleted_ids:
+                    if obj_id in self.game_objects:
+                        # P0 Performance: Remove from zone cache before deleting
+                        obj = self.game_objects[obj_id]
+                        old_zone_id = obj.zone_id
+                        if old_zone_id in self._zone_objects:
+                            self._zone_objects[old_zone_id].discard(obj_id)
+                            # Clean up empty zone sets to save memory
+                            if not self._zone_objects[old_zone_id]:
+                                del self._zone_objects[old_zone_id]
+
+                        del self.game_objects[obj_id]
+                        state_changed = True
+
+            if "gameObjects" in game_state:
+                logging.info(f"Found gameObjects with {len(game_state['gameObjects'])} items")
+                state_changed |= self._parse_game_objects(game_state["gameObjects"])
+            else:
+                logging.info("No gameObjects in game state message")
+            if "zones" in game_state:
+                logging.info(f"Found zones - THIS IS WHERE CARDS ARE! {type(game_state['zones'])}")
+                state_changed |= self._parse_zones(game_state["zones"])
+            else:
+                logging.info("No zones in game state message")
+            if "players" in game_state:
+                logging.info(f"Found players with {len(game_state['players'])} items")
+                state_changed |= self._parse_players(game_state["players"])
+            else:
+                logging.info("No players in game state message")
+            if "turnInfo" in game_state:
+                logging.info(f"Found turnInfo: {game_state['turnInfo']}")
+
+                # Detect new match: if turn number goes from high to 1, it's a new game
+                new_turn = game_state['turnInfo'].get('turnNumber', 0)
+                if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
+                    logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
+                    self.reset_match_state()
+
+                state_changed |= self._parse_turn_info(game_state["turnInfo"])
+            else:
+                logging.info("No turnInfo in game state message")
+            return state_changed
 
     def _parse_game_objects(self, game_objects: list) -> bool:
+        monitor = get_monitor()
+        with monitor.measure("mtga.parse_game_objects"):
+            state_changed = False
+            logging.info(f"Parsing {len(game_objects)} game objects")
+            return self._parse_game_objects_impl(game_objects)
+
+    def _parse_game_objects_impl(self, game_objects: list) -> bool:
         state_changed = False
-        logging.info(f"Parsing {len(game_objects)} game objects")
         for obj_data in game_objects:
             instance_id = obj_data.get("instanceId")
             if not instance_id: continue
@@ -1171,12 +1182,136 @@ class MatchScanner:
 
         return state_changed
 
+class JsonStreamParser:
+    """
+    Robust JSON stream parser that correctly handles braces within strings.
+
+    Uses a simple state machine to track:
+    - Whether we're inside a string
+    - Escape sequences within strings
+    - Actual JSON depth (ignoring braces in strings)
+    """
+
+    def __init__(self):
+        self.buffer: str = ""
+        self.depth: int = 0
+
+    def feed(self, line: str) -> Optional[str]:
+        """
+        Feed a line of text to the parser.
+
+        Returns:
+            Complete JSON string if a full object was detected, None otherwise.
+        """
+        # If we're not in a JSON object, look for the start
+        if self.depth == 0:
+            json_start = line.find('{')
+            if json_start == -1:
+                return None
+            line = line[json_start:]
+            self.buffer = ""
+
+        # Add line to buffer
+        self.buffer += line
+
+        # Update depth by parsing character by character
+        self.depth = self._calculate_depth(self.buffer)
+
+        # Detect corruption (more closing than opening)
+        if self.depth < 0:
+            logging.warning(f"JSON depth corruption detected (depth={self.depth}). Resetting parser.")
+            self.reset()
+            return None
+
+        # If we have a complete object, return it
+        if self.depth == 0 and self.buffer:
+            result = self.buffer
+            self.reset()
+            return result
+
+        return None
+
+    def _calculate_depth(self, text: str) -> int:
+        """
+        Calculate JSON depth while properly handling strings.
+
+        This state machine tracks:
+        - in_string: Whether we're inside a quoted string
+        - escaped: Whether the previous character was a backslash
+        - depth: Current brace nesting level
+
+        Args:
+            text: The text to analyze
+
+        Returns:
+            Current JSON depth (0 = complete object)
+        """
+        depth = 0
+        in_string = False
+        escaped = False
+
+        for char in text:
+            if escaped:
+                # Previous char was backslash, this char is escaped
+                escaped = False
+                continue
+
+            if char == '\\' and in_string:
+                # Start escape sequence
+                escaped = True
+                continue
+
+            if char == '"':
+                # Toggle string state
+                in_string = not in_string
+                continue
+
+            # Only count braces outside of strings
+            if not in_string:
+                if char == '{':
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+
+        return depth
+
+    def reset(self):
+        """Reset parser state."""
+        self.buffer = ""
+        self.depth = 0
+
+    def is_valid_json(self, text: str) -> bool:
+        """
+        Quick validation to check if text looks like valid JSON.
+
+        This provides early validation before attempting to parse.
+
+        Args:
+            text: Text to validate
+
+        Returns:
+            True if text appears to be valid JSON structure
+        """
+        if not text or not text.strip():
+            return False
+
+        trimmed = text.strip()
+
+        # Must start with { and end with }
+        if not (trimmed.startswith('{') and trimmed.endswith('}')):
+            return False
+
+        # Depth should be exactly 0 for complete object
+        return self._calculate_depth(trimmed) == 0
+
+
 class GameStateManager:
     def __init__(self, card_lookup: "ArenaCardDatabase"):
         self.scanner = MatchScanner(card_lookup=card_lookup)
         self.card_lookup = card_lookup
-        self._json_buffer: str = ""
-        self._json_depth: int = 0
+
+        # P3: Robust JSON stream parser (replaces simple brace counting)
+        self._json_parser = JsonStreamParser()
 
         # P2: Consolidated draft event parser
         self.draft_parser = DraftEventParser()
@@ -1380,61 +1515,45 @@ class GameStateManager:
             # Draft event was detected and callbacks were triggered
             return False  # Draft events don't change game state
 
-        # If we are not building a JSON object, look for the start
-        if self._json_depth == 0:
-            json_start_index = line.find('{')
-            if json_start_index == -1:
-                return False  # Not in an object and no new one starts, so skip.
+        # P3: Use robust JSON stream parser
+        json_to_parse = self._json_parser.feed(line)
 
-            # Start of a new JSON object
-            line_content = line[json_start_index:]
-            self._json_buffer = line_content
-            self._json_depth = line_content.count('{') - line_content.count('}')
-        else:
-            # We are in the middle of a JSON object, append the new line
-            self._json_buffer += line
-            self._json_depth += line.count('{') - line.count('}')
-
-        # Check for malformed JSON (more closing than opening braces)
-        if self._json_depth < 0:
-            logging.warning(f"JSON depth is negative ({self._json_depth}). Buffer corrupted, resetting.")
-            self._json_buffer = ""
-            self._json_depth = 0
+        # If no complete JSON object yet, return
+        if json_to_parse is None:
             return False
 
-        # If we have a complete object, parse it
-        if self._json_depth == 0 and self._json_buffer:
-            # Make a copy to parse and clear the instance buffer immediately
-            json_to_parse = self._json_buffer
-            self._json_buffer = ""
+        # P3: Early validation before attempting to parse
+        if not self._json_parser.is_valid_json(json_to_parse):
+            logging.warning(f"Invalid JSON structure detected. Skipping malformed content: {json_to_parse[:200]}...")
+            return False
 
-            try:
-                parsed_data = json.loads(json_to_parse)
+        # Try to parse the complete JSON object
+        try:
+            parsed_data = json.loads(json_to_parse)
 
-                # Parse deck submission (but don't return - let GRE event processing continue)
-                # This is important because GRE event processing sets local_player_seat_id
-                self._parse_deck_submission(parsed_data)
+            # Parse deck submission (but don't return - let GRE event processing continue)
+            # This is important because GRE event processing sets local_player_seat_id
+            self._parse_deck_submission(parsed_data)
 
-                # Parse UX events (but don't return - let GRE event processing continue)
-                self._parse_ux_event(parsed_data)
+            # Parse UX events (but don't return - let GRE event processing continue)
+            self._parse_ux_event(parsed_data)
 
-                # Original GRE event parsing (this sets local_player_seat_id from systemSeatIds)
-                gre_event_data = self._find_gre_event(parsed_data)
+            # Original GRE event parsing (this sets local_player_seat_id from systemSeatIds)
+            gre_event_data = self._find_gre_event(parsed_data)
 
-                if gre_event_data:
-                    logging.debug("Successfully found and parsed GreToClientEvent JSON.")
-                    state_changed = self.scanner.parse_gre_to_client_event(gre_event_data)
-                    # P2 Performance: Mark board state dirty when GRE event changes state
-                    if state_changed:
-                        self._mark_board_state_dirty()
-                    return state_changed
-                else:
-                    logging.debug("Parsed JSON but 'greToClientEvent' not found within the object.")
-                    return False
-            except json.JSONDecodeError as e:
-                logging.debug(f"JSON parsing failed for buffered content. Error: {e}. Content: {json_to_parse[:200]}...")
-                # Buffer is already cleared, so we are ready for the next object.
+            if gre_event_data:
+                logging.debug("Successfully found and parsed GreToClientEvent JSON.")
+                state_changed = self.scanner.parse_gre_to_client_event(gre_event_data)
+                # P2 Performance: Mark board state dirty when GRE event changes state
+                if state_changed:
+                    self._mark_board_state_dirty()
+                return state_changed
+            else:
+                logging.debug("Parsed JSON but 'greToClientEvent' not found within the object.")
                 return False
+        except json.JSONDecodeError as e:
+            logging.warning(f"JSON parsing failed despite validation. Error: {e}. Content: {json_to_parse[:200]}...")
+            return False
 
         return False
 
@@ -1445,38 +1564,35 @@ class GameStateManager:
         P2 Performance: Uses dirty flag to avoid rebuilding board state when nothing changed.
         If the state hasn't changed since last call, returns cached copy.
         """
-        start_time = time.time()
+        monitor = get_monitor()
+        with monitor.measure("mtga.get_current_board_state"):
+            # If not dirty and we have a cached state, return it
+            if not self._board_state_dirty and self._cached_board_state is not None:
+                logging.debug("PERFORMANCE: Returning cached board state (no changes detected)")
+                return self._cached_board_state
 
-        # If not dirty and we have a cached state, return it
-        if not self._board_state_dirty and self._cached_board_state is not None:
-            logging.debug("PERFORMANCE: Returning cached board state (no changes detected)")
-            return self._cached_board_state
+            # Build new board state
+            board_state = self._build_board_state()
 
-        # Build new board state
-        board_state = self._build_board_state()
+            if board_state is None:
+                # Can't build state yet (missing player data, etc.)
+                return None
 
-        if board_state is None:
-            # Can't build state yet (missing player data, etc.)
-            return None
+            # Compute hash to detect if state actually changed
+            new_hash = self._compute_state_hash(board_state)
 
-        # Compute hash to detect if state actually changed
-        new_hash = self._compute_state_hash(board_state)
+            if new_hash == self._last_board_state_hash and self._cached_board_state is not None:
+                # State hash hasn't changed - return cached version
+                logging.debug("PERFORMANCE: State hash unchanged, returning cached board state")
+                self._board_state_dirty = False
+                return self._cached_board_state
 
-        if new_hash == self._last_board_state_hash and self._cached_board_state is not None:
-            # State hash hasn't changed - return cached version
-            logging.debug("PERFORMANCE: State hash unchanged, returning cached board state")
+            # State actually changed - cache it
+            self._cached_board_state = board_state
             self._board_state_dirty = False
-            return self._cached_board_state
+            self._last_board_state_hash = new_hash
 
-        # State actually changed - cache it
-        self._cached_board_state = board_state
-        self._board_state_dirty = False
-        self._last_board_state_hash = new_hash
-
-        elapsed = time.time() - start_time
-        logging.debug(f"PERFORMANCE: Built new board state in {elapsed:.4f} seconds")
-
-        return board_state
+            return board_state
 
     def _build_board_state(self) -> Optional[BoardState]:
         """

@@ -11,6 +11,7 @@ from typing import List, Callable
 from .secondary_window import SecondaryWindow
 import json
 import threading
+from .monitoring import get_monitor
 
 # ----------------------------------------------------------------------------------
 # Performance: Compiled Regex Patterns for Log Event Detection
@@ -716,59 +717,61 @@ class AdvisorGUI:
 
     def _process_log_queue(self):
         """Process queued log messages with adaptive batch sizing."""
-        try:
-            if hasattr(self, 'log_queue') and self.log_queue:
-                queue_depth = len(self.log_queue)
+        monitor = get_monitor()
+        with monitor.measure("ui.process_log_queue"):
+            try:
+                if hasattr(self, 'log_queue') and self.log_queue:
+                    queue_depth = len(self.log_queue)
 
-                # Adaptive batch size based on backlog
-                if queue_depth > 5000:
-                    batch_size = 2000  # Aggressive catch-up mode
-                    next_interval = 50  # Process faster when backlogged
-                elif queue_depth > 2000:
-                    batch_size = 1000
-                    next_interval = 100
-                elif queue_depth > 500:
-                    batch_size = 500
-                    next_interval = 150
+                    # Adaptive batch size based on backlog
+                    if queue_depth > 5000:
+                        batch_size = 2000  # Aggressive catch-up mode
+                        next_interval = 50  # Process faster when backlogged
+                    elif queue_depth > 2000:
+                        batch_size = 1000
+                        next_interval = 100
+                    elif queue_depth > 500:
+                        batch_size = 500
+                        next_interval = 150
+                    else:
+                        batch_size = min(100, queue_depth)
+                        next_interval = 200  # Normal rate when caught up
+
+                    # Show catching-up indicator for large backlogs
+                    if queue_depth > 1000:
+                        self.set_status(f"Processing logs... ({queue_depth} remaining)")
+                        # Log performance metrics for debugging
+                        if queue_depth % 1000 == 0:
+                            logging.debug(f"Log queue depth: {queue_depth}, batch_size: {batch_size}")
+
+                    if self.log_window and self.log_window.winfo_exists():
+                        lines = []
+                        for _ in range(min(batch_size, len(self.log_queue))):
+                            lines.append(self.log_queue.popleft())
+
+                        if lines:
+                            self.log_window.append_batch(lines)
+
+                        # Clear status when caught up
+                        if queue_depth > 1000 and len(self.log_queue) <= 1000:
+                            self.set_status("Ready")
+                    else:
+                        # Window doesn't exist - prevent unbounded growth
+                        if queue_depth > 9000:
+                            self.log_queue.clear()
+                            logging.debug("Cleared log queue - window not available")
+
+                    if self.root and self.root.winfo_exists():
+                        self.root.after(next_interval, self._process_log_queue)
                 else:
-                    batch_size = min(100, queue_depth)
-                    next_interval = 200  # Normal rate when caught up
+                    # No queue or empty - check again later at normal rate
+                    if self.root and self.root.winfo_exists():
+                        self.root.after(200, self._process_log_queue)
 
-                # Show catching-up indicator for large backlogs
-                if queue_depth > 1000:
-                    self.set_status(f"Processing logs... ({queue_depth} remaining)")
-                    # Log performance metrics for debugging
-                    if queue_depth % 1000 == 0:
-                        logging.debug(f"Log queue depth: {queue_depth}, batch_size: {batch_size}")
-
-                if self.log_window and self.log_window.winfo_exists():
-                    lines = []
-                    for _ in range(min(batch_size, len(self.log_queue))):
-                        lines.append(self.log_queue.popleft())
-
-                    if lines:
-                        self.log_window.append_batch(lines)
-
-                    # Clear status when caught up
-                    if queue_depth > 1000 and len(self.log_queue) <= 1000:
-                        self.set_status("Ready")
-                else:
-                    # Window doesn't exist - prevent unbounded growth
-                    if queue_depth > 9000:
-                        self.log_queue.clear()
-                        logging.debug("Cleared log queue - window not available")
-
+            except Exception as e:
+                logging.error(f"Error processing log queue: {e}")
                 if self.root and self.root.winfo_exists():
-                    self.root.after(next_interval, self._process_log_queue)
-            else:
-                # No queue or empty - check again later at normal rate
-                if self.root and self.root.winfo_exists():
-                    self.root.after(200, self._process_log_queue)
-
-        except Exception as e:
-            logging.error(f"Error processing log queue: {e}")
-            if self.root and self.root.winfo_exists():
-                self.root.after(500, self._process_log_queue)
+                    self.root.after(500, self._process_log_queue)
 
     def _on_restart(self):
         """Handle restart button click - restarts the application."""
@@ -1107,12 +1110,14 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
         then clears the pending updates dictionary. Called automatically by
         _schedule_update() after a brief delay to batch rapid successive updates.
         """
-        self._update_scheduled = False
-        updates = self._pending_updates.copy()
-        self._pending_updates.clear()
+        monitor = get_monitor()
+        with monitor.measure("ui.flush_updates"):
+            self._update_scheduled = False
+            updates = self._pending_updates.copy()
+            self._pending_updates.clear()
 
-        for key, value in updates.items():
-            self._apply_update(key, value)
+            for key, value in updates.items():
+                self._apply_update(key, value)
 
     def _apply_update(self, key: str, value):
         """

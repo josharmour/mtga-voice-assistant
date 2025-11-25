@@ -3,6 +3,7 @@ import hashlib
 import json
 from typing import Dict, List, Optional
 from src.data.data_management import ScryfallClient
+from src.core.monitoring import get_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -140,26 +141,28 @@ class MTGPromptBuilder:
         Returns:
             Formatted prompt string ready for LLM consumption
         """
-        # Compute hash of current state
-        current_hash = self._compute_board_hash(board_state)
+        monitor = get_monitor()
+        with monitor.measure("prompt.build_tactical_prompt"):
+            # Compute hash of current state
+            current_hash = self._compute_board_hash(board_state)
 
-        # Check cache
-        if current_hash == self._last_tactical_hash and self._cached_tactical_prompt:
-            self._cache_hits += 1
-            logger.debug(f"Prompt cache HIT (total hits: {self._cache_hits})")
-            return self._cached_tactical_prompt
+            # Check cache
+            if current_hash == self._last_tactical_hash and self._cached_tactical_prompt:
+                self._cache_hits += 1
+                logger.debug(f"Prompt cache HIT (total hits: {self._cache_hits})")
+                return self._cached_tactical_prompt
 
-        self._cache_misses += 1
-        logger.debug(f"Prompt cache MISS (total misses: {self._cache_misses})")
+            self._cache_misses += 1
+            logger.debug(f"Prompt cache MISS (total misses: {self._cache_misses})")
 
-        # Build new prompt
-        prompt = self._build_tactical_prompt_impl(board_state, game_history)
+            # Build new prompt
+            prompt = self._build_tactical_prompt_impl(board_state, game_history)
 
-        # Update cache
-        self._last_tactical_hash = current_hash
-        self._cached_tactical_prompt = prompt
+            # Update cache
+            self._last_tactical_hash = current_hash
+            self._cached_tactical_prompt = prompt
 
-        return prompt
+            return prompt
 
     def _build_tactical_prompt_impl(self, board_state: Dict, game_history: List[str] = None) -> str:
         """
@@ -204,26 +207,28 @@ class MTGPromptBuilder:
         Returns:
             Formatted prompt string for draft recommendations
         """
-        # Compute hash of current draft state
-        current_hash = self._compute_draft_hash(pack_cards, current_pool)
+        monitor = get_monitor()
+        with monitor.measure("prompt.build_draft_prompt"):
+            # Compute hash of current draft state
+            current_hash = self._compute_draft_hash(pack_cards, current_pool)
 
-        # Check cache
-        if current_hash == self._last_draft_hash and self._cached_draft_prompt:
-            self._cache_hits += 1
-            logger.debug(f"Draft prompt cache HIT (total hits: {self._cache_hits})")
-            return self._cached_draft_prompt
+            # Check cache
+            if current_hash == self._last_draft_hash and self._cached_draft_prompt:
+                self._cache_hits += 1
+                logger.debug(f"Draft prompt cache HIT (total hits: {self._cache_hits})")
+                return self._cached_draft_prompt
 
-        self._cache_misses += 1
-        logger.debug(f"Draft prompt cache MISS (total misses: {self._cache_misses})")
+            self._cache_misses += 1
+            logger.debug(f"Draft prompt cache MISS (total misses: {self._cache_misses})")
 
-        # Build new prompt
-        prompt = self._build_draft_prompt_impl(pack_cards, current_pool)
+            # Build new prompt
+            prompt = self._build_draft_prompt_impl(pack_cards, current_pool)
 
-        # Update cache
-        self._last_draft_hash = current_hash
-        self._cached_draft_prompt = prompt
+            # Update cache
+            self._last_draft_hash = current_hash
+            self._cached_draft_prompt = prompt
 
-        return prompt
+            return prompt
 
     def _build_draft_prompt_impl(self, pack_cards: List[str], current_pool: List[str]) -> str:
         """
