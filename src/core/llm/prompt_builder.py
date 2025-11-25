@@ -369,6 +369,25 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         else:
             context_lines.append("  (empty)")
 
+        # Add YOUR mana availability (crucial for play recommendations)
+        context_lines.append("\n**My Mana Available:**")
+        your_mana = board_state.get('your_mana_pool', {})
+        if your_mana:
+            mana_str = ", ".join([f"{k}:{v}" for k, v in your_mana.items() if v > 0])
+            context_lines.append(f"  Current Mana Pool: {mana_str if mana_str else 'Empty (all tapped)'}")
+        else:
+            # Count untapped lands on battlefield
+            untapped_lands = 0
+            for card in my_battlefield:
+                is_dict = isinstance(card, dict)
+                is_tapped = card.get('is_tapped', False) if is_dict else getattr(card, 'is_tapped', False)
+                card_types = card.get('card_types', []) if is_dict else getattr(card, 'card_types', [])
+                type_line = card.get('type_line', '') if is_dict else getattr(card, 'type_line', '')
+                if not is_tapped and ('Land' in str(card_types) or 'Land' in str(type_line)):
+                    untapped_lands += 1
+            total_lands = sum(1 for card in my_battlefield if 'Land' in str(card.get('card_types', []) if isinstance(card, dict) else getattr(card, 'card_types', [])) or 'Land' in str(card.get('type_line', '') if isinstance(card, dict) else getattr(card, 'type_line', '')))
+            context_lines.append(f"  Lands: {total_lands} total, ~{untapped_lands} untapped (mana available)")
+
         context_lines.append("\n**My Hand:**")
         my_hand = board_state.get('your_hand', [])
         if my_hand:
@@ -430,6 +449,7 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         return f"""You are a Magic: The Gathering expert advisor.
 Analyze the current board state and provide a concise, tactical recommendation for the current phase.
 Focus on winning lines, potential blocks, and hidden information (opponent's open mana).
+IMPORTANT: Only recommend plays that the player can afford with their current mana. Check card mana costs carefully before suggesting a play.
 
 Current Phase: {board_state.get('current_phase', 'Unknown')}
 Turn: {board_state.get('current_turn', '?')}
