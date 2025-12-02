@@ -8,8 +8,19 @@ Usage:
 """
 
 import sys
+import os
 from pathlib import Path
 from dotenv import load_dotenv
+
+# On Windows, set AppUserModelID BEFORE any GUI imports
+# This is required for the taskbar to show our custom icon
+if os.name == 'nt':
+    try:
+        import ctypes
+        app_id = 'MTGAVoiceAdvisor.App.1.0'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:
+        pass  # Ignore errors, icon will just show default
 
 # Load environment variables from .env file
 load_dotenv()

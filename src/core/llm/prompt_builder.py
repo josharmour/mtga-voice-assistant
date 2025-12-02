@@ -460,13 +460,31 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
     def _build_base_prompt(self, board_state: Dict, game_history: List[str] = None) -> str:
         """Build the fixed part of the prompt (game state header)."""
         history_text = chr(10).join(game_history[-5:] if game_history else ['None'])
+
+        # Calculate game round from Arena's turn number
+        # Arena counts each player's turn separately: Turn 1 = P1's first, Turn 2 = P2's first, etc.
+        # Game round = how many times YOU have had a turn (land drops you could have made)
+        arena_turn = board_state.get('current_turn', 0) or 0
+        is_your_turn = board_state.get('is_your_turn', False)
+
+        # Calculate your land drop opportunities (game rounds for you)
+        # If it's your turn: you've had (arena_turn + 1) // 2 turns
+        # If it's opponent's turn: you've had arena_turn // 2 turns
+        if is_your_turn:
+            your_turn_count = (arena_turn + 1) // 2
+        else:
+            your_turn_count = arena_turn // 2
+
+        # Expected lands = number of your turns (land drops you could have made)
+        expected_lands = your_turn_count
+
         return f"""You are a Magic: The Gathering expert advisor.
 Analyze the current board state and provide a concise, tactical recommendation for the current phase.
 Focus on winning lines, potential blocks, and hidden information (opponent's open mana).
 IMPORTANT: Only recommend plays that the player can afford with their current mana. Check card mana costs carefully before suggesting a play.
 
 Current Phase: {board_state.get('current_phase', 'Unknown')}
-Turn: {board_state.get('current_turn', '?')}
+Game Round: {your_turn_count} (this is your turn #{your_turn_count}, so you could have up to {expected_lands} lands if you hit every drop)
 My Life: {board_state.get('your_life', '?')} | Opponent Life: {board_state.get('opponent_life', '?')}
 Opponent has {board_state.get('opponent_hand_count', 0)} cards in hand
 

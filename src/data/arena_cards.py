@@ -28,6 +28,7 @@ class ArenaCardDatabase:
         self._cache = {}  # In-memory cache: grpId -> dict
         self._unknown_cards = set()  # Track unique unknown grpIds
         self._unknown_card_callback = None  # Callback when threshold exceeded
+        self._tracking_enabled = False  # Only track after caught up with logs
 
         if not self.db_path.exists():
             logger.warning(f"Arena card database not found at {db_path}. Run 'python tools/build_unified_card_database.py' to create it.")
@@ -53,6 +54,15 @@ class ArenaCardDatabase:
     def clear_unknown_cards(self):
         """Clear the unknown cards tracking."""
         self._unknown_cards.clear()
+
+    def enable_tracking(self):
+        """Enable unknown card tracking. Call after caught up with logs."""
+        self._tracking_enabled = True
+        logger.info("Unknown card tracking enabled")
+
+    def disable_tracking(self):
+        """Disable unknown card tracking."""
+        self._tracking_enabled = False
 
     def _load_database(self):
         """Load the entire database into memory for fast lookups."""
@@ -104,6 +114,9 @@ class ArenaCardDatabase:
 
     def _track_unknown_card(self, grp_id: int):
         """Track an unknown card and trigger callback if threshold exceeded."""
+        if not self._tracking_enabled:
+            return  # Don't track during log catch-up
+
         if grp_id in self._unknown_cards:
             return  # Already tracked
 

@@ -433,6 +433,10 @@ class AdvisorGUI:
         self.prefs = UserPreferences.load() if CONFIG_MANAGER_AVAILABLE else None
 
         self.root.title("MTGA Voice Advisor")
+
+        # Set custom taskbar/window icon
+        self._set_window_icon()
+
         geometry = self.prefs.window_geometry if self.prefs else "900x700"
         self.root.geometry(geometry)
         always_on_top = self.prefs.always_on_top if self.prefs else True
@@ -470,6 +474,43 @@ class AdvisorGUI:
 
         self.root.after(100, self._initial_ui_setup)
         self.root.after(500, self._ensure_windows_visible)
+
+    def _set_window_icon(self):
+        """Set the window and taskbar icon."""
+        try:
+            from pathlib import Path
+            # Find the icon file relative to this script
+            script_dir = Path(__file__).parent.parent.parent  # Go up from src/core to project root
+            icon_path = script_dir / "assets" / "icon.ico"
+
+            # On Windows, set AppUserModelID to show custom icon in taskbar
+            if os.name == 'nt':
+                try:
+                    import ctypes
+                    # Set a unique AppUserModelID for this application
+                    app_id = 'MTGAVoiceAdvisor.App.1.0'
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+                    logging.debug(f"Set Windows AppUserModelID: {app_id}")
+                except Exception as e:
+                    logging.warning(f"Could not set AppUserModelID: {e}")
+
+            if icon_path.exists():
+                self.root.iconbitmap(str(icon_path))
+                logging.debug(f"Window icon set from {icon_path}")
+            else:
+                # Try PNG as fallback (works on some platforms)
+                png_path = script_dir / "assets" / "icon.png"
+                if png_path.exists():
+                    from PIL import Image, ImageTk
+                    img = Image.open(png_path)
+                    photo = ImageTk.PhotoImage(img)
+                    self.root.iconphoto(True, photo)
+                    self._icon_photo = photo  # Keep reference to prevent garbage collection
+                    logging.debug(f"Window icon set from {png_path}")
+                else:
+                    logging.debug(f"No icon found at {icon_path} or {png_path}")
+        except Exception as e:
+            logging.warning(f"Could not set window icon: {e}")
 
     def _initial_ui_setup(self):
         """Set initial UI state from preferences."""
@@ -910,14 +951,17 @@ class AdvisorGUI:
     def _on_voice_change(self, event=None):
         """Handle voice selection change"""
         try:
-            new_voice = self.voice_var.get()
-            logging.info(f"Voice changed to: {new_voice}")
+            display_name = self.voice_var.get()
+            # Convert display name back to voice ID
+            voice_id = getattr(self, '_voice_id_from_display', {}).get(display_name, display_name)
+            logging.info(f"Voice changed to: {voice_id} ({display_name})")
             if hasattr(self.advisor_ref, 'tts') and self.advisor_ref.tts:
-                self.advisor_ref.tts.set_voice(new_voice)
+                self.advisor_ref.tts.set_voice(voice_id)
             if self.prefs:
-                self.prefs.set_voice_name(new_voice)
+                self.prefs.set_voice_name(voice_id)
             if hasattr(self.advisor_ref, 'tts') and self.advisor_ref.tts:
-                threading.Thread(target=lambda: self.advisor_ref.tts.speak(f"Voice changed to {new_voice.replace('_', ' ')}"), daemon=True).start()
+                # Use display name for the spoken message
+                threading.Thread(target=lambda: self.advisor_ref.tts.speak(f"Voice changed to {display_name}"), daemon=True).start()
         except Exception as e:
             logging.error(f"Error changing voice: {e}")
 
@@ -1104,16 +1148,31 @@ class AdvisorGUI:
     def _on_restart(self):
         """Handle restart button click - restarts the application."""
         import sys
+        from pathlib import Path
         try:
             if self.prefs: self.prefs.save()
             self.add_message("🔄 Restarting application...", "cyan")
             logging.info("User initiated application restart")
             self.root.quit()
-            python_executable = sys.executable
-            script_path = os.path.abspath(sys.argv[0])
-            args = [python_executable, script_path] + sys.argv[1:]
+
+            # Use absolute paths for robust restart
+            python_executable = Path(sys.executable).resolve()
+            script_path = Path(sys.argv[0]).resolve()
+
+            # Get the project root directory (where main.py lives)
+            project_root = script_path.parent
+            if script_path.name != 'main.py':
+                # If running from a different entry point, find main.py
+                possible_main = project_root / 'main.py'
+                if possible_main.exists():
+                    script_path = possible_main
+
+            args = [str(python_executable), str(script_path)] + sys.argv[1:]
             logging.info(f"Restarting with: {' '.join(args)}")
-            subprocess.Popen(args)
+            logging.info(f"Working directory: {project_root}")
+
+            # Start new process with explicit working directory
+            subprocess.Popen(args, cwd=str(project_root))
         except Exception as e:
             logging.error(f"Error restarting app: {e}")
             self.add_message(f"❌ Failed to restart: {e}", "red")
@@ -1521,9 +1580,21 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
                 self.messages_text.see(tk.END)
 
             elif key == "settings":
-                # value is a dict with: models, voices, bark_voices, current_model, current_voice, volume, tts_engine
-                self.voice_dropdown['values'] = list(value['voices']) + list(value['bark_voices'])
-                self.voice_var.set(value['current_voice'])
+                # value is a dict with: models, voices, voice_display_names, bark_voices, current_model, current_voice, volume, tts_engine
+                # Store voice mappings for lookup
+                self._voice_display_names = value.get('voice_display_names', {})
+                self._voice_id_from_display = {v: k for k, v in self._voice_display_names.items()}
+
+                # Build display names list for dropdown
+                display_names = [self._voice_display_names.get(v, v) for v in value['voices']]
+                display_names += list(value['bark_voices'])  # bark voices use their IDs as-is
+                self.voice_dropdown['values'] = display_names
+
+                # Set current voice using display name
+                current_voice_id = value['current_voice']
+                current_display = self._voice_display_names.get(current_voice_id, current_voice_id)
+                self.voice_var.set(current_display)
+
                 self.volume_var.set(value['volume'])
                 self.volume_label.config(text=f"{value['volume']}%")
                 logging.debug(f"GUI settings updated from advisor.")
@@ -1535,11 +1606,12 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
     # End of Batched UI Update System
     # ----------------------------------------------------------------------------------
 
-    def update_settings(self, models, voices, bark_voices, current_model, current_voice, volume, tts_engine):
+    def update_settings(self, models, voices, voice_display_names, bark_voices, current_model, current_voice, volume, tts_engine):
         """Update GUI settings with current values from advisor (batched, thread-safe)."""
         self._schedule_update("settings", {
             'models': models,
             'voices': voices,
+            'voice_display_names': voice_display_names,
             'bark_voices': bark_voices,
             'current_model': current_model,
             'current_voice': current_voice,

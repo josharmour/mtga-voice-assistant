@@ -193,15 +193,43 @@ def detect_player_log_path():
 
 
 class CLIVoiceAdvisor:
-    # Available voices in Kokoro v1.0
-    AVAILABLE_VOICES = ["af_alloy", "af_bella", "af_heart", "af_jessica", "af_kore", "af_nicole",
-                        "af_nova", "af_river", "af_sarah", "af_sky", "am_adam", "am_echo",
-                        "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx", "am_puck",
-                        "bf_alice", "bf_emma", "bf_isabella", "bf_lily", "bm_daniel", "bm_fable",
-                        "bm_george", "bm_lewis", "ef_dora", "em_alex", "ff_siwis", "hf_alpha",
-                        "hf_beta", "hm_omega", "hm_psi", "if_sara", "im_nicola", "jf_alpha",
-                        "pf_dora", "pm_alex", "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi",
-                        "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang"]
+    # Available voices in Kokoro v1.0 (American and British only)
+    # Voice ID -> Display Name mapping
+    VOICE_DISPLAY_NAMES = {
+        # American Female
+        "af_alloy": "Female Alloy",
+        "af_bella": "Female Bella",
+        "af_heart": "Female Heart",
+        "af_jessica": "Female Jessica",
+        "af_kore": "Female Kore",
+        "af_nicole": "Female Nicole",
+        "af_nova": "Female Nova",
+        "af_river": "Female River",
+        "af_sarah": "Female Sarah",
+        "af_sky": "Female Sky",
+        # American Male
+        "am_adam": "Male Adam",
+        "am_echo": "Male Echo",
+        "am_eric": "Male Eric",
+        "am_fenrir": "Male Fenrir",
+        "am_liam": "Male Liam",
+        "am_michael": "Male Michael",
+        "am_onyx": "Male Onyx",
+        "am_puck": "Male Puck",
+        # British Female
+        "bf_alice": "Female Alice (UK)",
+        "bf_emma": "Female Emma (UK)",
+        "bf_isabella": "Female Isabella (UK)",
+        "bf_lily": "Female Lily (UK)",
+        # British Male
+        "bm_daniel": "Male Daniel (UK)",
+        "bm_fable": "Male Fable (UK)",
+        "bm_george": "Male George (UK)",
+        "bm_lewis": "Male Lewis (UK)",
+    }
+
+    # List of voice IDs for internal use
+    AVAILABLE_VOICES = list(VOICE_DISPLAY_NAMES.keys())
 
     BARK_VOICES = []
 
@@ -210,7 +238,12 @@ class CLIVoiceAdvisor:
         self.gui = None
         self.tk_root = None
         self.previous_board_state = None
-        
+
+        # Voice announcement state tracking
+        self._announced_ready = False
+        self._announced_catching_up = False
+        self._last_announced_game_state = None  # Track: "match", "draft", "deck_building"
+
         # Available models for the GUI dropdown
         self.available_models = [
             "gemini-2.0-flash-exp",
@@ -301,6 +334,9 @@ class CLIVoiceAdvisor:
             except Exception as e:
                 logging.warning(f"Failed to initialize draft advisor: {e}")
 
+        # Register game event callbacks (always, not just when draft advisor is available)
+        self.game_state_mgr.register_game_callback("match_started", self._on_match_started)
+
         # Initialize advice trigger manager for smart advice timing
         self.advice_trigger_mgr = AdviceTriggerManager(prefs=self.prefs)
 
@@ -330,6 +366,11 @@ class CLIVoiceAdvisor:
                 except:
                     # Ultimate fallback
                     print(clean_message.encode('ascii', errors='ignore').decode('ascii'))
+
+    def _announce(self, message: str):
+        """Speak a voice announcement (non-blocking)."""
+        if self.tts and not self.tts_loading:
+            threading.Thread(target=lambda: self.tts.speak(message), daemon=True).start()
 
     def _maybe_update_gui(self):
         """Debounced GUI update - max 2x per second to prevent performance issues"""
@@ -425,6 +466,15 @@ class CLIVoiceAdvisor:
         if self.prefs:
             self.prefs.set_volume(volume)
 
+    # Game event callbacks
+    def _on_match_started(self, data: dict):
+        """Handle match started event - announce via voice."""
+        # Only announce if caught up (not processing old logs)
+        if self.log_follower.is_caught_up and self._last_announced_game_state != "match":
+            self._last_announced_game_state = "match"
+            self._announce("Match started")
+            logging.info("Voice announcement: Match started")
+
     # Draft event callbacks (Simplified for brevity, logic remains similar but uses new DraftAdvisor)
     def _on_draft_pool(self, data: dict):
         pass # Pool handling logic if needed
@@ -446,6 +496,11 @@ class CLIVoiceAdvisor:
             if pack_num == 1 and pick_num == 1:
                 self._last_announced_pick = None
                 self.draft_advisor.reset_draft()
+                # Announce draft start (only if caught up)
+                if self.log_follower.is_caught_up and self._last_announced_game_state != "draft":
+                    self._last_announced_game_state = "draft"
+                    self._announce("Draft started")
+                    logging.info("Voice announcement: Draft started")
 
             pack_cards, recommendation = self.draft_advisor.recommend_pick(
                 pack_arena_ids, pack_num, pick_num, draft_id
@@ -535,6 +590,12 @@ class CLIVoiceAdvisor:
 
     def _on_deck_builder_entered(self, data: dict):
         """Handle transition from Draft to DeckBuilder - suggest a deck"""
+        # Announce deck building phase (only if caught up)
+        if self.log_follower.is_caught_up and self._last_announced_game_state != "deck_building":
+            self._last_announced_game_state = "deck_building"
+            self._announce("Deck building")
+            logging.info("Voice announcement: Deck building")
+
         if not self.draft_advisor or not self.deck_builder:
             return
 
@@ -624,12 +685,18 @@ class CLIVoiceAdvisor:
             self.tts = TextToSpeech(voice=saved_voice, volume=saved_volume)
             self.tts_loading = False
             print(f"[OK] TTS engine ready")
-            
+
+            # Announce ready (only once)
+            if not self._announced_ready:
+                self._announced_ready = True
+                self.tts.speak("Ready")
+
             # Update GUI if it's running
             if self.gui:
                 self.gui.update_settings(
                     models=self.available_models,
                     voices=self.AVAILABLE_VOICES,
+                    voice_display_names=self.VOICE_DISPLAY_NAMES,
                     bark_voices=self.BARK_VOICES,
                     current_model=self.prefs.current_model if self.prefs else "gemini-1.5-flash",
                     current_voice=saved_voice,
@@ -660,6 +727,7 @@ class CLIVoiceAdvisor:
             self.gui.update_settings(
                 models=self.available_models,
                 voices=self.AVAILABLE_VOICES,
+                voice_display_names=self.VOICE_DISPLAY_NAMES,
                 bark_voices=self.BARK_VOICES,
                 current_model=self.ai_advisor.advisor.model_name if hasattr(self.ai_advisor, 'advisor') else "gemini-3-pro-preview",
                 current_voice=self.tts.voice if self.tts else (self.prefs.current_voice if self.prefs else "am_adam"),
@@ -762,6 +830,12 @@ class CLIVoiceAdvisor:
                 logging.warning(f"Failed to recover draft state: {e}")
 
         def callback(line):
+            # Announce "catching up" once when we detect we're processing old logs
+            if not self.log_follower.is_caught_up and not self._announced_catching_up:
+                self._announced_catching_up = True
+                self._announce("Catching up")
+                logging.info("Voice announcement: Catching up (processing historical logs)")
+
             # Stream log to GUI if enabled
             # OPTIMIZATION: Only show logs in GUI if we are caught up to live events.
             # This prevents flooding the UI with thousands of historical log lines on startup,
@@ -779,6 +853,12 @@ class CLIVoiceAdvisor:
             # Doing so for every historical line causes massive startup delays and freezing.
             if not self.log_follower.is_caught_up:
                 return
+
+            # Enable unknown card tracking once we're caught up
+            # This prevents false warnings from old log entries before a database update
+            if self.arena_db and not getattr(self, '_unknown_tracking_enabled', False):
+                self._unknown_tracking_enabled = True
+                self.arena_db.enable_tracking()
 
             # PERFORMANCE FIX: Only get board state when game state changes
             # This prevents rebuilding the board state thousands of times per second

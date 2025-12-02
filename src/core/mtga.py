@@ -273,6 +273,16 @@ class LogFollower:
                         self.offset = 0
                         logging.info("Log file rotated - starting from beginning of new file.")
 
+                # BUG FIX #26: Detect file truncation (e.g., MTGA restart)
+                # On Windows, inode doesn't change when file is truncated, so we must
+                # check if our stored offset exceeds the current file size
+                self.file.seek(0, 2)  # Seek to end
+                current_file_size = self.file.tell()
+                if self.offset > current_file_size:
+                    logging.warning(f"🔄 File truncated detected: offset {self.offset} > file size {current_file_size}. Resetting to beginning.")
+                    self.offset = 0
+                    self.is_caught_up = False  # Re-process from start
+
                 self.file.seek(self.offset)
                 line_count = 0
                 while True:
@@ -764,6 +774,22 @@ class MatchScanner:
         # Resolve card names once on object creation, not repeatedly
         self.card_lookup = card_lookup
 
+        # Game event callbacks (for match start, etc.)
+        self._game_callbacks: Dict[str, Callable] = {}
+
+    def register_game_callback(self, event_type: str, callback: Callable):
+        """Register a callback for a game event (e.g., 'match_started')."""
+        self._game_callbacks[event_type] = callback
+        logging.info(f"Registered game callback for event type: {event_type}")
+
+    def _trigger_game_callback(self, event_type: str, data: dict = None):
+        """Trigger a registered game callback."""
+        if event_type in self._game_callbacks:
+            try:
+                self._game_callbacks[event_type](data or {})
+            except Exception as e:
+                logging.error(f"Error in game callback for {event_type}: {e}")
+
     def parse_timestamp(self, line: str):
         """
         Extract timestamp from log line if present.
@@ -827,6 +853,8 @@ class MatchScanner:
     def reset_match_state(self):
         """Clear all game state when a new match starts"""
         logging.info("🔄 NEW MATCH DETECTED - Clearing all previous match state")
+        # Trigger match_started callback before clearing state
+        self._trigger_game_callback("match_started")
         self.game_objects.clear()
         self.players.clear()
         self.current_turn = 0
@@ -1560,6 +1588,10 @@ class GameStateManager:
     def register_draft_callback(self, event_type: str, callback: Callable):
         """Register a callback for a specific draft event type."""
         self.draft_parser.register_callback(event_type, callback)
+
+    def register_game_callback(self, event_type: str, callback: Callable):
+        """Register a callback for a game event (e.g., 'match_started')."""
+        self.scanner.register_game_callback(event_type, callback)
 
     def recover_draft_state(self, log_follower: "LogFollower"):
         """

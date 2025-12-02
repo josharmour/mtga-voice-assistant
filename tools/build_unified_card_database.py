@@ -9,6 +9,13 @@ This script:
 4. Creates unified_cards.db for the application
 """
 
+import sys
+
+# Fix Windows console encoding for emojis
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 import sqlite3
 import json
 import os
@@ -30,9 +37,12 @@ def find_raw_card_database() -> Optional[Path]:
     """Find MTGA's Raw_CardDatabase file."""
 
     search_paths = [
+        # Steam on Windows
+        Path("C:/Program Files (x86)/Steam/steamapps/common/MTGA/MTGA_Data/Downloads/Raw"),
+        Path("C:/Program Files/Steam/steamapps/common/MTGA/MTGA_Data/Downloads/Raw"),
         # Steam on Linux
         Path.home() / ".local/share/Steam/steamapps/common/MTGA/MTGA_Data/Downloads/Raw",
-        # Windows paths
+        # Windows standalone paths
         Path("C:/Program Files/Wizards of the Coast/MTGA/MTGA_Data/Downloads/Raw"),
         Path("C:/Program Files (x86)/Wizards of the Coast/MTGA/MTGA_Data/Downloads/Raw"),
         # Wine/Bottles/Lutris paths
