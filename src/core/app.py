@@ -764,7 +764,7 @@ class CLIVoiceAdvisor:
         if not board_state:
             # Try to get current state from game manager
             try:
-                board_state = self.game_state_mgr.get_board_state()
+                board_state = self.game_state_mgr.get_current_board_state()
             except Exception as e:
                 logging.warning(f"Could not get board state: {e}")
 
