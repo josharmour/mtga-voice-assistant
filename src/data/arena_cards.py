@@ -23,6 +23,11 @@ class ArenaCardDatabase:
     # Threshold for warning about unknown cards
     UNKNOWN_CARD_WARNING_THRESHOLD = 5
 
+    # Maximum valid grpId for actual cards (ability objects have much higher IDs)
+    # As of Dec 2025, the highest card grpId is around 102112
+    # IDs above 110000 are typically abilities, tokens, or special game objects
+    MAX_VALID_CARD_GRPID = 110000
+
     def __init__(self, db_path: str = "data/unified_cards.db"):
         self.db_path = Path(db_path)
         self._cache = {}  # In-memory cache: grpId -> dict
@@ -116,6 +121,11 @@ class ArenaCardDatabase:
         """Track an unknown card and trigger callback if threshold exceeded."""
         if not self._tracking_enabled:
             return  # Don't track during log catch-up
+
+        # Don't track IDs that are too high - these are ability objects, not cards
+        if grp_id > self.MAX_VALID_CARD_GRPID:
+            logger.debug(f"Ignoring high grpId {grp_id} (likely ability/token object, not a card)")
+            return
 
         if grp_id in self._unknown_cards:
             return  # Already tracked
