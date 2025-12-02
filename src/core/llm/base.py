@@ -10,8 +10,11 @@ This module provides:
 
 import logging
 import os
-from typing import Protocol, Dict, List, Optional, runtime_checkable
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Protocol, runtime_checkable
+
+from .prompt_builder import MTGPromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -156,34 +159,54 @@ class LLMAdapter(Protocol):
         ...
 
 
-class BaseMTGAdvisor:
+class BaseMTGAdvisor(ABC):
     """
     Base class for MTG advisors with common functionality.
 
-    This class provides shared initialization logic and helper methods
-    that can be inherited by all concrete advisor implementations.
+    This class provides shared initialization logic, prompt building,
+    and helper methods that can be inherited by all concrete advisor
+    implementations.
 
     Child classes should:
-    1. Call super().__init__(config) in their __init__
-    2. Implement get_tactical_advice() and get_draft_pick()
-    3. Optionally override is_available() for provider-specific checks
+    1. Call super().__init__() in their __init__
+    2. Initialize self.client with the provider-specific client
+    3. Implement _call_api() for provider-specific API calls
     """
 
-    def __init__(self, config: LLMConfig, card_db=None, **kwargs):
+    # System prompts for different advisor modes
+    TACTICAL_SYSTEM_PROMPT = "You are a Magic: The Gathering tactical advisor."
+    DRAFT_SYSTEM_PROMPT = "You are a Magic: The Gathering draft advisor."
+
+    def __init__(self, model_name: str, card_db=None, **kwargs):
         """
-        Initialize base advisor with configuration.
+        Initialize base advisor with model name and card database.
 
         Args:
-            config: LLMConfig instance with provider settings
-            card_db: Optional card database instance
+            model_name: Model identifier for this provider
+            card_db: Optional card database instance for card lookups
         """
-        self.config = config
+        self.model_name = model_name
         self.card_db = card_db
+        self.prompt_builder = MTGPromptBuilder(arena_db=card_db)
+        self.client = None  # Child classes must initialize this
 
-        logger.info(
-            f"Initializing {config.provider.capitalize()} advisor "
-            f"with model: {config.model}"
-        )
+        logger.info(f"{self.__class__.__name__} initialized with model: {model_name}")
+
+    @abstractmethod
+    def _call_api(self, system_prompt: str, user_prompt: str) -> str:
+        """
+        Make the actual API call to the LLM provider.
+
+        This method must be implemented by each provider-specific class.
+
+        Args:
+            system_prompt: The system/context prompt
+            user_prompt: The user's prompt with game state
+
+        Returns:
+            The response text from the LLM
+        """
+        pass
 
     def get_tactical_advice(
         self,
@@ -193,8 +216,6 @@ class BaseMTGAdvisor:
         """
         Get tactical advice for current board state.
 
-        Must be implemented by child classes.
-
         Args:
             board_state: Dictionary containing current game state
             game_history: Optional list of recent game events
@@ -202,9 +223,12 @@ class BaseMTGAdvisor:
         Returns:
             Tactical advice as a string
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get_tactical_advice()"
-        )
+        try:
+            prompt = self.prompt_builder.build_tactical_prompt(board_state, game_history)
+            return self._call_api(self.TACTICAL_SYSTEM_PROMPT, prompt)
+        except Exception as e:
+            logger.error(f"Error getting tactical advice from {self.__class__.__name__}: {e}")
+            return self._format_error_message("tactical advice", e)
 
     def get_draft_pick(
         self,
@@ -214,8 +238,6 @@ class BaseMTGAdvisor:
         """
         Get draft pick recommendation.
 
-        Must be implemented by child classes.
-
         Args:
             pack_cards: List of card names in the current pack
             current_pool: List of cards already picked
@@ -223,36 +245,38 @@ class BaseMTGAdvisor:
         Returns:
             Draft pick recommendation as a string
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get_draft_pick()"
-        )
+        try:
+            prompt = self.prompt_builder.build_draft_prompt(pack_cards, current_pool)
+            return self._call_api(self.DRAFT_SYSTEM_PROMPT, prompt)
+        except Exception as e:
+            logger.error(f"Error getting draft pick from {self.__class__.__name__}: {e}")
+            return self._format_error_message("draft pick", e)
 
     def is_available(self) -> bool:
         """
         Check if the advisor is available.
 
-        Base implementation returns True. Override for provider-specific checks.
+        Base implementation checks if client is initialized.
+        Override for provider-specific health checks.
 
         Returns:
             True if advisor is ready to use
         """
-        return True
+        return self.client is not None
 
-    def _format_error_message(self, error: Exception) -> str:
+    def _format_error_message(self, action: str, error: Exception) -> str:
         """
         Format a user-friendly error message.
 
         Args:
+            action: What the advisor was trying to do (e.g., "tactical advice")
             error: Exception that occurred
 
         Returns:
             Formatted error message
         """
-        provider = self.config.provider.capitalize()
-        return (
-            f"I'm having trouble connecting to the {provider} service. "
-            f"Error: {str(error)}"
-        )
+        provider = self.__class__.__name__.replace("Advisor", "")
+        return f"Error getting {action} from {provider}."
 
 
 def create_advisor(

@@ -54,7 +54,7 @@ class UserPreferences:
 
     # Model preferences
     model_provider: str = "Google"  # Google, OpenAI, Anthropic, Ollama
-    current_model: str = "gemini-3-pro-preview"
+    current_model: str = "gemini-2.5-flash"  # Fast, capable, production-ready
     current_voice: str = "am_adam"
 
     # Game preferences

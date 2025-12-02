@@ -1,20 +1,19 @@
 
 import dataclasses
+import datetime
 import json
 import logging
-from pathlib import Path
-import re
-import requests
-import urllib.request
-import sqlite3
-import time
 import os
-import threading
-from typing import Dict, List, Optional, Callable
+import re
 import subprocess
-from collections import deque
 import sys
-import datetime
+import threading
+import time
+from collections import deque
+from pathlib import Path
+from typing import Dict, List, Optional, Callable
+
+import requests
 
 from .mtga import LogFollower, GameStateManager
 from .ai import AIAdvisor
@@ -23,9 +22,6 @@ from .formatters import BoardStateFormatter
 from .advice_triggers import AdviceTriggerManager, TriggerType, TriggerEvent
 from ..data.data_management import CardStatsDB
 from ..data.arena_cards import ArenaCardDatabase
-
-# Event system for decoupled communication (future integration)
-# from .events import get_event_bus, EventType, Event
 
 # Import configuration manager for user preferences
 try:
@@ -244,15 +240,22 @@ class CLIVoiceAdvisor:
         self._announced_catching_up = False
         self._last_announced_game_state = None  # Track: "match", "draft", "deck_building"
 
-        # Available models for the GUI dropdown
+        # Available models for the GUI dropdown (updated December 2025)
         self.available_models = [
-            "gemini-2.0-flash-exp",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
+            # Google Gemini
+            "gemini-3-pro-preview",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            # OpenAI
             "gpt-4-turbo",
             "gpt-4o",
-            "claude-3-5-sonnet-20240620",
+            "gpt-4o-mini",
+            # Anthropic
+            "claude-sonnet-4-20250514",
+            "claude-3-5-sonnet-20241022",
             "claude-3-opus-20240229",
+            # Local (Ollama)
             "llama3",
             "mistral"
         ]

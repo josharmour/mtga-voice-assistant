@@ -1,63 +1,29 @@
+"""Anthropic LLM advisor for Claude models."""
 import logging
-from typing import Dict, List, Optional
+
 import anthropic
-from .prompt_builder import MTGPromptBuilder
+
+from .base import BaseMTGAdvisor
 
 logger = logging.getLogger(__name__)
 
-class AnthropicAdvisor:
-    """
-    Advisor powered by Anthropic's models.
-    """
+
+class AnthropicAdvisor(BaseMTGAdvisor):
+    """Advisor powered by Anthropic's Claude models."""
+
     def __init__(self, model_name: str = "claude-3-opus-20240229", api_key: str = None, card_db=None, **kwargs):
-        self.model_name = model_name
+        super().__init__(model_name, card_db, **kwargs)
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.card_db = card_db
-        self.prompt_builder = MTGPromptBuilder(arena_db=card_db)
-        logger.info(f"Anthropic Advisor initialized with model: {self.model_name}")
 
-    def get_tactical_advice(self, board_state: Dict, game_history: List[str] = None) -> str:
-        """
-        Get tactical advice from the AI with rich context.
-        """
-        try:
-            # Use shared prompt builder for rich context with card text
-            prompt = self.prompt_builder.build_tactical_prompt(board_state, game_history)
-
-            message = self.client.messages.create(
-                model=self.model_name,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            )
-            return message.content[0].text
-        except Exception as e:
-            logger.error(f"Error getting tactical advice from Anthropic: {e}")
-            return "Error getting tactical advice from Anthropic."
-
-    def get_draft_pick(self, pack_cards: List[str], current_pool: List[str]) -> str:
-        """
-        Get draft pick recommendation.
-        """
-        try:
-            # Use shared prompt builder for consistent draft prompts
-            prompt = self.prompt_builder.build_draft_prompt(pack_cards, current_pool)
-
-            message = self.client.messages.create(
-                model=self.model_name,
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            )
-            return message.content[0].text
-        except Exception as e:
-            logger.error(f"Error getting draft pick from Anthropic: {e}")
-            return "Error getting draft pick from Anthropic."
+    def _call_api(self, system_prompt: str, user_prompt: str) -> str:
+        """Make API call to Anthropic."""
+        # Anthropic uses system parameter separately, not in messages
+        message = self.client.messages.create(
+            model=self.model_name,
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        return message.content[0].text
