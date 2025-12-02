@@ -1263,16 +1263,18 @@ class MatchScanner:
             pending_msg = player_data.get("pendingMessageType", "")
             logging.debug(f"Player {seat_id} pendingMessageType: {pending_msg}, local_player: {self.local_player_seat_id}")
 
-            if pending_msg == "ClientMessageType_MulliganResp" and seat_id == self.local_player_seat_id:
-                if not self.in_mulligan_phase:
-                    self.in_mulligan_phase = True
-                    logging.info(f"🎴 MULLIGAN PHASE DETECTED for player {seat_id}")
+            # Only track mulligan state for local player
+            if seat_id == self.local_player_seat_id:
+                if pending_msg == "ClientMessageType_MulliganResp":
+                    if not self.in_mulligan_phase:
+                        self.in_mulligan_phase = True
+                        logging.info(f"🎴 MULLIGAN PHASE DETECTED for player {seat_id}")
+                        state_changed = True
+                elif self.in_mulligan_phase and pending_msg != "ClientMessageType_MulliganResp":
+                    # Mulligan phase ended (local player no longer has mulligan pending)
+                    logging.info("🎴 Mulligan phase ended")
+                    self.in_mulligan_phase = False
                     state_changed = True
-            elif self.in_mulligan_phase and pending_msg != "ClientMessageType_MulliganResp":
-                # Mulligan phase ended
-                logging.info("🎴 Mulligan phase ended")
-                self.in_mulligan_phase = False
-                state_changed = True
 
         return state_changed
 
