@@ -462,7 +462,13 @@ class AdvisorGUI:
         self._update_scheduled = False
 
         self.root.bind('<F12>', lambda e: self._capture_bug_report())
-        self.root.bind('<space>', self._on_push_to_talk)
+        # Bind push-to-talk hotkey from preferences (default: space)
+        # Convert display name to Tkinter binding format
+        hotkey_display = self.prefs.push_to_talk_key if self.prefs else "space"
+        hotkey_binding = self._display_to_binding(hotkey_display)
+        self._current_hotkey_binding = hotkey_binding
+        self.root.bind(hotkey_binding, self._on_push_to_talk)
+        logging.info(f"Push-to-talk bound to: {hotkey_display} (binding: {hotkey_binding})")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # Push-to-talk callback (set by app.py)
@@ -515,9 +521,10 @@ class AdvisorGUI:
     def _initial_ui_setup(self):
         """Set initial UI state from preferences."""
         if self.prefs:
-            self.provider_var.set(self.prefs.model_provider)
-            self._on_provider_change()
+            # Set the saved model first so _on_provider_change doesn't override it
             self.model_var.set(self.prefs.current_model)
+            self.provider_var.set(self.prefs.model_provider)
+            self._on_provider_change(skip_model_reset=True)  # Don't reset model to default
 
             api_key = ""
             provider = self.prefs.model_provider.lower()
@@ -528,6 +535,13 @@ class AdvisorGUI:
             elif provider == 'anthropic':
                 api_key = self.prefs.anthropic_api_key
             self.api_key_var.set(api_key)
+
+            # Also set voice from preferences
+            if hasattr(self, 'voice_var') and self.prefs.current_voice:
+                # We'll set this after voice_dropdown is populated by update_settings
+                self._pending_voice = self.prefs.current_voice
+
+            logging.info(f"UI loaded preferences: provider={self.prefs.model_provider}, model={self.prefs.current_model}")
 
     def _initialize_secondary_windows(self):
         """Create and configure secondary windows with close handlers."""
@@ -650,7 +664,8 @@ class AdvisorGUI:
                     self._content_paned.add(self._embedded_deck_frame, stretch="always", minsize=80)
 
             if self._log_popped_out and self.log_window:
-                self.log_window.deiconify()
+                # Keep log window hidden by default - user must click "Logs" button to show
+                self.log_window.withdraw()
             elif not self._log_popped_out:
                 # Dock the log window
                 if self.log_window:
@@ -718,20 +733,9 @@ class AdvisorGUI:
         self.volume_label.pack(side=tk.RIGHT)
 
         # Checkboxes
-        opponent_alerts_default = self.prefs.opponent_turn_alerts if self.prefs else True
-        self.continuous_var = tk.BooleanVar(value=opponent_alerts_default)
-        tk.Checkbutton(settings_frame, text="Opponent Turn Alerts", variable=self.continuous_var, command=self._on_continuous_toggle, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
-
-        show_thinking_default = self.prefs.show_thinking if self.prefs else True
-        self.show_thinking_var = tk.BooleanVar(value=show_thinking_default)
-        tk.Checkbutton(settings_frame, text="Show AI Thinking", variable=self.show_thinking_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
-
         always_on_top_default = self.prefs.always_on_top if self.prefs else True
         self.always_on_top_var = tk.BooleanVar(value=always_on_top_default)
         tk.Checkbutton(settings_frame, text="Always on Top", variable=self.always_on_top_var, command=self._on_always_on_top_toggle, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
-
-        self.pick_two_draft_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(settings_frame, text="Pick Two Draft", variable=self.pick_two_draft_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
 
         # Voice Toggles
         self.verbose_speech_var = tk.BooleanVar(value=False)
@@ -739,6 +743,29 @@ class AdvisorGUI:
 
         self.mute_all_var = tk.BooleanVar(value=False)
         tk.Checkbutton(settings_frame, text="Mute All Audio", variable=self.mute_all_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
+
+        # --- Hotkey Settings ---
+        tk.Label(settings_frame, text="Push to Prompt:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
+        hotkey_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        hotkey_frame.pack(fill=tk.X, pady=2)
+
+        # Get current hotkey from preferences
+        current_hotkey = self.prefs.push_to_talk_key if self.prefs else "space"
+        self.hotkey_var = tk.StringVar(value=current_hotkey)
+        self.hotkey_display = tk.Label(hotkey_frame, textvariable=self.hotkey_var, bg='#2a2a2a', fg=self.accent_color,
+                                       font=('Consolas', 10, 'bold'), width=12, relief=tk.SUNKEN, padx=5)
+        self.hotkey_display.pack(side=tk.LEFT, padx=(0, 5))
+        tk.Button(hotkey_frame, text="Set", command=self._set_hotkey, bg='#3a3a3a', fg='white', relief=tk.FLAT, width=5).pack(side=tk.LEFT)
+
+        # Audio output device selection (speakers)
+        tk.Label(settings_frame, text="Speakers:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(5, 0))
+        self.audio_output_var = tk.StringVar(value=self.prefs.audio_output_device if self.prefs and self.prefs.audio_output_device else "System Default")
+        self.audio_output_dropdown = ttk.Combobox(settings_frame, textvariable=self.audio_output_var, width=25, state='readonly')
+        self.audio_output_dropdown.pack(pady=2, fill=tk.X)
+        self.audio_output_dropdown.bind('<<ComboboxSelected>>', self._on_audio_output_change)
+
+        # Populate audio devices on startup
+        self._populate_audio_devices()
 
         # --- Remaining widgets ---
         # (This part is condensed for brevity, assuming it remains largely the same)
@@ -855,8 +882,13 @@ class AdvisorGUI:
             self._embedded_log_text.see(tk.END)
             self._embedded_log_text.config(state=tk.DISABLED)
 
-    def _on_provider_change(self, event=None):
-        """Handle provider selection change."""
+    def _on_provider_change(self, event=None, skip_model_reset=False):
+        """Handle provider selection change.
+
+        Args:
+            event: Tkinter event (from combobox selection)
+            skip_model_reset: If True, don't reset model to default (used when loading from prefs)
+        """
         provider = self.provider_var.get()
         if not provider:
             return
@@ -888,19 +920,20 @@ class AdvisorGUI:
         if provider == "Ollama":
             self.ollama_frame.pack(pady=2, fill=tk.X)
             self.model_dropdown['values'] = model_lists[provider]
-            if not self.model_var.get() in model_lists[provider]:
+            if not skip_model_reset and self.model_var.get() not in model_lists[provider]:
                  self.model_var.set("")
         else:
             self.api_key_frame.pack(pady=2, fill=tk.X)
             self.model_dropdown['values'] = model_lists[provider]
-            if self.model_var.get() not in model_lists[provider]:
+            if not skip_model_reset and self.model_var.get() not in model_lists[provider]:
                  self.model_var.set(model_lists[provider][0])
 
-        if self.prefs:
-            self.prefs.set_model(self.model_var.get(), provider=provider)
-
-        logging.info(f"✓ AI Provider changed to: {provider}")
-        self.add_message(f"AI Provider changed to: {provider}. Restart required to apply changes.", "green")
+        # Only save and notify on user-initiated changes (not initial load)
+        if not skip_model_reset:
+            if self.prefs:
+                self.prefs.set_model(self.model_var.get(), provider=provider)
+            logging.info(f"AI Provider changed to: {provider}")
+            self.add_message(f"AI Provider changed to: {provider}. Restart required to apply changes.", "green")
 
     def _on_api_key_change(self, event=None):
         """Handle API key entry change."""
@@ -1133,15 +1166,16 @@ class AdvisorGUI:
         threading.Thread(target=run_update, daemon=True).start()
 
     def _on_push_to_talk(self, event=None):
-        """Handle push-to-talk (spacebar) press for manual advice."""
+        """Handle push-to-talk hotkey press for manual advice."""
         # Ignore if focus is in a text entry widget
         focused = self.root.focus_get()
         if focused and (isinstance(focused, tk.Entry) or
                        isinstance(focused, tk.Text) or
                        (hasattr(focused, 'winfo_class') and focused.winfo_class() in ('Entry', 'Text', 'TEntry'))):
-            return  # Let the entry handle the space
+            return  # Let the entry handle the keypress
 
-        logging.info("Push-to-talk triggered (spacebar)")
+        hotkey = self.hotkey_var.get() if hasattr(self, 'hotkey_var') else "space"
+        logging.info(f"Push-to-talk triggered ({hotkey})")
         self.add_message("🎤 Requesting advice...", "cyan")
 
         if self._push_to_talk_callback:
@@ -1156,6 +1190,181 @@ class AdvisorGUI:
     def set_push_to_talk_callback(self, callback):
         """Set the callback for push-to-talk advice requests."""
         self._push_to_talk_callback = callback
+
+    def _display_to_binding(self, display_name: str) -> str:
+        """
+        Convert a display name like 'F5' or 'Control+space' to Tkinter binding format.
+        e.g., 'F5' -> '<F5>', 'Control+space' -> '<Control-space>'
+        """
+        if not display_name:
+            return '<space>'
+
+        # If it already looks like a binding, return as-is
+        if display_name.startswith('<') and display_name.endswith('>'):
+            return display_name
+
+        # Handle modifier+key format (e.g., "Control+space", "Alt+F5")
+        if '+' in display_name:
+            parts = display_name.split('+')
+            # Tkinter uses hyphen between modifiers and key
+            return f"<{'-'.join(parts)}>"
+        else:
+            # Simple key
+            return f"<{display_name}>"
+
+    def _set_hotkey(self):
+        """Open dialog to set a new push-to-talk hotkey."""
+        # Create a small dialog to capture the new hotkey
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Set Push-to-Talk Hotkey")
+        dialog.geometry("320x140")
+        dialog.configure(bg=self.bg_color)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Center the dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 160
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 70
+        dialog.geometry(f"+{x}+{y}")
+
+        tk.Label(dialog, text="Press a key (F1-F12 recommended):", bg=self.bg_color, fg=self.fg_color,
+                 font=('Consolas', 11)).pack(pady=10)
+        tk.Label(dialog, text="Avoid Alt/Ctrl combos (conflict with menus)", bg=self.bg_color, fg='#888888',
+                 font=('Consolas', 9)).pack()
+
+        key_label = tk.Label(dialog, text="Waiting...", bg='#2a2a2a', fg=self.accent_color,
+                             font=('Consolas', 14, 'bold'), width=20, relief=tk.SUNKEN)
+        key_label.pack(pady=8)
+
+        captured_key = [None]
+        captured_binding = [None]  # The actual Tkinter binding string
+
+        def on_key(event):
+            # Ignore modifier-only keypresses
+            if event.keysym in ('Control_L', 'Control_R', 'Alt_L', 'Alt_R',
+                               'Shift_L', 'Shift_R', 'Meta_L', 'Meta_R'):
+                return
+
+            key = event.keysym
+
+            # For function keys (F1-F12), ignore any modifier state
+            # This prevents accidental Alt+F5 when user just wants F5
+            is_function_key = key.startswith('F') and key[1:].isdigit()
+
+            if is_function_key:
+                # Function keys - no modifiers, just the key
+                binding = f"<{key}>"
+                display = key
+            else:
+                # For other keys, check modifiers
+                # But be strict - only include if the modifier key is actually held
+                modifiers = []
+
+                # Check for actual modifier keys being held (not residual state)
+                # On Windows, event.state can have spurious bits set
+                # Only add modifiers if it's clearly intentional (non-function key + modifier)
+                if event.state & 0x4:  # Control
+                    modifiers.append("Control")
+                if event.state & 0x20000:  # Alt on Windows (high bit)
+                    modifiers.append("Alt")
+                if event.state & 0x1 and key not in ('space', 'Return', 'Tab'):  # Shift
+                    modifiers.append("Shift")
+
+                # Build binding string (Tkinter format: <Modifier-key>)
+                if modifiers:
+                    binding = f"<{'-'.join(modifiers)}-{key}>"
+                    display = f"{'+'.join(modifiers)}+{key}"
+                else:
+                    binding = f"<{key}>"
+                    display = key
+
+            captured_key[0] = display
+            captured_binding[0] = binding
+            key_label.config(text=display)
+
+        def confirm():
+            if captured_binding[0]:
+                # Unbind old hotkey
+                old_binding = getattr(self, '_current_hotkey_binding', '<space>')
+                try:
+                    self.root.unbind(old_binding)
+                except:
+                    pass
+
+                # Update display and binding
+                new_binding = captured_binding[0]
+                new_display = captured_key[0]
+                self.hotkey_var.set(new_display)
+                self._current_hotkey_binding = new_binding
+
+                # Bind new hotkey
+                self.root.bind(new_binding, self._on_push_to_talk)
+
+                # Save display name to preferences (for UI)
+                if self.prefs:
+                    self.prefs.set_push_to_talk_key(new_display)
+
+                self.add_message(f"Hotkey set to: {new_display}", "green")
+                logging.info(f"Push-to-talk hotkey changed to: {new_display} (binding: {new_binding})")
+
+            dialog.destroy()
+
+        dialog.bind('<Key>', on_key)
+
+        btn_frame = tk.Frame(dialog, bg=self.bg_color)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="Confirm", command=confirm, bg='#3a3a3a', fg='white', relief=tk.FLAT, width=10).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=dialog.destroy, bg='#3a3a3a', fg='white', relief=tk.FLAT, width=10).pack(side=tk.LEFT, padx=5)
+
+        dialog.focus_set()
+
+    def _populate_audio_devices(self):
+        """Populate the audio device dropdown with available output devices."""
+        output_devices = ["System Default"]
+
+        def query_devices():
+            """Query audio devices in background to avoid blocking UI."""
+            nonlocal output_devices
+            try:
+                import sounddevice as sd
+                devices = sd.query_devices()
+                for i, device in enumerate(devices):
+                    # Include output devices (speakers)
+                    if device['max_output_channels'] > 0:
+                        output_devices.append(f"{device['name']}")
+            except ImportError:
+                logging.debug("sounddevice not available, using system default only")
+            except Exception as e:
+                logging.warning(f"Error querying audio devices: {e}")
+
+            # Update dropdown on main thread
+            def update_dropdowns():
+                self.audio_output_dropdown['values'] = output_devices
+                # Set current selection from preferences
+                if self.prefs and self.prefs.audio_output_device:
+                    if self.prefs.audio_output_device in output_devices:
+                        self.audio_output_var.set(self.prefs.audio_output_device)
+
+            self.root.after(0, update_dropdowns)
+
+        # Run device query in background thread to avoid blocking UI
+        threading.Thread(target=query_devices, daemon=True).start()
+
+        # Set initial values (will be updated when thread completes)
+        self.audio_output_dropdown['values'] = output_devices
+
+    def _on_audio_output_change(self, event=None):
+        """Handle audio output (speakers) device change."""
+        device = self.audio_output_var.get()
+        if device == "System Default":
+            device = ""
+
+        if self.prefs:
+            self.prefs.set_audio_devices(output_device=device)
+
+        self.add_message(f"✓ Speakers: {device or 'System Default'}", "green")
+        logging.info(f"Audio output device changed to: {device or 'System Default'}")
 
     def _on_restart(self):
         """Handle restart button click - restarts the application."""
@@ -1342,7 +1551,8 @@ class AdvisorGUI:
                 # Collect current state
                 board_state_text = "\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
 
-                # Read recent logs (last 2000 lines for better context)
+                # Read recent logs - optimized for context window limits
+                # Full log saved to file, but summary in report is limited to ~100 lines
                 recent_logs = ""
                 log_paths = [
                     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "logs", "advisor.log"),
@@ -1351,13 +1561,18 @@ class AdvisorGUI:
                 for log_path in log_paths:
                     try:
                         if os.path.exists(log_path):
-                            # Read last 2000 lines (tail) instead of copying entire log
                             with open(log_path, "r", encoding='utf-8', errors='replace') as f:
                                 lines = f.readlines()
-                                tail_lines = lines[-2000:]  # Last 2000 lines
-                                recent_logs = "".join(lines[-1000:])  # Summary uses last 1000
+                                # Filter to only include ERROR and WARNING for summary
+                                # Plus last 50 lines for context
+                                error_lines = [l for l in lines if ' - ERROR - ' in l or ' - WARNING - ' in l]
+                                tail_lines = lines[-500:]  # Save more to file for debugging
 
-                            # Write only the tail to the bug report (not the full log)
+                                # For the text summary: errors/warnings + last 50 lines
+                                summary_lines = error_lines[-30:] + ["\n--- LAST 50 LINES ---\n"] + lines[-50:]
+                                recent_logs = "".join(summary_lines)
+
+                            # Write tail to the full log file for detailed debugging
                             with open(log_file_copy, "w", encoding='utf-8') as f:
                                 f.writelines(tail_lines)
                             break
@@ -1368,7 +1583,7 @@ class AdvisorGUI:
                 if not recent_logs:
                     recent_logs = "(No logs found)"
 
-                # Read recent MTGA logs (last 200 lines) for context
+                # Read recent MTGA logs (last 50 lines) for context
                 mtga_log_snippet = ""
                 mtga_log_path = None
                 
@@ -1383,7 +1598,8 @@ class AdvisorGUI:
                     try:
                          with open(mtga_log_path, "r", encoding='utf-8', errors='replace') as f:
                             lines = f.readlines()
-                            mtga_log_snippet = "".join(lines[-200:])
+                            # Only include last 50 lines of MTGA logs for context
+                            mtga_log_snippet = "".join(lines[-50:])
                     except Exception as e:
                         mtga_log_snippet = f"(Error reading MTGA log: {e})"
                 else:
@@ -1401,7 +1617,6 @@ class AdvisorGUI:
                 settings = f"""Model: {safe_get_var(self.model_var) if hasattr(self, 'model_var') else 'N/A'}
 Voice: {safe_get_var(self.voice_var) if hasattr(self, 'voice_var') else 'N/A'}
 Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'}%
-Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'continuous_var') else 'N/A'}
 """
 
                 # Write summary report
@@ -1442,11 +1657,6 @@ Continuous Monitoring: {safe_get_var(self.continuous_var) if hasattr(self, 'cont
         volume = int(value)
         self.volume_label.config(text=f"{volume}%")
         if self.prefs: self.prefs.set_voice_settings(volume=volume)
-
-    def _on_continuous_toggle(self):
-        """Handle opponent turn alerts toggle."""
-        enabled = self.continuous_var.get()
-        if self.prefs: self.prefs.set_game_preferences(opponent_alerts=enabled)
 
     def _on_always_on_top_toggle(self):
         """Handle always on top toggle."""

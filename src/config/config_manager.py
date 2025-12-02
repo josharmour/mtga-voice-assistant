@@ -40,7 +40,7 @@ class UserPreferences:
     # Secondary window docked state (True = docked/embedded, False = popped out)
     board_window_docked: bool = True
     deck_window_docked: bool = True
-    log_window_docked: bool = True
+    log_window_docked: bool = False  # Hidden by default, click "Logs" button to pop out
 
     # UI preferences
     theme: str = "dark"  # dark/light
@@ -54,7 +54,7 @@ class UserPreferences:
 
     # Model preferences
     model_provider: str = "Google"  # Google, OpenAI, Anthropic, Ollama
-    current_model: str = "gemini-2.5-flash"  # Fast, capable, production-ready
+    current_model: str = "gemini-2.5-flash-lite"  # Fast, economical, good for real-time advice
     current_voice: str = "am_adam"
 
     # Game preferences
@@ -79,7 +79,11 @@ class UserPreferences:
     advice_on_response_window: bool = False    # When opponent casts spell (counter opportunity)
 
     # Push-to-talk settings
-    push_to_talk_key: str = "space"         # Key for push-to-talk (spacebar)
+    push_to_talk_key: str = "F5"            # Key for push-to-talk (F5 recommended - avoids menu conflicts)
+
+    # Audio device settings
+    audio_input_device: str = ""            # Audio input device name (empty = system default)
+    audio_output_device: str = ""           # Audio output device name (empty = system default)
 
     # API Keys (stored securely in user preferences)
     github_token: str = ""
@@ -189,6 +193,19 @@ class UserPreferences:
     def has_imgbb_credentials(self) -> bool:
         """Check if ImgBB API key is configured."""
         return bool(self.imgbb_api_key)
+
+    def set_push_to_talk_key(self, key: str):
+        """Set the push-to-talk hotkey."""
+        self.push_to_talk_key = key
+        self.save()
+
+    def set_audio_devices(self, input_device: str = None, output_device: str = None):
+        """Set audio input/output devices."""
+        if input_device is not None:
+            self.audio_input_device = input_device
+        if output_device is not None:
+            self.audio_output_device = output_device
+        self.save()
 
     def __repr__(self) -> str:
         """String representation of preferences."""

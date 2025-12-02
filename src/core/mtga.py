@@ -418,6 +418,10 @@ class BoardState:
     in_mulligan_phase: bool = False
     game_stage: str = ""  # "GameStage_Start" or "GameStage_Play"
 
+    # Decision prompt tracking (for triggering advice at key moments)
+    pending_decision: Optional[str] = None  # Type of decision awaiting input
+    decision_context: Dict[str, Any] = dataclasses.field(default_factory=dict)  # Context for the decision
+
 import datetime
 
 @dataclasses.dataclass
@@ -759,6 +763,10 @@ class MatchScanner:
         self.game_stage: str = ""
         self.in_mulligan_phase: bool = False
 
+        # Decision prompt tracking (for triggering advice at key moments)
+        self._pending_decision: Optional[str] = None  # Type of decision awaiting input
+        self._decision_context: Dict[str, Any] = {}  # Context for the decision
+
         # P0 Performance: Zone-based object caching
         # Maps zone_id -> set of instance_ids in that zone
         # This eliminates O(n) iteration in get_current_board_state()
@@ -911,7 +919,55 @@ class MatchScanner:
                 state_changed |= self._parse_game_state_message(message)
             elif msg_type == "GREMessageType_ActionsAvailableReq":
                 logging.info("ActionsAvailableReq - player has priority")
+                self._pending_decision = "actions_available"
+                self._decision_context = {"type": "priority", "actions": message.get("actionsAvailableReq", {})}
                 state_changed = True # This is a key decision point
+            elif msg_type == "GREMessageType_PromptReq":
+                # Player must make a choice (modal spell, choose one, etc.)
+                prompt = message.get("promptReq", message.get("prompt", {}))
+                logging.info(f"PromptReq - player must choose: {prompt.get('promptType', 'unknown')}")
+                self._pending_decision = "prompt"
+                self._decision_context = {"type": "prompt", "prompt": prompt}
+                state_changed = True
+            elif msg_type == "GREMessageType_SelectTargetsReq":
+                # Player must select targets for a spell/ability
+                targets = message.get("selectTargetsReq", {})
+                logging.info(f"SelectTargetsReq - player must select targets")
+                self._pending_decision = "select_targets"
+                self._decision_context = {"type": "targeting", "targets": targets}
+                state_changed = True
+            elif msg_type == "GREMessageType_SelectNReq":
+                # Player must select N items (e.g., discard, sacrifice)
+                select_n = message.get("selectNReq", {})
+                logging.info(f"SelectNReq - player must select from options")
+                self._pending_decision = "select_n"
+                self._decision_context = {"type": "selection", "options": select_n}
+                state_changed = True
+            elif msg_type == "GREMessageType_DeclareAttackersReq":
+                # Player must declare attackers
+                logging.info("DeclareAttackersReq - player must declare attackers")
+                self._pending_decision = "declare_attackers"
+                self._decision_context = {"type": "combat", "phase": "attackers"}
+                state_changed = True
+            elif msg_type == "GREMessageType_DeclareBlockersReq":
+                # Player must declare blockers
+                logging.info("DeclareBlockersReq - player must declare blockers")
+                self._pending_decision = "declare_blockers"
+                self._decision_context = {"type": "combat", "phase": "blockers"}
+                state_changed = True
+            elif msg_type == "GREMessageType_MulliganReq":
+                # Player must decide on mulligan
+                logging.info("MulliganReq - mulligan decision required")
+                self._pending_decision = "mulligan"
+                self._decision_context = {"type": "mulligan"}
+                self.in_mulligan_phase = True
+                state_changed = True
+            elif msg_type == "GREMessageType_OrderDamageConfirmation":
+                # Player must order damage (multiple blockers)
+                logging.info("OrderDamageConfirmation - damage ordering required")
+                self._pending_decision = "order_damage"
+                self._decision_context = {"type": "combat", "phase": "damage_order"}
+                state_changed = True
             elif msg_type == "GREMessageType_Annotation":
                 state_changed |= self._parse_annotations(message)
 
@@ -1637,6 +1693,25 @@ class GameStateManager:
             board_state.has_priority,
         ))
 
+    def get_pending_decision(self) -> Optional[tuple]:
+        """
+        Get the current pending decision that requires player input.
+
+        Returns:
+            Tuple of (decision_type, context) or None if no decision pending.
+            decision_type is one of: 'prompt', 'select_targets', 'select_n',
+            'declare_attackers', 'declare_blockers', 'mulligan', 'order_damage',
+            'actions_available'
+        """
+        if self.scanner._pending_decision:
+            return (self.scanner._pending_decision, self.scanner._decision_context)
+        return None
+
+    def clear_pending_decision(self):
+        """Clear the pending decision after it has been handled."""
+        self.scanner._pending_decision = None
+        self.scanner._decision_context = {}
+
     def _find_gre_event(self, data: dict) -> Optional[dict]:
         """Recursively searches for 'greToClientEvent' within a dictionary."""
         if isinstance(data, dict):
@@ -1918,7 +1993,9 @@ class GameStateManager:
             library_top_known=self.scanner.library_top_known.copy(),
             scry_info=self.scanner.scry_info,
             in_mulligan_phase=self.scanner.in_mulligan_phase,
-            game_stage=self.scanner.game_stage
+            game_stage=self.scanner.game_stage,
+            pending_decision=self.scanner._pending_decision,
+            decision_context=self.scanner._decision_context.copy() if self.scanner._decision_context else {}
         )
 
         for obj_id, obj in self.scanner.game_objects.items():

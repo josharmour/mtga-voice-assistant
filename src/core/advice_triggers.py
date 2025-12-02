@@ -35,8 +35,14 @@ class TriggerType(Enum):
     OPPONENT_END_STEP = auto()   # Opponent's end step
     RESPONSE_WINDOW = auto()     # Opponent cast spell (counter opportunity)
 
+    # GRE Decision Prompts (from game engine)
+    PROMPT_DECISION = auto()     # Modal spell, choose one, etc.
+    TARGET_SELECTION = auto()    # Spell/ability targeting
+    CARD_SELECTION = auto()      # Select N cards (discard, sacrifice, etc.)
+    DAMAGE_ORDER = auto()        # Order damage with multiple blockers
+
     # Manual
-    PUSH_TO_TALK = auto()        # User pressed spacebar
+    PUSH_TO_TALK = auto()        # User pressed hotkey
     VOICE_QUERY = auto()         # User asked a question
 
 
@@ -48,6 +54,7 @@ class TriggerEvent:
     phase: str
     is_your_turn: bool
     user_query: Optional[str] = None  # For voice queries
+    decision_context: Optional[dict] = None  # For GRE decision prompts
 
 
 class AdviceTriggerManager:
@@ -120,9 +127,21 @@ class AdviceTriggerManager:
         has_priority = board_state.has_priority
         in_mulligan = board_state.in_mulligan_phase
 
+        # Get pending decision from board state (from GRE messages)
+        pending_decision = getattr(board_state, 'pending_decision', None)
+        decision_context = getattr(board_state, 'decision_context', {})
+
         trigger_event = None
 
-        # Check mulligan (highest priority)
+        # Check GRE decision prompts first (highest priority - explicit game requests)
+        if pending_decision:
+            trigger_event = self._check_decision_prompts(
+                pending_decision, decision_context, turn, phase, is_your_turn
+            )
+            if trigger_event:
+                return trigger_event
+
+        # Check mulligan (high priority)
         if in_mulligan and self._should_trigger(TriggerType.MULLIGAN):
             trigger_key = f"mulligan_{len(board_state.your_hand)}"
             if trigger_key not in self._fired_triggers:
@@ -164,6 +183,56 @@ class AdviceTriggerManager:
             self._fired_triggers.clear()
 
         return trigger_event
+
+    def _check_decision_prompts(self, pending_decision: str, decision_context: dict,
+                                turn: int, phase: str, is_your_turn: bool) -> Optional[TriggerEvent]:
+        """
+        Check if a GRE decision prompt should trigger advice.
+
+        These are explicit requests from the game engine for player input.
+        """
+        # Skip actions_available - this fires constantly and is already handled by phase triggers
+        if pending_decision == 'actions_available':
+            return None
+
+        # Map pending decision types to trigger types
+        # Note: mulligan is handled separately by the in_mulligan_phase check to avoid double-triggering
+        decision_to_trigger = {
+            'prompt': TriggerType.PROMPT_DECISION,
+            'select_targets': TriggerType.TARGET_SELECTION,
+            'select_n': TriggerType.CARD_SELECTION,
+            'declare_attackers': TriggerType.DECLARE_ATTACKERS,
+            'declare_blockers': TriggerType.DECLARE_BLOCKERS,
+            # 'mulligan' intentionally omitted - handled by in_mulligan_phase check
+            'order_damage': TriggerType.DAMAGE_ORDER,
+        }
+
+        trigger_type = decision_to_trigger.get(pending_decision)
+        if not trigger_type:
+            return None
+
+        # Check if this trigger type is enabled
+        if not self._should_trigger(trigger_type):
+            return None
+
+        # Create unique key for deduplication
+        # Use decision type + context hash to avoid duplicate triggers
+        context_hash = hash(str(decision_context)) if decision_context else 0
+        trigger_key = f"decision_{pending_decision}_{turn}_{context_hash}"
+
+        if trigger_key in self._fired_triggers:
+            return None
+
+        self._fired_triggers.add(trigger_key)
+        logger.info(f"GRE decision prompt triggered: {pending_decision}")
+
+        return TriggerEvent(
+            trigger_type=trigger_type,
+            turn=turn,
+            phase=phase,
+            is_your_turn=is_your_turn,
+            decision_context=decision_context
+        )
 
     def _detect_turn_start(self, turn: int, is_your_turn: bool, has_priority: bool) -> bool:
         """Detect if this is the start of your turn."""
@@ -235,13 +304,18 @@ class AdviceTriggerManager:
     def _should_trigger(self, trigger_type: TriggerType) -> bool:
         """Check if a trigger type is enabled in preferences."""
         if not self.prefs:
-            # Default behavior: only automatic triggers
+            # Default behavior: automatic triggers + GRE decision prompts
             return trigger_type in (
                 TriggerType.TURN_START,
                 TriggerType.MULLIGAN,
                 TriggerType.DRAFT_PICK,
                 TriggerType.PUSH_TO_TALK,
-                TriggerType.VOICE_QUERY
+                TriggerType.VOICE_QUERY,
+                # GRE decision prompts are enabled by default
+                TriggerType.PROMPT_DECISION,
+                TriggerType.TARGET_SELECTION,
+                TriggerType.CARD_SELECTION,
+                TriggerType.DAMAGE_ORDER,
             )
 
         # Map trigger types to preference attributes
@@ -257,6 +331,12 @@ class AdviceTriggerManager:
             TriggerType.RESPONSE_WINDOW: 'advice_on_response_window',
             TriggerType.PUSH_TO_TALK: True,  # Always enabled
             TriggerType.VOICE_QUERY: True,   # Always enabled
+            # GRE decision prompts use the same preferences as their phase equivalents
+            # or are always enabled for unique decision types
+            TriggerType.PROMPT_DECISION: True,  # Always enabled (modal spells, choose one)
+            TriggerType.TARGET_SELECTION: True,  # Always enabled (targeting)
+            TriggerType.CARD_SELECTION: True,  # Always enabled (discard, sacrifice)
+            TriggerType.DAMAGE_ORDER: True,  # Always enabled (damage ordering)
         }
 
         pref_attr = pref_map.get(trigger_type)

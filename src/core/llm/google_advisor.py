@@ -3,7 +3,6 @@ import logging
 import os
 
 from google import genai
-from google.genai import types
 
 from .base import BaseMTGAdvisor
 
@@ -30,13 +29,6 @@ GEMINI_MODELS = [
     "gemini-1.5-flash",
 ]
 
-# Models that support thinking_config (reasoning models)
-# Lite models and older models don't support this feature
-THINKING_SUPPORTED_MODELS = [
-    "gemini-3-pro-preview",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-]
 
 
 class GeminiAdvisor(BaseMTGAdvisor):
@@ -75,19 +67,9 @@ class GeminiAdvisor(BaseMTGAdvisor):
         # Combine system prompt with user prompt for Gemini
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-        # Only use thinking_config for models that support it
-        # Lite models and older models will error with "Thinking level is not supported"
-        if any(self.model_name.startswith(m) for m in THINKING_SUPPORTED_MODELS):
-            config = types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_level="low")
-            )
-        else:
-            config = None
-
         response = self.client.models.generate_content(
             model=self.model_name,
-            contents=full_prompt,
-            config=config
+            contents=full_prompt
         )
         return response.text.strip()
 

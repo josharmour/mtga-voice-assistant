@@ -400,13 +400,17 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
                         untapped_lands += 1
 
             logger.info(f"Mana availability: {total_lands} lands total, {untapped_lands} untapped")
-            context_lines.append(f"  Lands: {total_lands} total, {untapped_lands} untapped (mana available)")
+            if untapped_lands == 0:
+                context_lines.append(f"  ⚠️ NO MANA AVAILABLE - All {total_lands} lands are TAPPED. Cannot cast spells this turn!")
+            else:
+                context_lines.append(f"  Lands: {total_lands} total, {untapped_lands} UNTAPPED (can cast spells up to CMC {untapped_lands})")
 
-        context_lines.append("\n**My Hand:**")
+        context_lines.append("\n**My Hand (with mana costs):**")
         my_hand = board_state.get('your_hand', [])
         if my_hand:
             for card in my_hand:
-                context_lines.append(format_card(card))
+                # Format hand cards with emphasis on mana cost for castability checking
+                context_lines.append(self._format_hand_card_with_cost(card))
         else:
             context_lines.append(f"  {board_state.get('your_hand_count', 0)} cards (contents unknown)")
 
@@ -481,7 +485,12 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         return f"""You are a Magic: The Gathering expert advisor.
 Analyze the current board state and provide a concise, tactical recommendation for the current phase.
 Focus on winning lines, potential blocks, and hidden information (opponent's open mana).
-IMPORTANT: Only recommend plays that the player can afford with their current mana. Check card mana costs carefully before suggesting a play.
+
+CRITICAL MANA CHECK:
+- Check how many UNTAPPED lands the player has before recommending ANY spell
+- If all lands are tapped (0 untapped), ONLY recommend: passing, playing a land, or waiting
+- Compare card CMC (mana cost) to untapped land count - NEVER suggest casting a spell that costs more mana than available
+- Lands are FREE to play (no mana cost required)
 
 Current Phase: {board_state.get('current_phase', 'Unknown')}
 Game Round: {your_turn_count} (this is your turn #{your_turn_count}, so you could have up to {expected_lands} lands if you hit every drop)
@@ -608,3 +617,64 @@ Recent Events:
                         return local_data['name']
                 # REMOVED: Scryfall API fallback - too slow and blocks the main thread
         return name
+
+    def _format_hand_card_with_cost(self, card) -> str:
+        """
+        Format a hand card with mana cost prominently displayed.
+        This helps the LLM understand what cards are actually castable.
+        """
+        is_dict = isinstance(card, dict)
+        name = card.get('name') if is_dict else getattr(card, 'name', 'Unknown')
+        grp_id = card.get('grp_id') if is_dict else getattr(card, 'grp_id', None)
+
+        mana_cost = "?"
+        cmc = "?"
+        type_line = ""
+
+        if grp_id and self.arena_db:
+            card_data = self.arena_db.get_card_data(grp_id)
+            if card_data:
+                if name.startswith("Unknown"):
+                    name = card_data.get('name', name)
+                mana_cost = card_data.get('mana_cost', '?')
+                type_line = card_data.get('type_line', '')
+
+                # Calculate CMC from mana cost string like "{2}{W}{U}"
+                if mana_cost and mana_cost != '?':
+                    cmc = self._calculate_cmc(mana_cost)
+
+        # Format: "- Card Name [COST: {2}{W}] (CMC: 3) - Type"
+        if 'Land' in type_line:
+            return f"  - {name} [LAND - FREE TO PLAY] - {type_line}"
+        elif mana_cost and mana_cost != '?':
+            return f"  - {name} [COST: {mana_cost}] (CMC: {cmc}) - {type_line}"
+        else:
+            return f"  - {name} [COST: Unknown]"
+
+    def _calculate_cmc(self, mana_cost: str) -> int:
+        """
+        Calculate converted mana cost (CMC) from a mana cost string.
+        e.g., "{2}{W}{U}" -> 4, "{X}{R}{R}" -> 2 (X counts as 0)
+        """
+        if not mana_cost:
+            return 0
+
+        import re
+        cmc = 0
+
+        # Find all mana symbols like {2}, {W}, {U}, {X}, {W/U}, etc.
+        symbols = re.findall(r'\{([^}]+)\}', mana_cost)
+
+        for symbol in symbols:
+            if symbol.isdigit():
+                cmc += int(symbol)
+            elif symbol == 'X':
+                cmc += 0  # X counts as 0 for CMC calculation
+            elif '/' in symbol:
+                # Hybrid mana like {W/U} counts as 1
+                cmc += 1
+            else:
+                # Single color symbol like W, U, B, R, G counts as 1
+                cmc += 1
+
+        return cmc
