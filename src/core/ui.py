@@ -422,17 +422,18 @@ class LogHighlighter:
 
 
 class AdvisorGUI:
-    def __init__(self, root, advisor_ref):
+    def __init__(self, root, advisor_ref, version="Unknown"):
         self.root = root
         self.advisor_ref = advisor_ref
         self.advisor = advisor_ref
+        self.version = version
 
         self._last_issue_title = None
         self._last_timestamp = None
 
         self.prefs = UserPreferences.load() if CONFIG_MANAGER_AVAILABLE else None
 
-        self.root.title("MTGA Voice Advisor")
+        self.root.title(f"MTGA Voice Advisor v{self.version}")
 
         # Set custom taskbar/window icon
         self._set_window_icon()
@@ -802,6 +803,9 @@ class AdvisorGUI:
         button_frame.pack(pady=5, fill=tk.X)
         tk.Button(button_frame, text="🔄 Restart App", command=self._on_restart, bg=self.info_color, fg='#1a1a1a', relief=tk.FLAT, padx=10, pady=5, font=('Consolas', 9, 'bold')).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         tk.Button(button_frame, text="Exit", command=self._on_exit, bg=self.warning_color, fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+        # Version label
+        tk.Label(settings_frame, text=f"v{self.version}", bg=self.bg_color, fg='#666666', font=('Consolas', 8)).pack(side=tk.BOTTOM, pady=5)
 
         # Main content area with resizable panes
         self._content_paned = tk.PanedWindow(self.root, orient=tk.VERTICAL, bg=self.bg_color,
@@ -1614,7 +1618,8 @@ class AdvisorGUI:
                         return "N/A"
                     return "N/A"
 
-                settings = f"""Model: {safe_get_var(self.model_var) if hasattr(self, 'model_var') else 'N/A'}
+                settings = f"""Version: {self.version}
+Model: {safe_get_var(self.model_var) if hasattr(self, 'model_var') else 'N/A'}
 Voice: {safe_get_var(self.voice_var) if hasattr(self, 'voice_var') else 'N/A'}
 Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'}%
 """

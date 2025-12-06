@@ -22,6 +22,7 @@ from .formatters import BoardStateFormatter
 from .advice_triggers import AdviceTriggerManager, TriggerType, TriggerEvent
 from ..data.data_management import CardStatsDB
 from ..data.arena_cards import ArenaCardDatabase
+from .version import get_version
 
 # Import configuration manager for user preferences
 try:
@@ -350,6 +351,9 @@ class CLIVoiceAdvisor:
         self.running = True
         self._last_announced_pick = None
         self._current_board_state = None  # Cache for manual advice requests
+        
+        self.version = get_version()
+        print(f"MTGA Voice Advisor v{self.version}")
 
 
 
@@ -715,7 +719,7 @@ class CLIVoiceAdvisor:
         """Main application loop"""
         if self.use_gui:
             self.tk_root = tk.Tk()
-            self.gui = AdvisorGUI(self.tk_root, self)
+            self.gui = AdvisorGUI(self.tk_root, self, version=self.version)
 
             # Set up unknown card warning callback
             if self.arena_db:
