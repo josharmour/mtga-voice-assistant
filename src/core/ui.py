@@ -1647,6 +1647,10 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
                 self.add_message(f"✓ Bug report saved to: {folder_name}", "green")
                 logging.info(f"Bug report saved to {report_dir}")
 
+                # Offer to upload to GitHub
+                if self.root and self.root.winfo_exists():
+                    self.root.after(0, lambda: self._offer_upload_to_github(report_dir, folder_name, final_title, final_description))
+
             except Exception as e:
                 self.add_message(f"✗ Bug report failed: {e}", "red")
                 logging.error(f"Failed to capture bug report: {e}")
@@ -1655,6 +1659,96 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
 
         # Run in background thread
         threading.Thread(target=capture_in_background, daemon=True).start()
+
+    def _offer_upload_to_github(self, report_dir, folder_name, title, body):
+        """Offer to upload the bug report to GitHub."""
+        from tkinter import messagebox
+        import shutil
+        import webbrowser
+        
+        # Compress the report directory
+        zip_path = f"{report_dir}.zip"
+        shutil.make_archive(report_dir, 'zip', report_dir)
+        
+        msg = f"Bug report saved locally to:\n{folder_name}\n\nDo you want to open a GitHub issue for this?"
+        if messagebox.askyesno("Upload to GitHub", msg, parent=self.root):
+            
+            # Check for GitHub CLI (gh)
+            gh_available = False
+            try:
+                subprocess.run(["gh", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                gh_available = True
+            except:
+                pass
+
+            if gh_available:
+                # Use gh CLI to create issue
+                self.add_message("🚀 Uploading to GitHub...", "cyan")
+                
+                def upload_with_gh():
+                    try:
+                        # Note: gh issue create doesn't support attaching files directly easily via CLI flags 
+                        # without web interaction or using 'gh release upload' trickery.
+                        # Best practice for CLI automation is usually just opening the web form OR
+                        # creating the text issue and telling user to drag file.
+                        # However, we can try to be helpful.
+                        
+                        # We will create the issue with the body text
+                        # Then open the issue in browser so user can drag zip
+                        
+                        cmd = [
+                            "gh", "issue", "create",
+                            "--title", title,
+                            "--body", f"{body}\n\n**Version:** {self.version}\n\n*(Please drag the generated zip file '{os.path.basename(zip_path)}' into this issue to attach screenshots and logs)*",
+                            "--web"  # Open in browser to let user attach files
+                        ]
+                        subprocess.run(cmd, check=True)
+                        
+                        # Open folder so user can find the zip
+                        if os.name == 'nt':
+                            os.startfile(os.path.dirname(report_dir))
+                        elif os.name == 'posix':
+                             subprocess.run(['xdg-open', os.path.dirname(report_dir)])
+                             
+                    except Exception as e:
+                        logging.error(f"GitHub upload failed: {e}")
+                        self.root.after(0, lambda: self.add_message(f"GitHub CLI failed, opening browser...", "yellow"))
+                        # Fallback to manual
+                        self.root.after(0, lambda: self._manual_github_upload(title, body, zip_path))
+                
+                threading.Thread(target=upload_with_gh, daemon=True).start()
+            else:
+                # Fallback: Open browser + folder
+                self._manual_github_upload(title, body, zip_path)
+
+    def _manual_github_upload(self, title, body, zip_path):
+        """Handle manual GitHub upload flow."""
+        import urllib.parse
+        import webbrowser
+        
+        repo_url = "https://github.com/josharmour/mtga-voice-assistant/issues/new"
+        params = {
+            "title": title,
+            "body": f"{body}\n\n**Version:** {self.version}\n\n*(Please drag the attached zip file into this area)*"
+        }
+        query_string = urllib.parse.urlencode(params)
+        full_url = f"{repo_url}?{query_string}"
+        
+        webbrowser.open(full_url)
+        
+        # Open file explorer to the zip location
+        try:
+            folder = os.path.dirname(zip_path)
+            if os.name == 'nt':
+                os.startfile(folder)
+            elif os.name == 'posix':
+                subprocess.run(['xdg-open', folder])
+            elif os.name == 'mac':
+                subprocess.run(['open', folder])
+        except Exception as e:
+            logging.error(f"Could not open file explorer: {e}")
+            
+        self.add_message("📂 Drag the zip file into the browser window", "green")
 
 
     def _on_volume_change(self, value):
