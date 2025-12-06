@@ -482,6 +482,20 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         # Expected lands = number of your turns (land drops you could have made)
         expected_lands = your_turn_count
 
+        turn_owner_str = "MY TURN" if is_your_turn else "OPPONENT'S TURN"
+        
+        turn_constraints = ""
+        if not is_your_turn:
+            turn_constraints = """
+CRITICAL TURN CHECK:
+- It is the OPPONENT'S TURN.
+- You CANNOT attack.
+- You CANNOT play lands.
+- You CANNOT cast Sorceries or Creatures (unless they have Flash).
+- You CAN ONLY cast Instants, spells with Flash, or activate abilities.
+- If no instant-speed actions are available or profitable, recommend PASSING priority.
+"""
+
         return f"""You are a Magic: The Gathering expert advisor.
 Analyze the current board state and provide a concise, tactical recommendation for the current phase.
 Focus on winning lines, potential blocks, and hidden information (opponent's open mana).
@@ -491,8 +505,9 @@ CRITICAL MANA CHECK:
 - If all lands are tapped (0 untapped), ONLY recommend: passing, playing a land, or waiting
 - Compare card CMC (mana cost) to untapped land count - NEVER suggest casting a spell that costs more mana than available
 - Lands are FREE to play (no mana cost required)
-
+{turn_constraints}
 Current Phase: {board_state.get('current_phase', 'Unknown')}
+Whose Turn: {turn_owner_str}
 Game Round: {your_turn_count} (this is your turn #{your_turn_count}, so you could have up to {expected_lands} lands if you hit every drop)
 My Life: {board_state.get('your_life', '?')} | Opponent Life: {board_state.get('opponent_life', '?')}
 Opponent has {board_state.get('opponent_hand_count', 0)} cards in hand
