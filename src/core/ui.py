@@ -746,7 +746,7 @@ class AdvisorGUI:
         tk.Checkbutton(settings_frame, text="Mute All Audio", variable=self.mute_all_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
 
         # --- Hotkey Settings ---
-        tk.Label(settings_frame, text="Push to Prompt:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
+        tk.Label(settings_frame, text="Request Advice (Hotkey):", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
         hotkey_frame = tk.Frame(settings_frame, bg=self.bg_color)
         hotkey_frame.pack(fill=tk.X, pady=2)
 
@@ -978,6 +978,7 @@ class AdvisorGUI:
                         self._on_model_change()
                 else:
                     self.add_message("Ollama found, but no models installed.", "yellow")
+                    self.add_message("Run 'ollama pull llama3.2' in your terminal.", "yellow")
                     self.model_dropdown['values'] = []
                     self.model_var.set("")
             self.root.after(0, update_ui)
