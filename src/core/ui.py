@@ -934,10 +934,15 @@ class AdvisorGUI:
 
         # Only save and notify on user-initiated changes (not initial load)
         if not skip_model_reset:
+            model = self.model_var.get()
             if self.prefs:
-                self.prefs.set_model(self.model_var.get(), provider=provider)
+                self.prefs.set_model(model, provider=provider)
+            
             logging.info(f"AI Provider changed to: {provider}")
-            self.add_message(f"AI Provider changed to: {provider}. Restart required to apply changes.", "green")
+            if hasattr(self.advisor_ref, 'change_ai_model'):
+                self.advisor_ref.change_ai_model(provider, model)
+            else:
+                self.add_message(f"AI Provider changed to: {provider}.", "green")
 
     def _on_api_key_change(self, event=None):
         """Handle API key entry change."""
@@ -995,8 +1000,14 @@ class AdvisorGUI:
         provider = self.provider_var.get()
         if model and self.prefs:
             self.prefs.set_model(model, provider=provider)
-            logging.info(f"✓ AI Model changed to: {model}")
-            self.add_message(f"AI Model changed to: {model}. Restart required to apply changes.", "green")
+            
+            # Hot-swap model
+            if hasattr(self.advisor_ref, 'change_ai_model'):
+                self.advisor_ref.change_ai_model(provider, model)
+            else:
+                # Fallback for safety
+                logging.info(f"✓ AI Model changed to: {model}")
+                self.add_message(f"AI Model changed to: {model}.", "green")
 
     def _on_voice_change(self, event=None):
         """Handle voice selection change"""

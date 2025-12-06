@@ -450,17 +450,35 @@ class CLIVoiceAdvisor:
         return self.formatter.format_for_display(board_state)
 
     # GUI Callback Methods
-    def _on_gui_model_change(self, model):
+    def change_ai_model(self, provider: str, model: str):
+        """
+        Hot-swap the AI model and provider.
+        Called from GUI when settings change.
+        """
         model = model.strip()
-        if not model: return
+        provider = provider.strip()
+        if not model or not provider: return
         
-        # Update AI advisor model
-        self.ai_advisor.advisor.model_name = model
+        # Get API key from prefs based on provider
+        api_key = None
         if self.prefs:
-            self.prefs.set_model(model)
+            if provider.lower() == "google":
+                api_key = self.prefs.google_api_key
+            elif provider.lower() == "openai":
+                api_key = self.prefs.openai_api_key
+            elif provider.lower() == "anthropic":
+                api_key = self.prefs.anthropic_api_key
+
+        # Attempt hot-swap
+        success = self.ai_advisor.set_model(provider, model, api_key)
         
-        self._update_status()
-        self._output(f"✓ Model changed to: {model}", "green")
+        if success:
+            if self.prefs:
+                self.prefs.set_model(model, provider=provider)
+            self._update_status()
+            self._output(f"✓ AI Hot-swapped to: {provider} / {model}", "green")
+        else:
+            self._output(f"✗ Failed to swap to: {provider} / {model}", "red")
 
     def _on_gui_voice_change(self, voice):
         self.tts.voice = voice
