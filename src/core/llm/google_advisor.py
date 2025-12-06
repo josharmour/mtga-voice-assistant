@@ -3,6 +3,7 @@ import logging
 import os
 
 from google import genai
+from google.genai import types
 
 from .base import BaseMTGAdvisor
 
@@ -67,9 +68,17 @@ class GeminiAdvisor(BaseMTGAdvisor):
         # Combine system prompt with user prompt for Gemini
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
+        # Explicitly configure generation to avoid accidental "thinking" defaults
+        # on models that don't support it.
+        config = types.GenerateContentConfig(
+            temperature=0.7,
+            candidate_count=1
+        )
+
         response = self.client.models.generate_content(
             model=self.model_name,
-            contents=full_prompt
+            contents=full_prompt,
+            config=config
         )
         return response.text.strip()
 
