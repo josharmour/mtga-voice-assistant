@@ -562,6 +562,11 @@ class AdvisorGUI:
             self.prefs.log_window_geometry if self.prefs and hasattr(self.prefs, 'log_window_geometry') else "800x200+50+700",
             on_close=self._on_log_window_close)
 
+        # Track user preference for hidden panels
+        self._board_hidden_by_user = False
+        self._deck_hidden_by_user = False
+        self._log_hidden_by_user = False
+
     def _on_board_window_close(self):
         """Handle board window close - save geometry and show embedded version."""
         if self.board_window and self.board_window.winfo_exists():
@@ -571,8 +576,9 @@ class AdvisorGUI:
                 self.prefs.board_window_docked = True  # Save docked state
             self.board_window.withdraw()
             self._board_popped_out = False
-            # Show embedded board panel in paned window
-            if hasattr(self, '_embedded_board_frame') and hasattr(self, '_content_paned'):
+            
+            # Show embedded board panel only if not hidden by user
+            if hasattr(self, '_embedded_board_frame') and hasattr(self, '_content_paned') and not self._board_hidden_by_user:
                 self._content_paned.add(self._embedded_board_frame, stretch="always", minsize=80)
                 # Copy current content to embedded view
                 if self.board_state_lines:
@@ -586,7 +592,9 @@ class AdvisorGUI:
                 self.prefs.deck_window_docked = True  # Save docked state
             self.deck_window.withdraw()
             self._deck_popped_out = False
-            if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned'):
+            
+            # Show embedded deck panel only if not hidden by user
+            if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned') and not self._deck_hidden_by_user:
                 self._content_paned.add(self._embedded_deck_frame, stretch="always", minsize=80)
 
     def _on_log_window_close(self):
@@ -597,7 +605,9 @@ class AdvisorGUI:
                 self.prefs.log_window_docked = True  # Save docked state
             self.log_window.withdraw()
             self._log_popped_out = False
-            if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned'):
+            
+            # Show embedded log panel only if not hidden by user
+            if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned') and not self._log_hidden_by_user:
                 self._content_paned.add(self._embedded_log_frame, stretch="never", minsize=60)
 
     def _pop_out_board(self):
@@ -607,6 +617,8 @@ class AdvisorGUI:
                 self._content_paned.forget(self._embedded_board_frame)
             except tk.TclError:
                 pass  # Already removed
+        
+        self._board_hidden_by_user = False  # Reset hidden flag on explicit action
         self._board_popped_out = True
         if self.prefs:
             self.prefs.board_window_docked = False  # Save popped out state
@@ -621,6 +633,8 @@ class AdvisorGUI:
                 self._content_paned.forget(self._embedded_deck_frame)
             except tk.TclError:
                 pass  # Already removed
+        
+        self._deck_hidden_by_user = False  # Reset hidden flag
         self._deck_popped_out = True
         if self.prefs:
             self.prefs.deck_window_docked = False  # Save popped out state
@@ -635,12 +649,28 @@ class AdvisorGUI:
                 self._content_paned.forget(self._embedded_log_frame)
             except tk.TclError:
                 pass  # Already removed
+        
+        self._log_hidden_by_user = False  # Reset hidden flag
         self._log_popped_out = True
         if self.prefs:
             self.prefs.log_window_docked = False  # Save popped out state
         if self.log_window:
             self.log_window.deiconify()
             self.log_window.lift()
+            
+    def _hide_embedded_panel(self, frame):
+        """Hide an embedded panel from the paned window."""
+        try:
+            if frame == getattr(self, '_embedded_board_frame', None):
+                self._board_hidden_by_user = True
+            elif frame == getattr(self, '_embedded_deck_frame', None):
+                self._deck_hidden_by_user = True
+            elif frame == getattr(self, '_embedded_log_frame', None):
+                self._log_hidden_by_user = True
+                
+            self._content_paned.forget(frame)
+        except tk.TclError:
+            pass
 
     def _ensure_windows_visible(self):
         """Show windows based on saved docked state preferences."""
@@ -652,7 +682,7 @@ class AdvisorGUI:
                 # Dock the board window
                 if self.board_window:
                     self.board_window.withdraw()
-                if hasattr(self, '_embedded_board_frame') and hasattr(self, '_content_paned'):
+                if hasattr(self, '_embedded_board_frame') and hasattr(self, '_content_paned') and not self._board_hidden_by_user:
                     self._content_paned.add(self._embedded_board_frame, stretch="always", minsize=80)
 
             if self._deck_popped_out and self.deck_window:
@@ -661,7 +691,7 @@ class AdvisorGUI:
                 # Dock the deck window
                 if self.deck_window:
                     self.deck_window.withdraw()
-                if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned'):
+                if hasattr(self, '_embedded_deck_frame') and hasattr(self, '_content_paned') and not self._deck_hidden_by_user:
                     self._content_paned.add(self._embedded_deck_frame, stretch="always", minsize=80)
 
             if self._log_popped_out and self.log_window:
@@ -671,7 +701,7 @@ class AdvisorGUI:
                 # Dock the log window
                 if self.log_window:
                     self.log_window.withdraw()
-                if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned'):
+                if hasattr(self, '_embedded_log_frame') and hasattr(self, '_content_paned') and not self._log_hidden_by_user:
                     self._content_paned.add(self._embedded_log_frame, stretch="never", minsize=60)
         except Exception as e:
             logging.error(f"Error setting up window visibility: {e}")
@@ -834,32 +864,75 @@ class AdvisorGUI:
 
     def _create_embedded_panels(self):
         """Create embedded panels that show when secondary windows are closed."""
+        # Helper to create hideable frame
+        def create_hideable_frame(parent, title, pop_out_cmd, hide_cmd):
+            frame = tk.LabelFrame(parent, text=title, bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+            # Header frame for buttons
+            header = tk.Frame(frame, bg='#1a1a1a', height=20)
+            header.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
+            
+            # Title label (already part of LabelFrame, but we want buttons)
+            # Actually LabelFrame title is static. Let's just add buttons to top right.
+            # Using place for buttons over the label frame border is tricky.
+            # Instead, we'll put controls inside the frame at the top.
+            
+            # Since LabelFrame title takes up space, we can't easily put buttons IN the title bar.
+            # We will just add a small toolbar inside.
+            toolbar = tk.Frame(frame, bg='#1a1a1a')
+            toolbar.pack(side=tk.TOP, fill=tk.X)
+            
+            close_btn = tk.Button(toolbar, text="✕ Hide", command=hide_cmd, 
+                                 bg='#1a1a1a', fg='#ff5555', relief=tk.FLAT, font=('Consolas', 8), padx=5)
+            close_btn.pack(side=tk.RIGHT)
+            
+            pop_btn = tk.Button(toolbar, text="↗ Pop Out", command=pop_out_cmd, 
+                               bg='#1a1a1a', fg='#55aaff', relief=tk.FLAT, font=('Consolas', 8), padx=5)
+            pop_btn.pack(side=tk.RIGHT)
+            
+            return frame
+
         # Embedded Board State Panel
-        self._embedded_board_frame = tk.LabelFrame(self._content_paned, text="📋 Board State (click 'Board' to pop out)",
-            bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+        self._embedded_board_frame = create_hideable_frame(
+            self._content_paned, 
+            "📋 Board State", 
+            self._pop_out_board,
+            lambda: self._hide_embedded_panel(self._embedded_board_frame)
+        )
         self._embedded_board_text = scrolledtext.ScrolledText(self._embedded_board_frame, height=8,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_board_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_board_text.config(state=tk.DISABLED)
-        # Don't add to paned window yet - will be added when board window is closed
 
         # Embedded Deck/Library Panel
-        self._embedded_deck_frame = tk.LabelFrame(self._content_paned, text="📚 Library (click 'Deck' to pop out)",
-            bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+        self._embedded_deck_frame = create_hideable_frame(
+            self._content_paned, 
+            "📚 Library", 
+            self._pop_out_deck,
+            lambda: self._hide_embedded_panel(self._embedded_deck_frame)
+        )
         self._embedded_deck_text = scrolledtext.ScrolledText(self._embedded_deck_frame, height=6,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_deck_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_deck_text.config(state=tk.DISABLED)
-        # Don't add yet
 
         # Embedded Log Panel
-        self._embedded_log_frame = tk.LabelFrame(self._content_paned, text="📜 MTGA Logs (click 'Logs' to pop out)",
-            bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+        self._embedded_log_frame = create_hideable_frame(
+            self._content_paned, 
+            "📜 MTGA Logs", 
+            self._pop_out_log,
+            lambda: self._hide_embedded_panel(self._embedded_log_frame)
+        )
         self._embedded_log_text = scrolledtext.ScrolledText(self._embedded_log_frame, height=4,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_log_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_log_text.config(state=tk.DISABLED)
-        # Don't add yet
+
+    def _hide_embedded_panel(self, frame):
+        """Hide an embedded panel from the paned window."""
+        try:
+            self._content_paned.forget(frame)
+        except tk.TclError:
+            pass
 
     def _update_embedded_board(self, lines):
         """Update the embedded board state panel."""
