@@ -798,14 +798,77 @@ class AdvisorGUI:
         # Populate audio devices on startup
         self._populate_audio_devices()
 
-        # --- Remaining widgets ---
-        # (This part is condensed for brevity, assuming it remains largely the same)
-        tk.Label(settings_frame, text="Windows:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
-        windows_frame = tk.Frame(settings_frame, bg=self.bg_color)
-        windows_frame.pack(fill=tk.X, pady=5)
-        tk.Button(windows_frame, text="Board", command=self._pop_out_board, bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
-        tk.Button(windows_frame, text="Deck", command=self._pop_out_deck, bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
-        tk.Button(windows_frame, text="Logs", command=self._pop_out_log, bg='#3a3a3a', fg='white', relief=tk.FLAT).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=1)
+        # --- Window Management ---
+        tk.Label(settings_frame, text="Panels:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
+        
+        # Panel visibility toggles
+        self.panel_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        self.panel_frame.pack(fill=tk.X, pady=2)
+        
+        # Board Panel
+        self.show_board_var = tk.BooleanVar(value=not self.prefs.board_window_docked) # Inverted logic in prefs? No, let's check logic.
+        # Prefs logic: board_window_docked=True means embedded. board_window_docked=False means popped out.
+        # But we also have _board_hidden_by_user.
+        # Let's simplify: "Show Board" toggle.
+        # If checked: show (docked or popped out depending on state). If unchecked: hide.
+        self.show_board_var = tk.BooleanVar(value=not getattr(self, '_board_hidden_by_user', False))
+        
+        def toggle_board():
+            if self.show_board_var.get():
+                self._board_hidden_by_user = False
+                if self._board_popped_out:
+                    self.board_window.deiconify()
+                else:
+                    self._content_paned.add(self._embedded_board_frame, stretch="always", minsize=80)
+            else:
+                self._board_hidden_by_user = True
+                if self._board_popped_out:
+                    self.board_window.withdraw()
+                else:
+                    self._content_paned.forget(self._embedded_board_frame)
+
+        tk.Checkbutton(self.panel_frame, text="Board State", variable=self.show_board_var, command=toggle_board,
+                      bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W)
+
+        # Deck Panel
+        self.show_deck_var = tk.BooleanVar(value=not getattr(self, '_deck_hidden_by_user', False))
+        def toggle_deck():
+            if self.show_deck_var.get():
+                self._deck_hidden_by_user = False
+                if self._deck_popped_out:
+                    self.deck_window.deiconify()
+                else:
+                    self._content_paned.add(self._embedded_deck_frame, stretch="always", minsize=80)
+            else:
+                self._deck_hidden_by_user = True
+                if self._deck_popped_out:
+                    self.deck_window.withdraw()
+                else:
+                    self._content_paned.forget(self._embedded_deck_frame)
+
+        tk.Checkbutton(self.panel_frame, text="Library / Deck", variable=self.show_deck_var, command=toggle_deck,
+                      bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W)
+
+        # Logs Panel
+        self.show_logs_var = tk.BooleanVar(value=not getattr(self, '_log_hidden_by_user', False))
+        def toggle_logs():
+            if self.show_logs_var.get():
+                self._log_hidden_by_user = False
+                if self._log_popped_out:
+                    self.log_window.deiconify()
+                else:
+                    self._content_paned.add(self._embedded_log_frame, stretch="never", minsize=60)
+            else:
+                self._log_hidden_by_user = True
+                if self._log_popped_out:
+                    self.log_window.withdraw()
+                else:
+                    self._content_paned.forget(self._embedded_log_frame)
+
+        tk.Checkbutton(self.panel_frame, text="MTGA Logs", variable=self.show_logs_var, command=toggle_logs,
+                      bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W)
+
+
         tk.Button(settings_frame, text="Clear Messages", command=self._clear_messages, bg='#3a3a3a', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=(20, 5), fill=tk.X)
         tk.Button(settings_frame, text="🐛 Bug Report (F12)", command=self._capture_bug_report, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
 
@@ -865,63 +928,26 @@ class AdvisorGUI:
     def _create_embedded_panels(self):
         """Create embedded panels that show when secondary windows are closed."""
         # Helper to create hideable frame
-        def create_hideable_frame(parent, title, pop_out_cmd, hide_cmd):
+        def create_hideable_frame(parent, title):
             frame = tk.LabelFrame(parent, text=title, bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
-            # Header frame for buttons
-            header = tk.Frame(frame, bg='#1a1a1a', height=20)
-            header.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2)
-            
-            # Title label (already part of LabelFrame, but we want buttons)
-            # Actually LabelFrame title is static. Let's just add buttons to top right.
-            # Using place for buttons over the label frame border is tricky.
-            # Instead, we'll put controls inside the frame at the top.
-            
-            # Since LabelFrame title takes up space, we can't easily put buttons IN the title bar.
-            # We will just add a small toolbar inside.
-            toolbar = tk.Frame(frame, bg='#1a1a1a')
-            toolbar.pack(side=tk.TOP, fill=tk.X)
-            
-            close_btn = tk.Button(toolbar, text="✕ Hide", command=hide_cmd, 
-                                 bg='#1a1a1a', fg='#ff5555', relief=tk.FLAT, font=('Consolas', 8), padx=5)
-            close_btn.pack(side=tk.RIGHT)
-            
-            pop_btn = tk.Button(toolbar, text="↗ Pop Out", command=pop_out_cmd, 
-                               bg='#1a1a1a', fg='#55aaff', relief=tk.FLAT, font=('Consolas', 8), padx=5)
-            pop_btn.pack(side=tk.RIGHT)
-            
             return frame
 
         # Embedded Board State Panel
-        self._embedded_board_frame = create_hideable_frame(
-            self._content_paned, 
-            "📋 Board State", 
-            self._pop_out_board,
-            lambda: self._hide_embedded_panel(self._embedded_board_frame)
-        )
+        self._embedded_board_frame = create_hideable_frame(self._content_paned, "📋 Board State")
         self._embedded_board_text = scrolledtext.ScrolledText(self._embedded_board_frame, height=8,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_board_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_board_text.config(state=tk.DISABLED)
 
         # Embedded Deck/Library Panel
-        self._embedded_deck_frame = create_hideable_frame(
-            self._content_paned, 
-            "📚 Library", 
-            self._pop_out_deck,
-            lambda: self._hide_embedded_panel(self._embedded_deck_frame)
-        )
+        self._embedded_deck_frame = create_hideable_frame(self._content_paned, "📚 Library")
         self._embedded_deck_text = scrolledtext.ScrolledText(self._embedded_deck_frame, height=6,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_deck_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_deck_text.config(state=tk.DISABLED)
 
         # Embedded Log Panel
-        self._embedded_log_frame = create_hideable_frame(
-            self._content_paned, 
-            "📜 MTGA Logs", 
-            self._pop_out_log,
-            lambda: self._hide_embedded_panel(self._embedded_log_frame)
-        )
+        self._embedded_log_frame = create_hideable_frame(self._content_paned, "📜 MTGA Logs")
         self._embedded_log_text = scrolledtext.ScrolledText(self._embedded_log_frame, height=4,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_log_text.pack(fill=tk.BOTH, expand=True)

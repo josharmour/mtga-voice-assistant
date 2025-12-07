@@ -392,15 +392,19 @@ class CLIVoiceAdvisor:
 
     def _update_status(self, board_state: "BoardState" = None):
         """Update status display (GUI)"""
+        model_name = self.ai_advisor.advisor.model_name if hasattr(self.ai_advisor, 'advisor') else 'N/A'
+        
         if board_state:
             status_text = (
                 f"Turn {board_state.current_turn} | "
                 f"Phase: {board_state.current_phase} | "
                 f"Life: {board_state.your_life}/{board_state.opponent_life} | "
-                f"Model: {self.ai_advisor.advisor.model_name if hasattr(self.ai_advisor, 'advisor') else 'N/A'}"
+                f"Model: {model_name}"
             )
+        elif not self.log_follower.is_caught_up:
+            status_text = f"Catching up logs... | Model: {model_name}"
         else:
-            status_text = f"Waiting for game... | Model: {self.ai_advisor.advisor.model_name if hasattr(self.ai_advisor, 'advisor') else 'N/A'}"
+            status_text = f"Ready - Waiting for match... | Model: {model_name}"
 
         if self.use_gui and self.gui:
             self.gui.set_status(status_text)
