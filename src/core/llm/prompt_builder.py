@@ -495,7 +495,27 @@ CRITICAL TURN CHECK:
 - You CAN ONLY cast Instants, spells with Flash, or activate abilities.
 - If no instant-speed actions are available or profitable, recommend PASSING priority.
 """
+        
+        mulligan_advice = ""
+        if board_state.get('in_mulligan_phase', False):
+            mulligan_advice = """
+MULLIGAN ADVICE:
+- You are currently in the mulligan phase.
+- Evaluate the starting hand based on land count, mana curve, and synergy.
+- Recommend to KEEP or MULLIGAN.
+- If keeping, briefly explain why it's a good hand.
+- If mulliganing, briefly explain why it's a bad hand (e.g., too many lands, too few lands, high curve).
+- Your advice should be for the current hand, not subsequent turns.
+"""
+            # Override general advice intro for mulligan
+            return f"""You are a Magic: The Gathering expert advisor.
+{mulligan_advice}
+My Hand:
+{self._format_hand_for_mulligan(board_state)}
 
+My Life: {board_state.get('your_life', '?')} | Opponent Life: {board_state.get('opponent_life', '?')}
+"""
+        # Original prompt for in-game advice
         return f"""You are a Magic: The Gathering expert advisor.
 Analyze the current board state and provide a concise, tactical recommendation for the current phase.
 Focus on winning lines, potential blocks, and hidden information (opponent's open mana).
@@ -632,6 +652,43 @@ Recent Events:
                         return local_data['name']
                 # REMOVED: Scryfall API fallback - too slow and blocks the main thread
         return name
+
+    def _format_hand_for_mulligan(self, board_state: Dict) -> str:
+        """
+        Format the hand specifically for mulligan advice, including detailed card info.
+        """
+        lines = []
+        your_hand = board_state.get('your_hand', [])
+        
+        if not your_hand:
+            return "  (Hand is empty)"
+
+        for card in your_hand:
+            is_dict = isinstance(card, dict)
+            name = card.get('name') if is_dict else getattr(card, 'name', 'Unknown')
+            grp_id = card.get('grp_id') if is_dict else getattr(card, 'grp_id', None)
+
+            mana_cost = "?"
+            cmc = "?"
+            type_line = ""
+
+            if grp_id and self.arena_db:
+                card_data = self.arena_db.get_card_data(grp_id)
+                if card_data:
+                    if name.startswith("Unknown"):
+                        name = card_data.get('name', name)
+                    mana_cost = card_data.get('mana_cost', '?')
+                    type_line = card_data.get('type_line', '')
+                    if mana_cost and mana_cost != '?':
+                        cmc = self._calculate_cmc(mana_cost)
+
+            if 'Land' in type_line:
+                lines.append(f"  - {name} (LAND)")
+            elif mana_cost and mana_cost != '?':
+                lines.append(f"  - {name} (Cost: {mana_cost}, CMC: {cmc}, Type: {type_line})")
+            else:
+                lines.append(f"  - {name} (Type: {type_line})")
+        return "\n".join(lines)
 
     def _format_hand_card_with_cost(self, card) -> str:
         """

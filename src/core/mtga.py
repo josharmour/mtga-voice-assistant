@@ -1021,6 +1021,16 @@ class MatchScanner:
                     logging.info(f"🎮 Game stage changed: {old_stage} → {self.game_stage}")
                     state_changed = True
 
+                # P3 FIX: More robust mulligan phase detection
+                if "GameStage_Mulligan" in self.game_stage and not self.in_mulligan_phase:
+                    self.in_mulligan_phase = True
+                    logging.info("🎴 Mulligan phase detected via GameStage!")
+                    state_changed = True
+                elif "GameStage_Mulligan" not in self.game_stage and self.in_mulligan_phase:
+                    self.in_mulligan_phase = False
+                    logging.info("🎴 Mulligan phase ended via GameStage!")
+                    state_changed = True
+
             # Handle deleted objects FIRST before processing new ones
             if "diffDeletedInstanceIds" in game_state:
                 deleted_ids = game_state["diffDeletedInstanceIds"]
@@ -1314,23 +1324,6 @@ class MatchScanner:
                 player.energy = player_data["energy"]
                 logging.debug(f"  Player {seat_id} energy: {player.energy}")
                 state_changed = True
-
-            # Detect mulligan phase
-            pending_msg = player_data.get("pendingMessageType", "")
-            logging.debug(f"Player {seat_id} pendingMessageType: {pending_msg}, local_player: {self.local_player_seat_id}")
-
-            # Only track mulligan state for local player
-            if seat_id == self.local_player_seat_id:
-                if pending_msg == "ClientMessageType_MulliganResp":
-                    if not self.in_mulligan_phase:
-                        self.in_mulligan_phase = True
-                        logging.info(f"🎴 MULLIGAN PHASE DETECTED for player {seat_id}")
-                        state_changed = True
-                elif self.in_mulligan_phase and pending_msg != "ClientMessageType_MulliganResp":
-                    # Mulligan phase ended (local player no longer has mulligan pending)
-                    logging.info("🎴 Mulligan phase ended")
-                    self.in_mulligan_phase = False
-                    state_changed = True
 
         return state_changed
 
