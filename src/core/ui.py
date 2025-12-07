@@ -1852,9 +1852,19 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
             value: The value to apply (type depends on key)
         """
         try:
-            if key == "status":
+            elif key == "status":
                 if hasattr(self, 'status_label') and self.status_label:
                     self.status_label.config(text=value)
+
+            elif key == "thinking":
+                # value is boolean: True=Show, False=Hide
+                if hasattr(self, 'status_label') and self.status_label:
+                    if value:
+                        self.status_label.config(fg='#ffff00', text="🤔 Thinking...")
+                    else:
+                        self.status_label.config(fg=self.accent_color)
+                        # Revert to normal status text if available, else "Ready"
+                        # (Usually status is updated separately, so just resetting color is enough)
 
             elif key == "board_state":
                 # Update secondary window if popped out
@@ -1955,6 +1965,14 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
     def set_status(self, text: str):
         """Update status label (batched, thread-safe)."""
         self._schedule_update("status", text)
+
+    def show_thinking(self):
+        """Show thinking indicator (batched, thread-safe)."""
+        self._schedule_update("thinking", True)
+
+    def hide_thinking(self):
+        """Hide thinking indicator (batched, thread-safe)."""
+        self._schedule_update("thinking", False)
 
     def set_card_database(self, card_db):
         """Set the card database for log highlighting."""

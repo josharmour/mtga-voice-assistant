@@ -805,6 +805,10 @@ class CLIVoiceAdvisor:
         def get_advice():
             try:
                 logging.info(f"Getting advice for trigger: {trigger_event.trigger_type.name}")
+                
+                # Show thinking indicator in UI
+                if self.use_gui and self.gui:
+                    self.gui.show_thinking()
 
                 # Convert BoardState dataclass to dict for AI advisor
                 board_state_dict = dataclasses.asdict(board_state)
@@ -842,6 +846,10 @@ class CLIVoiceAdvisor:
                 error_msg = remove_emojis(str(e)) if os.name == 'nt' else str(e)
                 logging.error(f"Error getting advice: {error_msg}")
                 self._output(f"Error: {error_msg}", "red")
+            finally:
+                # Hide thinking indicator
+                if self.use_gui and self.gui:
+                    self.gui.hide_thinking()
 
         threading.Thread(target=get_advice, daemon=True).start()
 
