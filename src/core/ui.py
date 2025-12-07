@@ -1852,7 +1852,7 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
             value: The value to apply (type depends on key)
         """
         try:
-            elif key == "status":
+            if key == "status":
                 if hasattr(self, 'status_label') and self.status_label:
                     self.status_label.config(text=value)
 
