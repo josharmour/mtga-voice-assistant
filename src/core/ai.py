@@ -6,6 +6,7 @@ from .llm.google_advisor import GeminiAdvisor
 from .llm.openai_advisor import OpenAIAdvisor
 from .llm.anthropic_advisor import AnthropicAdvisor
 from .llm.ollama_advisor import OllamaAdvisor
+from .llm.llamacpp_advisor import LlamaCppAdvisor
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class AIAdvisor:
             "openai": (OpenAIAdvisor, {"api_key": prefs.openai_api_key}),
             "anthropic": (AnthropicAdvisor, {"api_key": prefs.anthropic_api_key}),
             "ollama": (OllamaAdvisor, {}),
+            "llamacpp": (LlamaCppAdvisor, {}),
         }
 
         if provider in advisor_map:
@@ -62,6 +64,7 @@ class AIAdvisor:
             "openai": (OpenAIAdvisor, {"api_key": api_key}),
             "anthropic": (AnthropicAdvisor, {"api_key": api_key}),
             "ollama": (OllamaAdvisor, {}),
+            "llamacpp": (LlamaCppAdvisor, {}),
         }
 
         if provider in advisor_map:

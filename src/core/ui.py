@@ -723,7 +723,7 @@ class AdvisorGUI:
         # --- AI Provider and Model Selection ---
         tk.Label(settings_frame, text="AI Provider:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.provider_var = tk.StringVar()
-        self.provider_dropdown = ttk.Combobox(settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama"], width=25)
+        self.provider_dropdown = ttk.Combobox(settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama", "Llama.cpp"], width=25)
         self.provider_dropdown.pack(pady=(0, 5), fill=tk.X)
         self.provider_dropdown.bind('<<ComboboxSelected>>', self._on_provider_change)
 
@@ -738,6 +738,13 @@ class AdvisorGUI:
         self.check_ollama_btn = tk.Button(self.ollama_frame, text="Check Ollama & Refresh Models", command=self._check_ollama, bg='#3a3a3a', fg='white', relief=tk.FLAT)
         self.check_ollama_btn.pack(pady=2, fill=tk.X)
 
+        self.llamacpp_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        tk.Label(self.llamacpp_frame, text="Server URL:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
+        self.llamacpp_url_var = tk.StringVar(value=self.prefs.llamacpp_server_url if self.prefs else "http://localhost:8080")
+        self.llamacpp_url_entry = tk.Entry(self.llamacpp_frame, textvariable=self.llamacpp_url_var, width=27)
+        self.llamacpp_url_entry.pack(pady=(0, 5), fill=tk.X)
+        self.llamacpp_url_entry.bind('<KeyRelease>', self._on_api_key_change)
+        
         tk.Label(settings_frame, text="AI Model:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.model_var = tk.StringVar()
         self.model_dropdown = ttk.Combobox(settings_frame, textvariable=self.model_var, width=25)
@@ -999,6 +1006,8 @@ class AdvisorGUI:
         # Hide all conditional widgets first
         self.api_key_frame.pack_forget()
         self.ollama_frame.pack_forget()
+        if hasattr(self, 'llamacpp_frame'):
+            self.llamacpp_frame.pack_forget()
 
         # Default model lists (updated December 2025)
         model_lists = {
@@ -1017,7 +1026,8 @@ class AdvisorGUI:
                 "claude-3-opus-20240229",
                 "claude-3-haiku-20240307",
             ],
-            "Ollama": []
+            "Ollama": [],
+            "Llama.cpp": ["default"]
         }
 
         if provider == "Ollama":
@@ -1025,6 +1035,12 @@ class AdvisorGUI:
             self.model_dropdown['values'] = model_lists[provider]
             if not skip_model_reset and self.model_var.get() not in model_lists[provider]:
                  self.model_var.set("")
+        elif provider == "Llama.cpp":
+            if hasattr(self, 'llamacpp_frame'):
+                self.llamacpp_frame.pack(pady=2, fill=tk.X)
+            self.model_dropdown['values'] = model_lists[provider]
+            if not skip_model_reset:
+                 self.model_var.set("default")
         else:
             self.api_key_frame.pack(pady=2, fill=tk.X)
             self.model_dropdown['values'] = model_lists[provider]
@@ -1048,15 +1064,17 @@ class AdvisorGUI:
         if not self.prefs: return
         provider = self.provider_var.get().lower()
         key = self.api_key_var.get()
+        llamacpp_url = self.llamacpp_url_var.get()
 
         key_map = {
             "google": {"google_api_key": key},
             "openai": {"openai_api_key": key},
             "anthropic": {"anthropic_api_key": key},
+            "llama.cpp": {"llamacpp_server_url": llamacpp_url},
         }
         if provider in key_map:
             self.prefs.set_api_keys(**key_map[provider])
-            logging.debug(f"Updated API key for {provider}")
+            logging.debug(f"Updated settings for {provider}")
 
     def _check_ollama(self):
         """Check for Ollama installation and list available models."""

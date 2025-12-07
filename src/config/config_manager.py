@@ -93,6 +93,9 @@ class UserPreferences:
     google_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    
+    # Local AI settings
+    llamacpp_server_url: str = "http://localhost:8080"
 
     @classmethod
     def load(cls) -> "UserPreferences":
@@ -168,7 +171,7 @@ class UserPreferences:
     def set_api_keys(self, github_token: str = None, github_owner: str = None,
                      github_repo: str = None, imgbb_api_key: str = None,
                      google_api_key: str = None, openai_api_key: str = None,
-                     anthropic_api_key: str = None):
+                     anthropic_api_key: str = None, llamacpp_server_url: str = None):
         """Update API keys for bug reporting and AI providers."""
         if github_token is not None:
             self.github_token = github_token
@@ -184,6 +187,8 @@ class UserPreferences:
             self.openai_api_key = openai_api_key
         if anthropic_api_key is not None:
             self.anthropic_api_key = anthropic_api_key
+        if llamacpp_server_url is not None:
+            self.llamacpp_server_url = llamacpp_server_url
         self.save()
 
     def has_github_credentials(self) -> bool:

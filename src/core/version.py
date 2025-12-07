@@ -1,7 +1,7 @@
 import subprocess
 import logging
 
-FALLBACK_VERSION = "0.2.3-dev"
+FALLBACK_VERSION = "0.2.4-dev"
 
 def get_version() -> str:
     """

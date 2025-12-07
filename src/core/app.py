@@ -463,8 +463,9 @@ class CLIVoiceAdvisor:
         provider = provider.strip()
         if not model or not provider: return
         
-        # Get API key from prefs based on provider
+        # Get API key/config from prefs based on provider
         api_key = None
+        extra_config = {}
         if self.prefs:
             if provider.lower() == "google":
                 api_key = self.prefs.google_api_key
@@ -472,9 +473,11 @@ class CLIVoiceAdvisor:
                 api_key = self.prefs.openai_api_key
             elif provider.lower() == "anthropic":
                 api_key = self.prefs.anthropic_api_key
+            elif provider.lower() == "llama.cpp":
+                extra_config["server_url"] = self.prefs.llamacpp_server_url
 
         # Attempt hot-swap
-        success = self.ai_advisor.set_model(provider, model, api_key)
+        success = self.ai_advisor.set_model(provider, model, api_key, **extra_config)
         
         if success:
             if self.prefs:
