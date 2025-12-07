@@ -32,6 +32,7 @@ class AIAdvisor:
             "anthropic": (AnthropicAdvisor, {"api_key": prefs.anthropic_api_key}),
             "ollama": (OllamaAdvisor, {}),
             "llamacpp": (LlamaCppAdvisor, {}),
+            "llama.cpp": (LlamaCppAdvisor, {}),
         }
 
         if provider in advisor_map:
@@ -65,6 +66,7 @@ class AIAdvisor:
             "anthropic": (AnthropicAdvisor, {"api_key": api_key}),
             "ollama": (OllamaAdvisor, {}),
             "llamacpp": (LlamaCppAdvisor, {}),
+            "llama.cpp": (LlamaCppAdvisor, {}),
         }
 
         if provider in advisor_map:
