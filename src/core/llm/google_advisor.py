@@ -40,18 +40,20 @@ class GeminiAdvisor(BaseMTGAdvisor):
 
     def __init__(self, model_name: str = "gemini-2.5-flash", card_db=None, **kwargs):
         super().__init__(model_name, card_db, **kwargs)
-        self._setup_api()
+        self._setup_api(kwargs.get("api_key"))
 
-    def _setup_api(self):
+    def _setup_api(self, api_key: str = None):
         """Configure the Gemini API client."""
-        # Check for GOOGLE_API_KEY first (preferred by google-genai SDK)
-        api_key = os.getenv("GOOGLE_API_KEY")
+        # Use provided key, otherwise check environment
         if not api_key:
-            # Fall back to GEMINI_API_KEY for backwards compatibility
-            api_key = os.getenv("GEMINI_API_KEY")
-            if api_key:
-                # Set GOOGLE_API_KEY for the SDK
-                os.environ["GOOGLE_API_KEY"] = api_key
+            # Check for GOOGLE_API_KEY first (preferred by google-genai SDK)
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                # Fall back to GEMINI_API_KEY for backwards compatibility
+                api_key = os.getenv("GEMINI_API_KEY")
+                if api_key:
+                    # Set GOOGLE_API_KEY for the SDK
+                    os.environ["GOOGLE_API_KEY"] = api_key
 
         if not api_key:
             logger.warning("GOOGLE_API_KEY or GEMINI_API_KEY not found. AI features will be disabled.")
@@ -80,6 +82,8 @@ class GeminiAdvisor(BaseMTGAdvisor):
             contents=full_prompt,
             config=config
         )
+        if not response.text:
+            return ""
         return response.text.strip()
 
     def is_available(self) -> bool:

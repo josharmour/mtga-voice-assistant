@@ -237,6 +237,11 @@ class BoardStateAdapter:
             name=game_obj.name,
         )
 
+        # Use effective stats if available (GameObject property)
+        # Fallback to base stats or None
+        power = getattr(game_obj, 'effective_power', getattr(game_obj, 'base_power', None))
+        toughness = getattr(game_obj, 'effective_toughness', getattr(game_obj, 'base_toughness', None))
+
         return Permanent(
             identity=identity,
             controller_id=owner_id,  # Assume controller = owner for now
@@ -245,8 +250,8 @@ class BoardStateAdapter:
             attacking=game_obj.is_attacking,
             blocking=None,  # Not tracked in GameObject currently
             summoning_sick=game_obj.summoning_sick,
-            power=game_obj.power,
-            toughness=game_obj.toughness,
+            power=power,
+            toughness=toughness,
             counters=game_obj.counters.copy() if game_obj.counters else {},
             attached_to=game_obj.attached_to,
             type_line=game_obj.type_line,
@@ -481,8 +486,8 @@ class BoardStateAdapter:
             owner_seat_id=perm.owner_id,
             name=perm.identity.name,
             color_identity=perm.color_identity,
-            power=perm.power,
-            toughness=perm.toughness,
+            base_power=perm.power,
+            base_toughness=perm.toughness,
             is_tapped=perm.tapped,
             is_attacking=perm.attacking,
             summoning_sick=perm.summoning_sick,

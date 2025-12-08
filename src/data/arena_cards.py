@@ -26,7 +26,7 @@ class ArenaCardDatabase:
     # Maximum valid grpId for actual cards (ability objects have much higher IDs)
     # As of Dec 2025, the highest card grpId is around 102112
     # IDs above 110000 are typically abilities, tokens, or special game objects
-    MAX_VALID_CARD_GRPID = 110000
+    MAX_VALID_CARD_GRPID = 200000
 
     def __init__(self, db_path: str = "data/unified_cards.db"):
         self.db_path = Path(db_path)
@@ -140,6 +140,19 @@ class ArenaCardDatabase:
                 self._unknown_card_callback(len(self._unknown_cards))
             except Exception as e:
                 logger.error(f"Error in unknown card callback: {e}")
+
+        # Log to file for diagnostics
+        self._log_unknown_card_to_file(grp_id)
+
+    def _log_unknown_card_to_file(self, grp_id: int):
+        """Append unknown card ID to a log file for analysis."""
+        try:
+            log_path = Path("logs/unknown_cards.log")
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"{timestamp} - Unknown grpId: {grp_id}\n")
+        except Exception as e:
+            logger.error(f"Failed to write to unknown cards log: {e}")
 
     def close(self):
         # No connection to close anymore

@@ -96,6 +96,8 @@ class UserPreferences:
     
     # Local AI settings
     llamacpp_server_url: str = "http://localhost:8080"
+    max_prompt_tokens: int = 4000  # Maximum tokens for advice prompt
+
 
     @classmethod
     def load(cls) -> "UserPreferences":

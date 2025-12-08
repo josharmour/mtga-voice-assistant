@@ -308,7 +308,9 @@ class LogFollower:
                 logging.warning(f"Log file not found at {self.log_path}. Waiting...")
                 time.sleep(5)
             except Exception as e:
+                import traceback
                 logging.error(f"Error following log file: {e}")
+                logging.debug(traceback.format_exc())
                 time.sleep(1)
 
     def close(self):
@@ -316,6 +318,9 @@ class LogFollower:
             self.file.close()
 
 # Content of src/game_state.py
+# Constants for counter types
+P1P1_COUNTERS_KEY = "P1P1" # Represents +1/+1 counters
+
 @dataclasses.dataclass
 class GameObject:
     instance_id: int
@@ -324,8 +329,8 @@ class GameObject:
     owner_seat_id: int
     name: str = ""
     color_identity: str = ""  # Card color(s): W, U, B, R, G, or combinations
-    power: Optional[int] = None
-    toughness: Optional[int] = None
+    base_power: Optional[int] = None
+    base_toughness: Optional[int] = None
     is_tapped: bool = False
     is_attacking: bool = False
     summoning_sick: bool = False
@@ -333,6 +338,20 @@ class GameObject:
     attached_to: Optional[int] = None  # Instance ID of attached permanent
     visibility: str = "public"  # "public", "private", "revealed"
     type_line: str = ""  # Added to prevent AttributeError in some contexts
+
+    @property
+    def effective_power(self) -> Optional[int]:
+        if self.base_power is None:
+            return None
+        p1p1_count = self.counters.get(P1P1_COUNTERS_KEY, 0)
+        return self.base_power + p1p1_count
+
+    @property
+    def effective_toughness(self) -> Optional[int]:
+        if self.base_toughness is None:
+            return None
+        p1p1_count = self.counters.get(P1P1_COUNTERS_KEY, 0)
+        return self.base_toughness + p1p1_count
 
 @dataclasses.dataclass
 class PlayerState:
@@ -904,13 +923,30 @@ class MatchScanner:
     def parse_gre_to_client_event(self, event_data: dict) -> bool:
         if "greToClientEvent" not in event_data: return False
         gre_event = event_data["greToClientEvent"]
-        logging.info(f"GREToClientEvent received - type: {gre_event.get('type', 'N/A')}")
-        if "greToClientMessages" not in gre_event: return False
-        logging.info(f"Processing {len(gre_event['greToClientMessages'])} messages")
+        
+        # Check if this is just a UI message batch to reduce log spam
+        messages = gre_event.get("greToClientMessages", [])
+        is_ui_only = all(m.get("type") == "GREMessageType_UIMessage" for m in messages)
+        
+        if is_ui_only:
+            logging.debug(f"GREToClientEvent received (UI Messages only) - type: {gre_event.get('type', 'N/A')}")
+        else:
+            logging.info(f"GREToClientEvent received - type: {gre_event.get('type', 'N/A')}")
+
+        if not messages: return False
+        
+        if not is_ui_only:
+            logging.info(f"Processing {len(messages)} messages")
+            
         state_changed = False
-        for message in gre_event["greToClientMessages"]:
+        for message in messages:
             msg_type = message.get("type", "")
-            logging.info(f"Message type: {msg_type}")
+            
+            if msg_type == "GREMessageType_UIMessage":
+                logging.debug(f"Message type: {msg_type}")
+            else:
+                logging.info(f"Message type: {msg_type}")
+
             if "systemSeatIds" in message and not self.local_player_seat_id:
                 self.local_player_seat_id = message["systemSeatIds"][0]
                 logging.info(f"Set local player seat ID to: {self.local_player_seat_id}")
@@ -1151,8 +1187,8 @@ class MatchScanner:
                     counters=counters if isinstance(counters, dict) else {},
                     attached_to=attached_to,
                     visibility=visibility,
-                    power=power,
-                    toughness=toughness
+                    base_power=power,
+                    base_toughness=toughness
                 )
                 # P0 Performance: Resolve card name and color once on creation
                 self._resolve_card_metadata(self.game_objects[instance_id])
@@ -1209,13 +1245,13 @@ class MatchScanner:
                 if attached_to and game_obj.attached_to != attached_to:
                     game_obj.attached_to = attached_to
                     state_changed = True
-                if power is not None and game_obj.power != power:
-                    logging.info(f"💪 Power change for {game_obj.name} ({instance_id}): {game_obj.power} -> {power}")
-                    game_obj.power = power
+                if power is not None and game_obj.base_power != power:
+                    logging.info(f"💪 Base Power change for {game_obj.name} ({instance_id}): {game_obj.base_power} -> {power}")
+                    game_obj.base_power = power
                     state_changed = True
-                if toughness is not None and game_obj.toughness != toughness:
-                    logging.info(f"🛡️ Toughness change for {game_obj.name} ({instance_id}): {game_obj.toughness} -> {toughness}")
-                    game_obj.toughness = toughness
+                if toughness is not None and game_obj.base_toughness != toughness:
+                    logging.info(f"🛡️ Base Toughness change for {game_obj.name} ({instance_id}): {game_obj.base_toughness} -> {toughness}")
+                    game_obj.base_toughness = toughness
                     state_changed = True
 
         return state_changed
@@ -1284,6 +1320,32 @@ class MatchScanner:
                 # Zone with ID but no type?
                 logging.warning(f"Zone with ID {zone_id} has no type! Owner: {owner_seat_id}")
 
+            # Prune objects that are no longer in this zone (Ghost Card Fix)
+            # If the zone update provides a list of IDs, we assume it's the COMPLETE list for that zone.
+            # Any object we think is in this zone but isn't in the list must be removed.
+            if zone_id and object_instance_ids is not None:
+                # Get copy of IDs we currently think are in this zone
+                # We use a copy because we might modify _zone_objects during the loop
+                current_zone_ids = self._zone_objects.get(zone_id, set()).copy()
+                incoming_ids_set = set(object_instance_ids)
+                
+                for instance_id in current_zone_ids:
+                    if instance_id not in incoming_ids_set:
+                        # This object is in our cache for this zone, but not in the update.
+                        # It has been removed (or moved, but we haven't processed the 'to' zone yet).
+                        
+                        obj = self.game_objects.get(instance_id)
+                        # Only move if the object still thinks it's in this zone
+                        # (It might have been moved to another zone in a previous iteration of this same loop)
+                        if obj and obj.zone_id == zone_id:
+                            logging.debug(f"👻 Ghost Busting: Removing object {instance_id} from zone {zone_id} (not in update)")
+                            
+                            # Move to Limbo (-1)
+                            self._update_object_zone(instance_id, zone_id, -1)
+                            obj.zone_id = -1
+                            
+                            state_changed = True
+
         return state_changed
 
     def _parse_players(self, players: list) -> bool:
@@ -1300,12 +1362,18 @@ class MatchScanner:
 
             # Parse life total
             if "lifeTotal" in player_data and player.life_total != player_data["lifeTotal"]:
-                player.life_total = player_data["lifeTotal"]
-                state_changed = True
+                new_life = player_data["lifeTotal"]
+                if new_life is not None:
+                    player.life_total = new_life
+                    state_changed = True
 
             # Parse hand count
             if "handCardCount" in player_data:
                 new_count = player_data["handCardCount"]
+                # Fix for 'NoneType' > 'int' error: Ensure count is an integer
+                if new_count is None:
+                    new_count = 0
+                
                 if player.hand_count != new_count:
                     logging.info(f"Player {seat_id} hand count changed: {player.hand_count} -> {new_count}")
                     player.hand_count = new_count
@@ -2000,16 +2068,20 @@ class GameStateManager:
         for obj in self.scanner.game_objects.values():
             # Fallback: Only resolve if still missing (should be rare)
             if obj.grp_id != 0 and (not obj.name or obj.name.startswith("Unknown Card")):
-                obj.name = self.card_lookup.get_card_name(obj.grp_id)
-                fallback_count += 1
-                logging.debug(f"Fallback resolution for {obj.grp_id}: {obj.name}")
+                new_name = self.card_lookup.get_card_name(obj.grp_id)
+                # Only count as resolved if we got a real name back (not the default "Unknown Card...")
+                if new_name and not new_name.startswith("Unknown Card"):
+                    obj.name = new_name
+                    fallback_count += 1
+                    logging.debug(f"Fallback resolution success for {obj.grp_id}: {obj.name}")
 
             if obj.grp_id != 0 and not obj.color_identity:
                 try:
                     card_data = self.card_lookup.get_card_data(obj.grp_id)
                     if card_data:
                         obj.color_identity = card_data.get("color_identity", "")
-                        fallback_count += 1
+                        # We don't count color updates as "fallback resolution needed" warning worthy
+                        # as they are less critical than names
                 except Exception as e:
                     logging.debug(f"Could not fetch color for {obj.grp_id}: {e}")
 
@@ -2066,6 +2138,9 @@ class GameStateManager:
         if real_hand_count > board_state.your_hand_count:
             logging.info(f"Correcting hand count from {board_state.your_hand_count} to {real_hand_count} based on detected cards.")
             board_state.your_hand_count = real_hand_count
+            # PERSISTENCE FIX: Update the source of truth to prevent repeated logging
+            if your_player:
+                your_player.hand_count = real_hand_count
 
         # CRITICAL FIX: Count opponent's hand from zone objects
         # Opponent hand cards are hidden (grpId=0) but still tracked as objects in the hand zone
@@ -2074,6 +2149,9 @@ class GameStateManager:
         if real_opp_hand_count != board_state.opponent_hand_count:
             logging.info(f"Correcting opponent hand count from {board_state.opponent_hand_count} to {real_opp_hand_count} based on zone objects.")
             board_state.opponent_hand_count = real_opp_hand_count
+            # PERSISTENCE FIX: Update the source of truth to prevent repeated logging
+            if opponent_player:
+                opponent_player.hand_count = real_opp_hand_count
 
         # Add game history to board state
         board_state.history = self.scanner.game_history

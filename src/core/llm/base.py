@@ -187,7 +187,8 @@ class BaseMTGAdvisor(ABC):
         """
         self.model_name = model_name
         self.card_db = card_db
-        self.prompt_builder = MTGPromptBuilder(arena_db=card_db)
+        max_tokens = kwargs.get("max_tokens")
+        self.prompt_builder = MTGPromptBuilder(arena_db=card_db, max_tokens=max_tokens)
         self.client = None  # Child classes must initialize this
 
         logger.info(f"{self.__class__.__name__} initialized with model: {model_name}")

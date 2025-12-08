@@ -86,12 +86,36 @@ class MTGPromptBuilder:
         perm_data = []
         for p in permanents:
             is_dict = isinstance(p, dict)
+            
+            # Calculate stats safely
+            power = None
+            toughness = None
+            
+            if is_dict:
+                if 'effective_power' in p:
+                    power = p.get('effective_power')
+                    toughness = p.get('effective_toughness')
+                else:
+                    bp = p.get('base_power')
+                    bt = p.get('base_toughness')
+                    if bp is None: bp = p.get('power')
+                    if bt is None: bt = p.get('toughness')
+                    
+                    cnt = p.get('counters', {})
+                    p1p1 = cnt.get('P1P1', 0) if cnt else 0
+                    
+                    if bp is not None: power = bp + p1p1
+                    if bt is not None: toughness = bt + p1p1
+            else:
+                power = getattr(p, 'effective_power', None)
+                toughness = getattr(p, 'effective_toughness', None)
+
             perm_data.append({
                 'id': p.get('instance_id') if is_dict else getattr(p, 'instance_id', 0),
                 'grp': p.get('grp_id') if is_dict else getattr(p, 'grp_id', 0),
                 'tapped': p.get('is_tapped') if is_dict else getattr(p, 'is_tapped', False),
-                'power': p.get('power') if is_dict else getattr(p, 'power', None),
-                'toughness': p.get('toughness') if is_dict else getattr(p, 'toughness', None),
+                'power': power,
+                'toughness': toughness,
             })
         return str(sorted([str(p) for p in perm_data]))
 
@@ -293,76 +317,17 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         """
         context_lines = ["**Battlefield:**"]
 
-        # Helper to format card info
-        def format_card(card_obj):
-            is_dict = isinstance(card_obj, dict)
-            name = card_obj.get('name') if is_dict else getattr(card_obj, 'name', 'Unknown')
-            grp_id = card_obj.get('grp_id') if is_dict else getattr(card_obj, 'grp_id', None)
-
-            # Get fallback stats from object itself (if Scryfall fails)
-            obj_power = card_obj.get('power') if is_dict else getattr(card_obj, 'power', None)
-            obj_toughness = card_obj.get('toughness') if is_dict else getattr(card_obj, 'toughness', None)
-
-            if grp_id:
-                # Try local arena database first (fast, always has latest cards)
-                card_data = None
-                if self.arena_db:
-                    local_data = self.arena_db.get_card_data(grp_id)
-                    if local_data:
-                        card_data = {
-                            "name": local_data.get("name", ""),
-                            "power": local_data.get("power", ""),
-                            "toughness": local_data.get("toughness", ""),
-                            "mana_cost": local_data.get("mana_cost", ""),
-                            "type_line": local_data.get("type_line", ""),
-                            "oracle_text": local_data.get("oracle_text", ""),
-                        }
-
-                # REMOVED: Scryfall API fallback - too slow and blocks the main thread
-                # Local arena_db should have all cards; if not, we skip the card details
-
-                if card_data:
-                    # Prefer name from Scryfall if local name is unknown
-                    if name.startswith("Unknown") and card_data.get("name"):
-                        name = card_data.get("name")
-
-                    power = card_data.get('power', '?')
-                    toughness = card_data.get('toughness', '?')
-                    mana = card_data.get('mana_cost', '')
-                    type_line = card_data.get('type_line', '')
-                    oracle = card_data.get('oracle_text', '')
-
-                    details = []
-                    if mana: details.append(f"Cost: {mana}")
-                    if type_line: details.append(f"Type: {type_line}")
-                    if power and toughness and 'Creature' in type_line: details.append(f"Stats: {power}/{toughness}")
-                    if oracle: details.append(f"Text: {oracle}")
-
-                    return f"- {name} | {' | '.join(details)}"
-
-            # Fallback: Use whatever data we parsed from the logs
-            details = []
-            if obj_power is not None and obj_toughness is not None:
-                details.append(f"Stats: {obj_power}/{obj_toughness}")
-
-            if details:
-                return f"- {name} | {' | '.join(details)} (Card text unknown)"
-
-            return f"- {name} (Card text unknown)"
-
-        # Process My Battlefield
+        # Process My Battlefield (Grouped)
         my_battlefield = board_state.get('your_battlefield', [])
         if my_battlefield:
-            for card in my_battlefield:
-                context_lines.append(format_card(card))
+            context_lines.extend(self._format_zone_grouped(my_battlefield))
         else:
             context_lines.append("  (empty)")
 
         context_lines.append("\n**Opponent Battlefield:**")
         opp_battlefield = board_state.get('opponent_battlefield', [])
         if opp_battlefield:
-            for card in opp_battlefield:
-                context_lines.append(format_card(card))
+            context_lines.extend(self._format_zone_grouped(opp_battlefield))
         else:
             context_lines.append("  (empty)")
 
@@ -390,7 +355,7 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
                         type_line = card_data.get('type_line', '')
                         if 'Land' in type_line:
                             is_land = True
-                            logger.info(f"Found land: {card_data.get('name')} (grp_id={grp_id}, tapped={is_tapped})")
+                            # logger.info(f"Found land: {card_data.get('name')} (grp_id={grp_id}, tapped={is_tapped})")
                 else:
                     logger.warning(f"Cannot check card grp_id={grp_id}: arena_db={self.arena_db is not None}")
 
@@ -456,7 +421,6 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
             context_lines.append(f"  Energy: {opp_energy}")
 
         return "\n".join(context_lines)
-
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count from text length."""
         return len(text) // self.CHARS_PER_TOKEN
@@ -628,8 +592,30 @@ Recent Events:
         """Format card with name and key stats only (no oracle text)."""
         name = self._get_card_name(card)
         is_dict = isinstance(card, dict)
-        power = card.get('power') if is_dict else getattr(card, 'power', None)
-        toughness = card.get('toughness') if is_dict else getattr(card, 'toughness', None)
+        
+        power = None
+        toughness = None
+        
+        if is_dict:
+            if 'effective_power' in card:
+                power = card.get('effective_power')
+                toughness = card.get('effective_toughness')
+            else:
+                base_power = card.get('base_power')
+                base_toughness = card.get('base_toughness')
+                
+                if base_power is None: base_power = card.get('power')
+                if base_toughness is None: base_toughness = card.get('toughness')
+                
+                counters = card.get('counters', {})
+                p1p1 = counters.get('P1P1', 0) if counters else 0
+                
+                if base_power is not None: power = base_power + p1p1
+                if base_toughness is not None: toughness = base_toughness + p1p1
+        else:
+            power = getattr(card, 'effective_power', None)
+            toughness = getattr(card, 'effective_toughness', None)
+
         if power is not None and toughness is not None:
             return f"{name} ({power}/{toughness})"
         return name
@@ -750,3 +736,127 @@ Recent Events:
                 cmc += 1
 
         return cmc
+
+    def _format_zone_grouped(self, cards: List) -> List[str]:
+        """
+        Format a zone (battlefield) by grouping identical cards.
+        Groups by Name AND Tapped status to ensure AI knows what's usable.
+        Returns a list of formatted strings.
+        """
+        if not cards:
+            return ["  (empty)"]
+
+        # Group by (name, is_tapped)
+        counts = {}
+        first_instances = {}
+
+        for card in cards:
+            name = self._get_card_name(card)
+            is_dict = isinstance(card, dict)
+            is_tapped = card.get('is_tapped', False) if is_dict else getattr(card, 'is_tapped', False)
+            
+            key = (name, is_tapped)
+            
+            if key not in counts:
+                counts[key] = 0
+                first_instances[key] = card
+            counts[key] += 1
+
+        # Sort: Untapped first, then by name
+        # key[1] is is_tapped (False < True, so untaped comes first)
+        sorted_keys = sorted(counts.keys(), key=lambda k: (k[1], k[0]))
+
+        lines = []
+        for key in sorted_keys:
+            count = counts[key]
+            card = first_instances[key]
+            lines.append(self._format_card_detail(card, count))
+        
+        return lines
+
+    def _format_card_detail(self, card_obj, count: int = 1) -> str:
+        """Helper to format card info with grouping support."""
+        is_dict = isinstance(card_obj, dict)
+        name = card_obj.get('name') if is_dict else getattr(card_obj, 'name', 'Unknown')
+        grp_id = card_obj.get('grp_id') if is_dict else getattr(card_obj, 'grp_id', None)
+        is_tapped = card_obj.get('is_tapped', False) if is_dict else getattr(card_obj, 'is_tapped', False)
+        status_suffix = " (TAPPED)" if is_tapped else ""
+
+        prefix = f"- {count}x " if count > 1 else "- "
+
+        # Get effective stats safely
+        effective_power = None
+        effective_toughness = None
+
+        if is_dict:
+            # Handle dictionary input
+            if 'effective_power' in card_obj:
+                effective_power = card_obj.get('effective_power')
+                effective_toughness = card_obj.get('effective_toughness')
+            else:
+                base_power = card_obj.get('base_power')
+                base_toughness = card_obj.get('base_toughness')
+                
+                if base_power is None: base_power = card_obj.get('power')
+                if base_toughness is None: base_toughness = card_obj.get('toughness')
+
+                counters = card_obj.get('counters', {})
+                p1p1 = counters.get('P1P1', 0) if counters else 0
+
+                if base_power is not None:
+                    effective_power = base_power + p1p1
+                if base_toughness is not None:
+                    effective_toughness = base_toughness + p1p1
+        else:
+            # Handle object input
+            effective_power = getattr(card_obj, 'effective_power', None)
+            effective_toughness = getattr(card_obj, 'effective_toughness', None)
+
+        if grp_id:
+            # Try local arena database first (fast, always has latest cards)
+            card_data = None
+            if self.arena_db:
+                local_data = self.arena_db.get_card_data(grp_id)
+                if local_data:
+                    card_data = {
+                        "name": local_data.get("name", ""),
+                        "mana_cost": local_data.get("mana_cost", ""),
+                        "type_line": local_data.get("type_line", ""),
+                        "oracle_text": local_data.get("oracle_text", ""),
+                    }
+
+            if card_data:
+                # Prefer name from DB if local name is unknown
+                if name.startswith("Unknown") and card_data.get("name"):
+                    name = card_data.get("name")
+
+                mana = card_data.get('mana_cost', '')
+                type_line = card_data.get('type_line', '')
+                oracle = card_data.get('oracle_text', '')
+
+                # OPTIMIZATION: Skip text for Basic Lands but include status
+                if "Basic Land" in type_line:
+                    return f"{prefix}{name}{status_suffix} (Basic Land)"
+
+                details = []
+                if mana: details.append(f"Cost: {mana}")
+                if type_line: details.append(f"Type: {type_line}")
+                if effective_power is not None and effective_toughness is not None and 'Creature' in type_line:
+                    details.append(f"Stats: {effective_power}/{effective_toughness}")
+                
+                # Truncate very long oracle text
+                if len(oracle) > 500:
+                    oracle = oracle[:500] + "..."
+                if oracle: details.append(f"Text: {oracle}")
+
+                return f"{prefix}{name}{status_suffix} | {' | '.join(details)}"
+
+        # Fallback: Use whatever data we parsed from the logs
+        details = []
+        if effective_power is not None and effective_toughness is not None:
+            details.append(f"Stats: {effective_power}/{effective_toughness}")
+
+        if details:
+            return f"{prefix}{name}{status_suffix} | {' | '.join(details)} (Card text unknown)"
+
+        return f"{prefix}{name}{status_suffix} (Card text unknown)"

@@ -184,12 +184,21 @@ class BoardStateFormatter:
         """
         # Get power/toughness if present
         pt = ""
-        if card.power is not None and card.toughness is not None:
-            pt = f" ({card.power}/{card.toughness})"
+        if hasattr(card, 'effective_power') and hasattr(card, 'effective_toughness'):
+            p = card.effective_power
+            t = card.effective_toughness
+            if p is not None and t is not None:
+                pt = f" ({p}/{t})"
+        elif hasattr(card, 'power') and hasattr(card, 'toughness'):
+             # Fallback for raw dictionaries or legacy objects
+             p = card.power
+             t = card.toughness
+             if p is not None and t is not None:
+                pt = f" ({p}/{t})"
 
         # Format counters if present
         counters = ""
-        if card.counters:
+        if hasattr(card, 'counters') and card.counters:
             # Format counters like [+1/+1, -1/-1]
             c_list = []
             for c_type, c_count in card.counters.items():
@@ -198,7 +207,7 @@ class BoardStateFormatter:
             if c_list:
                 counters = f" [{', '.join(c_list)}]"
 
-        return f"  • {card.name}{pt}{counters}"
+        return f"  • {getattr(card, 'name', 'Unknown')}{pt}{counters}"
 
     def format_header(self, board_state) -> str:
         """
@@ -245,10 +254,19 @@ class BoardStateFormatter:
         opp_life = board_state.opponent_life or 20
 
         # Count creatures (cards with power/toughness)
-        your_creatures = sum(1 for p in board_state.your_battlefield
-                           if p.power is not None and p.toughness is not None)
-        opp_creatures = sum(1 for p in board_state.opponent_battlefield
-                          if p.power is not None and p.toughness is not None)
+        your_creatures = 0
+        for p in board_state.your_battlefield:
+            if hasattr(p, 'effective_power') and p.effective_power is not None:
+                your_creatures += 1
+            elif hasattr(p, 'power') and p.power is not None:
+                your_creatures += 1
+
+        opp_creatures = 0
+        for p in board_state.opponent_battlefield:
+            if hasattr(p, 'effective_power') and p.effective_power is not None:
+                opp_creatures += 1
+            elif hasattr(p, 'power') and p.power is not None:
+                opp_creatures += 1
 
         return f"You: {your_life}HP {your_creatures}C | Opp: {opp_life}HP {opp_creatures}C"
 

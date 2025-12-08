@@ -27,12 +27,12 @@ class AIAdvisor:
         model = prefs.current_model
 
         advisor_map = {
-            "google": (GeminiAdvisor, {}),
-            "openai": (OpenAIAdvisor, {"api_key": prefs.openai_api_key}),
-            "anthropic": (AnthropicAdvisor, {"api_key": prefs.anthropic_api_key}),
-            "ollama": (OllamaAdvisor, {}),
-            "llamacpp": (LlamaCppAdvisor, {}),
-            "llama.cpp": (LlamaCppAdvisor, {}),
+            "google": (GeminiAdvisor, {"api_key": prefs.google_api_key, "max_tokens": prefs.max_prompt_tokens}),
+            "openai": (OpenAIAdvisor, {"api_key": prefs.openai_api_key, "max_tokens": prefs.max_prompt_tokens}),
+            "anthropic": (AnthropicAdvisor, {"api_key": prefs.anthropic_api_key, "max_tokens": prefs.max_prompt_tokens}),
+            "ollama": (OllamaAdvisor, {"max_tokens": prefs.max_prompt_tokens}),
+            "llamacpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
+            "llama.cpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
         }
 
         if provider in advisor_map:

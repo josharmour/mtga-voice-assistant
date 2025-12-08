@@ -3,12 +3,14 @@ from tkinter import scrolledtext
 from typing import List, Optional
 
 class SecondaryWindow(tk.Toplevel):
-    def __init__(self, parent, title, geometry=None, on_close=None):
+    def __init__(self, parent, title, geometry=None, on_close=None, max_lines=5000):
         super().__init__(parent)
         self.title(title)
         self.configure(bg='#2b2b2b')
         if geometry:
             self.geometry(geometry)
+        
+        self.max_lines = max_lines
 
         # Default behavior is to withdraw (hide) instead of destroy
         self.protocol("WM_DELETE_WINDOW", on_close if on_close else self.withdraw)
@@ -137,9 +139,27 @@ class SecondaryWindow(tk.Toplevel):
         self.text_area.config(state=tk.DISABLED)
         self._previous_lines = []
 
+    def _truncate_if_needed(self):
+        """Truncate text area if it exceeds max_lines."""
+        if not self.max_lines:
+            return
+            
+        try:
+            # Get number of lines - format is "line.char"
+            end_index = self.text_area.index('end-1c')
+            num_lines = int(end_index.split('.')[0])
+            
+            if num_lines > self.max_lines:
+                # Calculate how many lines to remove
+                lines_to_remove = num_lines - self.max_lines
+                self.text_area.delete(1.0, f"{lines_to_remove + 1}.0")
+        except Exception:
+            pass
+
     def append_text(self, text, tags=None):
         self.text_area.config(state=tk.NORMAL)
         self.text_area.insert(tk.END, text + "\n")
+        self._truncate_if_needed()
         self.text_area.see(tk.END)
         self.text_area.config(state=tk.DISABLED)
 
@@ -148,5 +168,6 @@ class SecondaryWindow(tk.Toplevel):
         self.text_area.config(state=tk.NORMAL)
         for line in lines:
             self.text_area.insert(tk.END, line + "\n")
+        self._truncate_if_needed()
         self.text_area.see(tk.END)
         self.text_area.config(state=tk.DISABLED)

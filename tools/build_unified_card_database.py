@@ -127,8 +127,56 @@ def extract_arena_cards(raw_db_path: Path) -> Dict[int, Dict]:
             "toughness": row[9],
             "collector_number": row[10],
             "set_code": row[11],
-            "is_token": bool(row[12])
+            "is_token": bool(row[12]),
+            "is_ability": False
         }
+
+    # Extract Abilities
+    logger.info("Extracting abilities from Arena database...")
+    try:
+        cursor.execute("""
+            SELECT
+                a.Id,
+                l.Loc as text
+            FROM Abilities a
+            LEFT JOIN Localizations_enUS l ON a.TextId = l.LocId
+            WHERE a.Id IS NOT NULL
+        """)
+        
+        ability_count = 0
+        for row in cursor.fetchall():
+            grp_id = row[0]
+            # Avoid overwriting actual cards if ID collision exists (unlikely but safe)
+            if grp_id not in cards:
+                text = row[1] or "Ability"
+                # Clean up text
+                text = text.replace("<nobr>", "").replace("</nobr>", "")
+                
+                cards[grp_id] = {
+                    "grpId": grp_id,
+                    "name": f"[Ability] {text[:30]}...", # Truncate for name
+                    "printed_name": text,
+                    "oracle_text": text,
+                    "type_line": "Ability",
+                    "is_ability": True,
+                    # Defaults for required fields
+                    "rarity": "common",
+                    "colors": "",
+                    "color_identity": "",
+                    "types": "Ability",
+                    "subtypes": "",
+                    "supertypes": "",
+                    "power": "",
+                    "toughness": "",
+                    "collector_number": "",
+                    "set_code": "",
+                    "is_token": False
+                }
+                ability_count += 1
+        logger.info(f"Extracted {ability_count} abilities")
+        
+    except sqlite3.OperationalError as e:
+        logger.warning(f"Could not extract abilities (table might be missing): {e}")
 
     conn.close()
     logger.info(f"Extracted {len(cards)} cards from Arena database")
@@ -276,6 +324,7 @@ def create_unified_database(cards: Dict[int, Dict], output_path: Path):
             subtypes TEXT,
             supertypes TEXT,
             is_token BOOLEAN,
+            is_ability BOOLEAN DEFAULT 0,
             is_reskin BOOLEAN DEFAULT 0,
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -298,8 +347,8 @@ def create_unified_database(cards: Dict[int, Dict], output_path: Path):
                 grpId, name, printed_name, oracle_text, mana_cost, cmc,
                 type_line, color_identity, colors, keywords,
                 power, toughness, rarity, set_code, collector_number,
-                types, subtypes, supertypes, is_token, is_reskin
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                types, subtypes, supertypes, is_token, is_ability, is_reskin
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             grp_id,
             card['name'],
@@ -320,6 +369,7 @@ def create_unified_database(cards: Dict[int, Dict], output_path: Path):
             card.get('subtypes', ''),
             card.get('supertypes', ''),
             card.get('is_token', False),
+            card.get('is_ability', False),
             0  # is_reskin - default to not a reskin
         ))
 

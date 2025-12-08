@@ -351,6 +351,7 @@ class CLIVoiceAdvisor:
         self.running = True
         self._last_announced_pick = None
         self._current_board_state = None  # Cache for manual advice requests
+        self.last_advice_packet = None   # Cache for feedback mechanism
         
         self.version = get_version()
         print(f"MTGA Voice Advisor v{self.version}")
@@ -497,6 +498,8 @@ class CLIVoiceAdvisor:
         self.tts.volume = volume / 100.0
         if self.prefs:
             self.prefs.set_volume(volume)
+
+
 
     # Game event callbacks
     def _on_match_started(self, data: dict):
@@ -828,6 +831,14 @@ class CLIVoiceAdvisor:
                 advice = self.ai_advisor.get_tactical_advice(board_state_dict)
 
                 if advice:
+                    # Capture context for feedback
+                    self.last_advice_packet = {
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "board_state": board_state_dict,
+                        "advice": advice,
+                        "trigger_type": trigger_event.trigger_type.name,
+                        "model": self.ai_advisor.advisor.model_name
+                    }
                     self._output(f"\n🤖 Advisor: {advice}", "green")
 
                     # TTS output

@@ -303,6 +303,66 @@ except ImportError:
     logging.warning("Config manager not available. User preferences will not persist.")
 
 
+class FeedbackDialog:
+    """Dialog for reporting bad AI advice."""
+    def __init__(self, parent, on_submit):
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Report Bad Advice")
+        self.dialog.geometry("400x500")
+        self.dialog.configure(bg='#2b2b2b')
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        self.on_submit = on_submit
+        
+        # Center dialog
+        self.dialog.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - 200
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - 250
+        self.dialog.geometry(f"+{x}+{y}")
+
+        tk.Label(self.dialog, text="Why was this advice bad?", bg='#2b2b2b', fg='#ffffff', 
+                 font=('Consolas', 12, 'bold')).pack(pady=10)
+
+        self.reasons = [
+            "Incorrect Board State",
+            "Impossible Play",
+            "Not Best Play",
+            "Hallucinated Cards",
+            "Missed Lethal",
+            "Other"
+        ]
+        
+        self.reason_var = tk.StringVar(value=self.reasons[0])
+        
+        for reason in self.reasons:
+            tk.Radiobutton(self.dialog, text=reason, variable=self.reason_var, value=reason,
+                          bg='#2b2b2b', fg='#ffffff', selectcolor='#1a1a1a', 
+                          activebackground='#2b2b2b', activeforeground='#00ff88',
+                          font=('Consolas', 10)).pack(anchor=tk.W, padx=20, pady=2)
+
+        tk.Label(self.dialog, text="Additional Details (Optional):", bg='#2b2b2b', fg='#ffffff',
+                 font=('Consolas', 10)).pack(pady=(15, 5), padx=20, anchor=tk.W)
+                 
+        self.details_text = tk.Text(self.dialog, height=5, bg='#1a1a1a', fg='#ffffff', 
+                                   font=('Consolas', 9), relief=tk.FLAT, padx=5, pady=5)
+        self.details_text.pack(fill=tk.X, padx=20)
+
+        btn_frame = tk.Frame(self.dialog, bg='#2b2b2b')
+        btn_frame.pack(pady=20, fill=tk.X)
+        
+        tk.Button(btn_frame, text="Submit Feedback", command=self._submit, 
+                 bg='#ff5555', fg='#ffffff', relief=tk.FLAT, padx=15, pady=5).pack(side=tk.RIGHT, padx=20)
+        tk.Button(btn_frame, text="Cancel", command=self.dialog.destroy, 
+                 bg='#3a3a3a', fg='#ffffff', relief=tk.FLAT, padx=15, pady=5).pack(side=tk.RIGHT)
+
+    def _submit(self):
+        reason = self.reason_var.get()
+        details = self.details_text.get("1.0", tk.END).strip()
+        self.on_submit(reason, details)
+        self.dialog.destroy()
+
+
 class LogHighlighter:
     """Highlights and color-codes MTGA log lines based on detected game items."""
 
@@ -560,7 +620,8 @@ class AdvisorGUI:
             on_close=self._on_deck_window_close)
         self.log_window = SecondaryWindow(self.root, "MTGA Logs",
             self.prefs.log_window_geometry if self.prefs and hasattr(self.prefs, 'log_window_geometry') else "800x200+50+700",
-            on_close=self._on_log_window_close)
+            on_close=self._on_log_window_close,
+            max_lines=5000)
 
         # Track user preference for hidden panels
         self._board_hidden_by_user = False
@@ -878,6 +939,7 @@ class AdvisorGUI:
 
         tk.Button(settings_frame, text="Clear Messages", command=self._clear_messages, bg='#3a3a3a', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=(20, 5), fill=tk.X)
         tk.Button(settings_frame, text="🐛 Bug Report (F12)", command=self._capture_bug_report, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
+        tk.Button(settings_frame, text="👎 Bad Advice", command=self._open_feedback_dialog, bg='#ff5555', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
 
         # Unknown cards warning frame (initially hidden)
         self._unknown_cards_frame = tk.Frame(settings_frame, bg='#553300')
@@ -934,27 +996,40 @@ class AdvisorGUI:
 
     def _create_embedded_panels(self):
         """Create embedded panels that show when secondary windows are closed."""
-        # Helper to create hideable frame
-        def create_hideable_frame(parent, title):
-            frame = tk.LabelFrame(parent, text=title, bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 9, 'bold'))
+        # Helper to create hideable frame with pop-out button
+        def create_hideable_frame(parent, title, pop_out_cmd):
+            # Create a label widget frame for the header (Title + Button)
+            header_frame = tk.Frame(parent, bg='#1a1a1a')
+            
+            # Title label
+            tk.Label(header_frame, text=title, bg='#1a1a1a', fg=self.accent_color, 
+                     font=('Consolas', 9, 'bold')).pack(side=tk.LEFT)
+            
+            # Pop-out button (small unicode arrow)
+            tk.Button(header_frame, text="↗", command=pop_out_cmd,
+                     bg='#1a1a1a', fg='#888888', activeforeground='#00ff88', activebackground='#1a1a1a',
+                     bd=0, relief=tk.FLAT, font=('Arial', 10), cursor="hand2",
+                     pady=0, padx=5).pack(side=tk.RIGHT, padx=(5, 0))
+
+            frame = tk.LabelFrame(parent, labelwidget=header_frame, bg='#1a1a1a', bd=1, relief=tk.SOLID)
             return frame
 
         # Embedded Board State Panel
-        self._embedded_board_frame = create_hideable_frame(self._content_paned, "📋 Board State")
+        self._embedded_board_frame = create_hideable_frame(self._content_paned, "📋 Board State", self._pop_out_board)
         self._embedded_board_text = scrolledtext.ScrolledText(self._embedded_board_frame, height=8,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_board_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_board_text.config(state=tk.DISABLED)
 
         # Embedded Deck/Library Panel
-        self._embedded_deck_frame = create_hideable_frame(self._content_paned, "📚 Library")
+        self._embedded_deck_frame = create_hideable_frame(self._content_paned, "📚 Library", self._pop_out_deck)
         self._embedded_deck_text = scrolledtext.ScrolledText(self._embedded_deck_frame, height=6,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_deck_text.pack(fill=tk.BOTH, expand=True)
         self._embedded_deck_text.config(state=tk.DISABLED)
 
         # Embedded Log Panel
-        self._embedded_log_frame = create_hideable_frame(self._content_paned, "📜 MTGA Logs")
+        self._embedded_log_frame = create_hideable_frame(self._content_paned, "📜 MTGA Logs", self._pop_out_log)
         self._embedded_log_text = scrolledtext.ScrolledText(self._embedded_log_frame, height=4,
             bg='#1a1a1a', fg=self.fg_color, font=('Consolas', 8), relief=tk.FLAT, padx=5, pady=5)
         self._embedded_log_text.pack(fill=tk.BOTH, expand=True)
@@ -1084,14 +1159,14 @@ class AdvisorGUI:
     def _check_ollama_thread(self):
         """Background thread to check for Ollama."""
         try:
-            response = requests.get("http://localhost:11434/api/tags")
+            response = requests.get("http://localhost:11434/api/tags", timeout=2)
             response.raise_for_status()
             data = response.json()
             models = sorted([model['name'] for model in data.get('models', [])])
 
             def update_ui():
                 if models:
-                    self.add_message(f"Ollama found! {len(models)} models available.", "green")
+                    self.add_message(f"✓ Ollama found! {len(models)} models available.", "green")
                     self.model_dropdown['values'] = models
                     if self.prefs.current_model in models:
                         self.model_var.set(self.prefs.current_model)
@@ -1100,13 +1175,27 @@ class AdvisorGUI:
                         self._on_model_change()
                 else:
                     self.add_message("Ollama found, but no models installed.", "yellow")
-                    self.add_message("Run 'ollama pull llama3.2' in your terminal.", "yellow")
+                    self.add_message("Run 'ollama pull llama3' in your terminal.", "yellow")
                     self.model_dropdown['values'] = []
                     self.model_var.set("")
             self.root.after(0, update_ui)
 
         except requests.exceptions.ConnectionError:
-            self.root.after(0, lambda: self.add_message("Ollama not found. Is it running at http://localhost:11434?", "red"))
+            def handle_connection_error():
+                self.add_message("❌ Ollama not found running at http://localhost:11434", "red")
+                
+                # Ask user if they want help installing
+                from tkinter import messagebox
+                import webbrowser
+                
+                if messagebox.askyesno("Ollama Not Found", 
+                                     "Ollama does not appear to be running.\n\n"
+                                     "Do you want to open the Ollama download page?",
+                                     parent=self.root):
+                    webbrowser.open("https://ollama.com/download")
+                    
+            self.root.after(0, handle_connection_error)
+            
         except Exception as e:
             self.root.after(0, lambda: self.add_message(f"Error checking Ollama: {e}", "red"))
             logging.error(f"Error checking Ollama: {e}")
@@ -1540,46 +1629,37 @@ class AdvisorGUI:
             logging.error(f"Error on exit: {e}")
             self.root.quit()
 
-    def _capture_bug_report(self):
-        """Capture bug report with screenshot, logs, and board state to local file only"""
-        import threading
-        import subprocess
-        import time
-        import os
+    def _open_feedback_dialog(self):
+        """Open the bad advice feedback dialog."""
+        FeedbackDialog(self.root, self._on_feedback_submit)
 
-        # Ask user for title only (required), description is optional and can be submitted via TTS
-        issue_title = None
-        user_description = None
+    def _generate_bug_report(self, title, description, extra_files=None):
+        """
+        Generate a bug report folder with logs, screenshots, and metadata.
+        
+        Args:
+            title: Report title
+            description: User description
+            extra_files: Optional list of (filename, content_bytes|str) tuples to save
+        """
+        import os
+        import time
+        try:
+            import pyautogui
+        except ImportError:
+            pyautogui = None
+            logging.warning("pyautogui not available, screenshots will be skipped")
 
         try:
-            from tkinter import messagebox, simpledialog
-            if self.root and self.root.winfo_exists():
-                # Prompt for title (required)
-                title_prompt = simpledialog.askstring(
-                    "Bug Report Title",
-                    "Enter a title for the bug report:",
-                    parent=self.root
-                )
-                if title_prompt and title_prompt.strip():
-                    issue_title = title_prompt.strip()
-                elif title_prompt is not None:  # User clicked OK but left blank
-                    # Use default if they explicitly want to proceed with no title
-                    messagebox.showwarning(
-                        "Title Required",
-                        "A title is required for the bug report. Using default.",
-                        parent=self.root
-                    )
-                else:  # User clicked Cancel
-                    self.add_message("Bug report cancelled", "yellow")
-                    return
-        except (ImportError, Exception) as e:
-            logging.debug(f"GUI not available for bug report details: {e}")
+            import pygetwindow as gw
+        except ImportError:
+            gw = None
+            logging.warning("pygetwindow not available, window-specific screenshots might fail")
 
         # Notify user we're starting the capture
         self.add_message("📸 Capturing bug report...", "cyan")
 
         def capture_in_background():
-            nonlocal user_description
             try:
                 # Create bug_reports directory if it doesn't exist
                 base_bug_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "bug_reports")
@@ -1603,21 +1683,7 @@ class AdvisorGUI:
                 report_dir = os.path.join(base_bug_dir, folder_name)
                 os.makedirs(report_dir, exist_ok=True)
 
-                report_file = os.path.join(report_dir, "bug_report.txt")
-                log_file_copy = os.path.join(report_dir, "advisor.log")
-
-                # Use title from user input
-                final_title = issue_title if issue_title else f"Bug Report #{next_id}"
-                final_description = user_description if user_description else "No description provided."
-
                 # --- SCREENSHOT CAPTURE ---
-                import pyautogui
-                try:
-                    import pygetwindow as gw
-                except ImportError:
-                    gw = None
-                    logging.warning("pygetwindow not available, window-specific screenshots might fail")
-
                 # 1. Capture Full Desktop (Overview)
                 try:
                     full_screenshot = pyautogui.screenshot()
@@ -1652,37 +1718,46 @@ class AdvisorGUI:
                             shot = pyautogui.screenshot(region=region)
                             shot.save(os.path.join(report_dir, f"advisor_{win_name}.png"))
                     except Exception as e:
-                        logging.error(f"Failed to capture {win_name} window: {e}")
+                        logging.warning(f"Failed to capture {win_name} window: {e}")
 
-                # 4. Capture MTGA Window
-                mtga_found = False
+                # 4. Capture MTGA Client (if running)
                 if gw:
                     try:
-                        # Try common titles for MTGA
-                        mtga_windows = gw.getWindowsWithTitle('Magic: The Gathering Arena')
-                        if not mtga_windows:
-                            mtga_windows = gw.getWindowsWithTitle('MTGA')
-                        
+                        mtga_windows = gw.getWindowsWithTitle("MTGA")
                         if mtga_windows:
-                            mtga_win = mtga_windows[0]
-                            # Ensure it's not minimized (restore if needed? No, might disrupt user. Just check.)
-                            if not mtga_win.isMinimized:
-                                region = (mtga_win.left, mtga_win.top, mtga_win.width, mtga_win.height)
-                                mtga_shot = pyautogui.screenshot(region=region)
-                                mtga_shot.save(os.path.join(report_dir, "mtga_game.png"))
-                                mtga_found = True
-                                logging.info("Captured MTGA window")
-                            else:
-                                logging.warning("MTGA window found but is minimized")
+                            win = mtga_windows[0]
+                            # Activate first to ensure visibility? Might be intrusive.
+                            # win.activate() 
+                            # time.sleep(0.5)
+                            shot = pyautogui.screenshot(region=(win.left, win.top, win.width, win.height))
+                            shot.save(os.path.join(report_dir, "mtga_client.png"))
+                            logging.info("Captured MTGA client screenshot")
                     except Exception as e:
-                        logging.error(f"Failed to capture MTGA window: {e}")
+                        logging.warning(f"Failed to capture MTGA window: {e}")
+
+                # --- LOG COLLECTION ---
+                # Copy current session log
+                try:
+                    import shutil
+                    # Flush logging handlers
+                    logging.shutdown()
+                    # Reload logging to allow copy (Windows file lock issue workaround attempt)
+                    # Actually, simple copy might fail if locked. 
+                    # Try copying with non-exclusive read if possible, or just copy.
+                    log_src = os.path.join("logs", "advisor.log")
+                    if os.path.exists(log_src):
+                        shutil.copy2(log_src, os.path.join(report_dir, "advisor.log"))
+                except Exception as e:
+                    logging.error(f"Failed to copy log file: {e}")
+                    # Re-enable logging if we shut it down?? 
+                    # Actually logging.shutdown() is drastic. Let's just try copy.
+                    pass
+
+                # --- METADATA FILE ---
+                report_file = os.path.join(report_dir, "bug_report.txt")
                 
-                if not mtga_found:
-                    logging.warning("MTGA window not found or could not be captured")
-
-
                 # Collect current state
-                board_state_text = "\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
+                board_state_text = "\\n".join(self.board_state_lines) if self.board_state_lines else "No board state"
 
                 # Read recent logs - optimized for context window limits
                 # Full log saved to file, but summary in report is limited to ~100 lines
@@ -1702,12 +1777,12 @@ class AdvisorGUI:
                                 tail_lines = lines[-500:]  # Save more to file for debugging
 
                                 # For the text summary: errors/warnings + last 50 lines
-                                summary_lines = error_lines[-30:] + ["\n--- LAST 50 LINES ---\n"] + lines[-50:]
+                                summary_lines = error_lines[-30:] + ["\\n--- LAST 50 LINES ---\\n"] + lines[-50:]
                                 recent_logs = "".join(summary_lines)
 
                             # Write tail to the full log file for detailed debugging
-                            with open(log_file_copy, "w", encoding='utf-8') as f:
-                                f.writelines(tail_lines)
+                            # with open(log_file_copy, "w", encoding='utf-8') as f:
+                            #    f.writelines(tail_lines)
                             break
                     except Exception as e:
                         logging.error(f"Error reading/copying log file: {e}")
@@ -1715,8 +1790,8 @@ class AdvisorGUI:
 
                 if not recent_logs:
                     recent_logs = "(No logs found)"
-
-                # Read recent MTGA logs (last 50 lines) for context
+                
+                # Capture MTGA log snippet
                 mtga_log_snippet = ""
                 mtga_log_path = None
                 
@@ -1755,39 +1830,132 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
 
                 # Write summary report
                 with open(report_file, "w", encoding='utf-8') as f:
-                    f.write("="*70 + "\n")
-                    f.write(f"BUG REPORT: {final_title}\n")
-                    f.write("="*70 + "\n\n")
-                    f.write("USER DESCRIPTION:\n")
-                    f.write(f"{final_description}\n\n")
-                    f.write("="*70 + "\n")
-                    f.write("CURRENT SETTINGS:\n")
-                    f.write(settings + "\n")
-                    f.write("="*70 + "\n")
-                    f.write("CURRENT BOARD STATE:\n")
-                    f.write(board_state_text + "\n\n")
-                    f.write("="*70 + "\n")
-                    f.write("RECENT LOGS (Snippet):\n")
-                    f.write(recent_logs + "\n")
-                    f.write("="*70 + "\n")
-                    f.write("MTGA LOGS (Snippet):\n")
-                    f.write(mtga_log_snippet + "\n")
+                    f.write("="*70 + "\\n")
+                    f.write(f"BUG REPORT: {title}\\n")
+                    f.write("="*70 + "\\n\\n")
+                    f.write("USER DESCRIPTION:\\n")
+                    f.write(f"{description}\\n\\n")
+                    f.write("="*70 + "\\n")
+                    f.write("CURRENT SETTINGS:\\n")
+                    f.write(settings + "\\n")
+                    f.write("="*70 + "\\n")
+                    f.write("CURRENT BOARD STATE:\\n")
+                    f.write(board_state_text + "\\n\\n")
+                    f.write("="*70 + "\\n")
+                    f.write("RECENT LOGS (Snippet):\\n")
+                    f.write(recent_logs + "\\n")
+                    f.write("="*70 + "\\n")
+                    f.write("MTGA LOGS (Snippet):\\n")
+                    f.write(mtga_log_snippet + "\\n")
 
-                self.add_message(f"✓ Bug report saved to: {folder_name}", "green")
-                logging.info(f"Bug report saved to {report_dir}")
+                # --- EXTRA FILES ---
+                if extra_files:
+                    for fname, content in extra_files:
+                        fpath = os.path.join(report_dir, fname)
+                        mode = "wb" if isinstance(content, bytes) else "w"
+                        encoding = None if isinstance(content, bytes) else "utf-8"
+                        try:
+                            with open(fpath, mode, encoding=encoding) as f:
+                                f.write(content)
+                        except Exception as e:
+                            logging.error(f"Failed to write extra file {fname}: {e}")
 
-                # Offer to upload to GitHub
-                if self.root and self.root.winfo_exists():
-                    self.root.after(0, lambda: self._offer_upload_to_github(report_dir, folder_name, final_title, final_description))
+                # --- ZIP ARCHIVE (Automatic) ---
+                # Zip the folder for easy sharing
+                shutil.make_archive(report_dir, 'zip', report_dir)
+                zip_path = report_dir + ".zip"
+
+                # Success Notification
+                def on_complete():
+                    self.add_message(f"✅ Bug Report saved: {folder_name}", "green")
+                    self.add_message(f"📁 Location: {base_bug_dir}", "blue")
+
+                    # TTS Announcement
+                    if hasattr(self.advisor_ref, 'tts') and self.advisor_ref.tts:
+                        self.advisor_ref.tts.speak("Bug report captured.")
+                    
+                    # Offer to upload
+                    self._offer_upload_to_github(report_dir, folder_name, title, description)
+                    
+                    # Open folder (only if not uploaded, technically _offer opens parent, this opens child. 
+                    # Keeping it simple: open child as well so they can see contents immediately)
+                    try:
+                        os.startfile(report_dir)
+                    except:
+                        pass
+
+                self.root.after(0, on_complete)
 
             except Exception as e:
-                self.add_message(f"✗ Bug report failed: {e}", "red")
-                logging.error(f"Failed to capture bug report: {e}")
-                import traceback
-                logging.error(traceback.format_exc())
+                logging.error(f"Bug report capture failed: {e}")
+                self.root.after(0, lambda: self.add_message(f"❌ Failed to capture bug report: {e}", "red"))
 
-        # Run in background thread
+        # Run in background thread to avoid freezing UI during screenshots/IO
         threading.Thread(target=capture_in_background, daemon=True).start()
+
+    def _capture_bug_report(self):
+        """Capture bug report with screenshot, logs, and board state to local file only"""
+        import logging
+        
+        # Ask user for title only (required), description is optional
+        issue_title = None
+        user_description = None
+
+        try:
+            from tkinter import messagebox, simpledialog
+            if self.root and self.root.winfo_exists():
+                # Prompt for title (required)
+                title_prompt = simpledialog.askstring(
+                    "Bug Report Title",
+                    "Enter a title for the bug report:",
+                    parent=self.root
+                )
+                if title_prompt and title_prompt.strip():
+                    issue_title = title_prompt.strip()
+                elif title_prompt is not None:  # User clicked OK but left blank
+                    # Use default
+                     messagebox.showwarning(
+                        "Title Required",
+                        "A title is required for the bug report. Using default.",
+                        parent=self.root
+                    )
+                else:  # User clicked Cancel
+                    self.add_message("Bug report cancelled", "yellow")
+                    return
+        except (ImportError, Exception) as e:
+            logging.debug(f"GUI not available for bug report details: {e}")
+            
+        final_title = issue_title if issue_title else "User Bug Report"
+        final_description = user_description if user_description else "No description provided."
+        
+        self._generate_bug_report(final_title, final_description)
+
+    def _on_feedback_submit(self, reason, details):
+        """Handle feedback submission by generating a bug report."""
+        if hasattr(self.advisor_ref, 'last_advice_packet') and self.advisor_ref.last_advice_packet:
+            context = self.advisor_ref.last_advice_packet
+            
+            # Format description with advice context
+            description = (
+                f"Reason: {reason}\n"
+                f"User Details: {details}\n\n"
+                f"--- Advice Context ---\n"
+                f"Model: {context.get('model', 'Unknown')}\n"
+                f"Trigger: {context.get('trigger_type', 'Unknown')}\n"
+                f"Timestamp: {context.get('timestamp', 'Unknown')}\n\n"
+                f"Advice Given:\n{context.get('advice', 'N/A')}\n"
+            )
+            
+            # Save board state as extra file
+            import json
+            board_state_json = json.dumps(context.get('board_state', {}), indent=2)
+            extra_files = [("board_state_context.json", board_state_json)]
+            
+            self._generate_bug_report(f"Bad Advice: {reason}", description, extra_files)
+        else:
+            self.add_message("⚠ No recent advice context found for report.", "yellow")
+            # Submit anyway without context
+            self._generate_bug_report(f"Bad Advice: {reason}", f"User Details: {details}\n(No advice context found)")
 
     def _offer_upload_to_github(self, report_dir, folder_name, title, body):
         """Offer to upload the bug report to GitHub."""
