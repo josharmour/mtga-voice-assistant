@@ -54,17 +54,13 @@ class LogFollower:
     def _find_current_session_start(self) -> int:
         """
         Find the byte offset where the current/most recent MTGA session begins.
-
-        This prevents processing stale data from old game sessions that are
-        still in the log file. We look for recent timestamps and session markers.
-
-        Returns the byte offset to start reading from.
+        Uses binary mode for robust offset calculation to avoid JSON corruption.
         """
         import datetime
         import re
 
         try:
-            with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
+            with open(self.log_path, 'rb') as f:
                 # Get file size
                 f.seek(0, 2)  # Seek to end
                 file_size = f.tell()
@@ -73,11 +69,6 @@ class LogFollower:
                     return 0
 
                 # Strategy: Read backwards in chunks to find session markers
-                # Look for patterns that indicate a new MTGA session:
-                # - "Client.Connected" or "Connecting to"
-                # - Recent timestamps (within last few hours)
-                # - "Auth: " login messages
-
                 chunk_size = 100000  # 100KB chunks
                 current_time = datetime.datetime.now()
                 max_age_hours = 6  # Only process logs from last 6 hours
@@ -85,12 +76,10 @@ class LogFollower:
                 best_offset = 0
                 last_good_match_offset = 0
 
-                # Timestamp pattern: [UnityCrossThreadLogger]MM/DD/YYYY HH:MM:SS AM/PM
-                # or just look for date patterns
-                timestamp_pattern = re.compile(r'\[UnityCrossThreadLogger\](\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)')
-                session_start_pattern = re.compile(r'Client\.Connected|Connecting to matchmaker|"authenticateResponse"')
-                # Match start includes both gameplay matches AND draft events
-                match_start_pattern = re.compile(r'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp|Draft\.Notify|BotDraft|DraftStatus|"draftId"')
+                # Timestamp pattern (bytes): [UnityCrossThreadLogger]MM/DD/YYYY HH:MM:SS AM/PM
+                timestamp_pattern = re.compile(rb'\[UnityCrossThreadLogger\](\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)')
+                session_start_pattern = re.compile(rb'Client\.Connected|Connecting to matchmaker|"authenticateResponse"')
+                match_start_pattern = re.compile(rb'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp|Draft\.Notify|BotDraft|DraftStatus|"draftId"')
 
                 # Read from end backwards in chunks
                 pos = max(0, file_size - chunk_size)
@@ -98,12 +87,17 @@ class LogFollower:
                 while pos >= 0:
                     f.seek(pos)
                     chunk = f.read(min(chunk_size, file_size - pos))
-                    lines = chunk.split('\n')
+                    lines = chunk.split(b'\n')
 
                     for i, line in enumerate(lines):
                         # Check for session start markers
                         if session_start_pattern.search(line):
-                            # Calculate approximate offset
+                            # Calculate exact byte offset
+                            # Note: splitting by b'\n' removes the delimiter, so we add 1 for it
+                            # CAUTION: On Windows \r\n, split(b'\n') leaves \r at end of line.
+                            # len(l) + 1 accounts for the \n we split on.
+                            # If the last line has no newline, this might be off by one?
+                            # But usually log lines end with newline.
                             line_offset = pos + sum(len(l) + 1 for l in lines[:i])
                             best_offset = line_offset
 
@@ -116,12 +110,11 @@ class LogFollower:
                         ts_match = timestamp_pattern.search(line)
                         if ts_match:
                             try:
-                                ts_str = ts_match.group(1)
+                                ts_str = ts_match.group(1).decode('utf-8', errors='ignore')
                                 log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
                                 age_hours = (current_time - log_time).total_seconds() / 3600
 
                                 if age_hours <= max_age_hours:
-                                    # This is recent enough, use the earlier of session or match start
                                     if best_offset > 0:
                                         logging.info(f"Found recent session start at offset {best_offset} (age: {age_hours:.1f}h)")
                                         return best_offset
@@ -133,28 +126,25 @@ class LogFollower:
 
                     if pos == 0:
                         break
-                    pos = max(0, pos - chunk_size + 1000)  # Overlap to avoid splitting lines
+                    pos = max(0, pos - chunk_size + 1000)
 
-                # Fallback: if file is small or we found nothing, check timestamps from start
-                # If the log is very old, just start from end (live data only)
+                # Fallback: check start of file
                 f.seek(0)
                 first_chunk = f.read(10000)
                 ts_match = timestamp_pattern.search(first_chunk)
                 if ts_match:
                     try:
-                        ts_str = ts_match.group(1)
+                        ts_str = ts_match.group(1).decode('utf-8', errors='ignore')
                         log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
                         age_hours = (current_time - log_time).total_seconds() / 3600
-
+                        
                         if age_hours > max_age_hours:
-                            # Log is old, skip to near end to only get live data
-                            skip_to = max(0, file_size - 50000)  # Last 50KB
+                            skip_to = max(0, file_size - 50000)
                             logging.info(f"Log file is {age_hours:.1f}h old, skipping to offset {skip_to}")
                             return skip_to
                     except ValueError:
                         pass
-
-                logging.info("No session markers found, starting from beginning")
+                
                 return 0
 
         except Exception as e:
@@ -162,53 +152,24 @@ class LogFollower:
             return 0
 
     def _log_draft_context_near_offset(self, offset: int):
-        """Log any Draft.Notify events near the start offset for debugging.
-
-        NOTE: Disabled for performance - this adds ~100ms+ of file I/O on startup.
-        Enable only for debugging draft detection issues.
-        """
-        # Disabled for performance - uncomment to debug draft detection
-        # try:
-        #     with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
-        #         search_start = max(0, offset - 50000)
-        #         f.seek(search_start)
-        #         chunk = f.read(100000)
-        #         import re
-        #         draft_matches = re.findall(r'Draft\.Notify.*?PackCards[^}]+', chunk)
-        #         if draft_matches:
-        #             logging.info(f"Found {len(draft_matches)} Draft.Notify event(s) near offset {offset}")
-        # except Exception as e:
-        #     logging.debug(f"Error checking draft context: {e}")
         pass
 
     def find_last_draft_notify(self) -> Optional[str]:
-        """
-        Scan the log file backwards to find the most recent Draft.Notify event.
-        Returns the full line if found, None otherwise.
-        Used to recover draft state when app is started mid-draft.
-
-        Performance: Only scans last 50KB to minimize I/O impact on startup.
-        """
+        """Scan backwards for Draft.Notify event (Binary Mode)."""
         try:
-            with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
-                f.seek(0, 2)  # Seek to end
+            with open(self.log_path, 'rb') as f:
+                f.seek(0, 2)
                 file_size = f.tell()
-
-                # Only scan last 50KB - draft events are recent if user is mid-draft
-                # This is a significant performance optimization vs scanning entire log
                 chunk_size = 50000
                 pos = max(0, file_size - chunk_size)
 
                 f.seek(pos)
                 chunk = f.read(file_size - pos)
 
-                # Look for Draft.Notify (search from end of chunk)
-                lines = chunk.split('\n')
+                lines = chunk.split(b'\n')
                 for line in reversed(lines):
-                    if 'Draft.Notify' in line and 'PackCards' in line:
-                        logging.debug(f"Found last Draft.Notify in last {chunk_size // 1000}KB")
-                        return line
-
+                    if b'Draft.Notify' in line and b'PackCards' in line:
+                        return line.decode('utf-8', errors='replace')
                 return None
         except Exception as e:
             logging.error(f"Error finding last Draft.Notify: {e}")
@@ -216,7 +177,6 @@ class LogFollower:
 
     def follow(self, callback: Callable[[str], None]):
         """Follow the log file indefinitely, calling the callback for each new line."""
-        # Debug output disabled for cleaner console
         logging.info(f"LogFollower.follow() started! Watching: {self.log_path}")
         while True:
             try:
@@ -226,75 +186,74 @@ class LogFollower:
                 except FileNotFoundError:
                     logging.warning(f"Log file not found at {self.log_path}. Waiting...")
                     time.sleep(5)
-                    continue # Skip to next iteration if file not found
+                    continue
                 except Exception as e:
-                    logging.error(f"Error getting inode for {self.log_path}: {e}")
+                    logging.error(f"Error getting inode: {e}")
                     time.sleep(1)
                     continue
 
-                logging.debug(f"LogFollower: current_inode={current_inode}, self.inode={self.inode}")
                 if self.inode is None or self.inode != current_inode:
-                    # Debug: Opening log file (inode changed or first open)
                     if self.file:
                         self.file.close()
-                    self.file = open(self.log_path, 'r', encoding='utf-8', errors='replace')
+                    # BINARY MODE OPEN
+                    self.file = open(self.log_path, 'rb')
                     self.inode = current_inode
-                    # Debug: File opened successfully
-
-                    # On first open, seek to end to ignore old matches
-                    # On log rotation, start from beginning of new file
+                    
                     if self.first_open:
-                        # BUG FIX: Find the current session start to avoid processing stale data
-                        # from old games that are still in the log file
-                        start_offset = self._find_current_session_start()
-
-                        # CRITICAL: Check if offset is valid (file may have been truncated/rotated)
-                        self.file.seek(0, 2)  # Seek to end
+                        start_offset = self._find_current_session_start() or 0
+                        self.file.seek(0, 2)
                         file_size = self.file.tell()
                         if start_offset >= file_size:
-                            logging.warning(f"Calculated offset {start_offset} exceeds file size {file_size}, starting from beginning")
                             start_offset = 0
-
+                        
                         self.file.seek(start_offset)
                         self.offset = start_offset
                         self.first_open = False
-                        logging.info(f"Log file opened - starting from offset {start_offset} (file size: {file_size}) to process current session only.")
-
-                        # Scan backwards from start_offset to find any Draft.Notify we might process
-                        self._log_draft_context_near_offset(start_offset)
+                        logging.info(f"Log file opened - starting from offset {start_offset}")
                     else:
-                        # Log rotation - start from beginning of new file
                         self.offset = 0
-                        logging.info("Log file rotated - starting from beginning of new file.")
+                        logging.info("Log file rotated - starting from beginning.")
 
-                # BUG FIX #26: Detect file truncation (e.g., MTGA restart)
-                # On Windows, inode doesn't change when file is truncated, so we must
-                # check if our stored offset exceeds the current file size
-                self.file.seek(0, 2)  # Seek to end
+                self.file.seek(0, 2)
                 current_file_size = self.file.tell()
-                if self.offset > current_file_size:
-                    logging.warning(f"🔄 File truncated detected: offset {self.offset} > file size {current_file_size}. Resetting to beginning.")
+                
+                # CRITICAL FIX: Ensure types are valid before comparison
+                if self.offset is None:
+                    logging.warning("LogFollower.offset was None. Resetting to 0.")
                     self.offset = 0
-                    self.is_caught_up = False  # Re-process from start
+                    
+                if current_file_size is None:
+                     logging.warning("current_file_size was None (unexpected). Defaulting to 0.")
+                     current_file_size = 0
+
+                # Check for file truncation (offset > size)
+                # This comparison was the source of TypeError if either was None
+                if self.offset > current_file_size:
+                    logging.warning(f"🔄 File truncated detected (Offset {self.offset} > Size {current_file_size}). Resetting to beginning.")
+                    self.offset = 0
+                    self.is_caught_up = False
 
                 self.file.seek(self.offset)
                 line_count = 0
                 while True:
-                    line = self.file.readline()
-                    if not line:
+                    line_bytes = self.file.readline()
+                    if not line_bytes:
                         self.is_caught_up = True
                         break
+                    
                     line_count += 1
                     self.offset = self.file.tell()
-                    stripped_line = line.strip()
+                    
+                    # Decode line for processing
+                    try:
+                        line_str = line_bytes.decode('utf-8', errors='replace')
+                        stripped_line = line_str.strip()
+                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                            logging.debug(f"Read line: {stripped_line[:100]}...")
+                        callback(stripped_line)
+                    except Exception as e:
+                        logging.error(f"Error processing line: {e}")
 
-                    # Debug: draft-related lines (disabled for cleaner console)
-                    # if "Draft" in stripped_line or "BotDraft" in stripped_line:
-                    #     print(f"[DEBUG] Draft-related line: {stripped_line[:150]}")
-
-                    if logging.getLogger().isEnabledFor(logging.DEBUG):
-                        logging.debug(f"Read line: {stripped_line[:100]}...") # Log first 100 chars to avoid spam
-                    callback(stripped_line)
                     
                     # Yield thread execution to keep UI responsive during heavy parsing
                     # This is critical when reading large log files on startup
@@ -1402,7 +1361,15 @@ class MatchScanner:
             state_changed = True
 
         # Reset game history on new turn
-        new_turn = turn_info.get("turnNumber")
+        new_turn = turn_info.get("turnNumber", 0)
+        # Fix for Bug #52: Ensure new_turn is an int
+        if new_turn is None:
+            new_turn = 0
+            
+        if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
+            logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
+            self.reset_match_state()
+
         if self.current_turn != new_turn:
             self.current_turn = new_turn
             self.game_history = GameHistory(turn_number=new_turn)

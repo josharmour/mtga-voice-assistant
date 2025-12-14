@@ -86,6 +86,34 @@ class GeminiAdvisor(BaseMTGAdvisor):
             return ""
         return response.text.strip()
 
+    def _call_api_stream(self, system_prompt: str, user_prompt: str):
+        """Make streaming API call to Google Gemini."""
+        if not self.client:
+            yield "AI Advisor is not configured (missing API key)."
+            return
+
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+        config = types.GenerateContentConfig(
+            temperature=0.7,
+            candidate_count=1
+        )
+
+        try:
+            response_stream = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=full_prompt,
+                config=config
+            )
+            
+            for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
+
+        except Exception as e:
+            logger.error(f"Gemini streaming error: {e}")
+            yield f" [Error: {str(e)}]"
+
     def is_available(self) -> bool:
         """Check if the Gemini API is configured."""
         return self.client is not None

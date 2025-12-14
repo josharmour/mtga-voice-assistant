@@ -209,6 +209,18 @@ class BaseMTGAdvisor(ABC):
         """
         pass
 
+    def _call_api_stream(self, system_prompt: str, user_prompt: str):
+        """
+        Make a streaming API call to the LLM provider.
+        
+        Default implementation falls back to non-streaming calls.
+        Child classes should override this for true streaming.
+        
+        Returns:
+            Generator yielding text chunks
+        """
+        yield self._call_api(system_prompt, user_prompt)
+
     def get_tactical_advice(
         self,
         board_state: Dict,
@@ -230,6 +242,24 @@ class BaseMTGAdvisor(ABC):
         except Exception as e:
             logger.error(f"Error getting tactical advice from {self.__class__.__name__}: {e}")
             return self._format_error_message("tactical advice", e)
+
+    def get_tactical_advice_stream(
+        self,
+        board_state: Dict,
+        game_history: Optional[List[str]] = None
+    ):
+        """
+        Get streaming tactical advice.
+        
+        Returns:
+            Generator yielding advice chunks
+        """
+        try:
+            prompt = self.prompt_builder.build_tactical_prompt(board_state, game_history)
+            return self._call_api_stream(self.TACTICAL_SYSTEM_PROMPT, prompt)
+        except Exception as e:
+            logger.error(f"Error getting streaming advice from {self.__class__.__name__}: {e}")
+            yield self._format_error_message("tactical advice", e)
 
     def get_draft_pick(
         self,

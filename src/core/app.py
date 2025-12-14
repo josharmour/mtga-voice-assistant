@@ -393,7 +393,7 @@ class CLIVoiceAdvisor:
 
     def _update_status(self, board_state: "BoardState" = None):
         """Update status display (GUI)"""
-        model_name = self.ai_advisor.advisor.model_name if hasattr(self.ai_advisor, 'advisor') else 'N/A'
+        model_name = self.ai_advisor.advisor.model_name if self.ai_advisor.advisor else 'N/A'
         
         if board_state:
             status_text = (
@@ -764,7 +764,7 @@ class CLIVoiceAdvisor:
                 voices=self.AVAILABLE_VOICES,
                 voice_display_names=self.VOICE_DISPLAY_NAMES,
                 bark_voices=self.BARK_VOICES,
-                current_model=self.ai_advisor.advisor.model_name if hasattr(self.ai_advisor, 'advisor') else "gemini-3-pro-preview",
+                current_model=self.ai_advisor.advisor.model_name if self.ai_advisor.advisor else "gemini-3-pro-preview",
                 current_voice=self.tts.voice if self.tts else (self.prefs.current_voice if self.prefs else "am_adam"),
                 volume=int(self.tts.volume * 100) if self.tts else (self.prefs.volume if self.prefs else 80),
                 tts_engine=self.tts.tts_engine if self.tts else "kokoro"
@@ -810,8 +810,19 @@ class CLIVoiceAdvisor:
         # Get advice
         self._get_advice_for_trigger(board_state, trigger_event)
 
+    def _clean_for_tts(self, text: str) -> str:
+        """Clean text for TTS pronunciation."""
+        import re
+        clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)
+        clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)
+        clean_advice = re.sub(r'^(Recommendation|Advice|Suggestion|Note|Tip):\s*', '', clean_advice, flags=re.IGNORECASE)
+        # Remove markdown headers
+        clean_advice = re.sub(r'#+\s', '', clean_advice)
+        return clean_advice.strip()
+
     def _get_advice_for_trigger(self, board_state, trigger_event: TriggerEvent):
-        """Get and output advice for a trigger event."""
+        """Get and output advice for a trigger event using streaming."""
         def get_advice():
             try:
                 logging.info(f"Getting advice for trigger: {trigger_event.trigger_type.name}")
@@ -827,38 +838,77 @@ class CLIVoiceAdvisor:
                 if trigger_event.user_query:
                     board_state_dict['user_query'] = trigger_event.user_query
                 board_state_dict['trigger_type'] = trigger_event.trigger_type.name
+                
+                # Streaming Output Setup
+                advice_full_text = ""
+                sentence_buffer = ""
+                verbose_speech = True
+                if self.gui and hasattr(self.gui, 'verbose_speech_var'):
+                    verbose_speech = self.gui.verbose_speech_var.get()
+                
+                is_first_sentence = True
+                
+                # Start the stream
+                stream = self.ai_advisor.get_tactical_advice_stream(board_state_dict)
+                
+                import re
+                
+                for chunk in stream:
+                    advice_full_text += chunk
+                    sentence_buffer += chunk
 
-                advice = self.ai_advisor.get_tactical_advice(board_state_dict)
+                    # Regex to split sentences (including delimiter)
+                    # Split by .!? followed by space, newline, or end of string
+                    if re.search(r'[.!?](\s+|$)', sentence_buffer):
+                        parts = re.split(r'([.!?](?:\s+|$))', sentence_buffer)
+                        
+                        # Process complete sentences (parts[0::2] are text, parts[1::2] are delimiters)
+                        # We need pairs.
+                        while len(parts) > 2:
+                            sentence = parts.pop(0) + parts.pop(0)
+                            
+                            clean_sent = self._clean_for_tts(sentence)
+                            if clean_sent.strip():
+                                # Speak sentence
+                                if verbose_speech or is_first_sentence:
+                                    if self.tts:
+                                        self.tts.speak(clean_sent)
+                                    is_first_sentence = False
+                                    
+                                # Print to console if in CLI mode
+                                if not self.use_gui:
+                                    print(sentence, end="", flush=True)
 
-                if advice:
+                        # Reassemble remaining buffer
+                        sentence_buffer = "".join(parts)
+
+                # Handle remaining buffer
+                if sentence_buffer.strip():
+                     clean_sent = self._clean_for_tts(sentence_buffer)
+                     if clean_sent and (verbose_speech or is_first_sentence):
+                        if self.tts:
+                             self.tts.speak(clean_sent)
+                     if not self.use_gui:
+                         print(sentence_buffer, flush=True)
+                
+                if not self.use_gui:
+                    print() # Newline after stream
+
+                if advice_full_text:
+                    if self.use_gui and self.gui:
+                        self.gui.add_message(f"🤖 Advisor: {advice_full_text}", "green")
+                    elif not self.use_gui:
+                        # Already printed to console
+                        pass
+
                     # Capture context for feedback
                     self.last_advice_packet = {
                         "timestamp": datetime.datetime.now().isoformat(),
                         "board_state": board_state_dict,
-                        "advice": advice,
+                        "advice": advice_full_text,
                         "trigger_type": trigger_event.trigger_type.name,
-                        "model": self.ai_advisor.advisor.model_name
+                        "model": self.ai_advisor.advisor.model_name if self.ai_advisor.advisor else "N/A"
                     }
-                    self._output(f"\n🤖 Advisor: {advice}", "green")
-
-                    # TTS output
-                    if self.tts:
-                        verbose_speech = True
-                        if self.gui and hasattr(self.gui, 'verbose_speech_var'):
-                            verbose_speech = self.gui.verbose_speech_var.get()
-
-                        import re
-                        clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', advice)
-                        clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)
-                        clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)
-                        clean_advice = re.sub(r'^(Recommendation|Advice|Suggestion|Note|Tip):\s*', '', clean_advice, flags=re.IGNORECASE)
-
-                        if verbose_speech:
-                            self.tts.speak(clean_advice)
-                        else:
-                            first_sentence = re.split(r'[.!?]', clean_advice)[0].strip()
-                            if first_sentence:
-                                self.tts.speak(first_sentence)
 
             except Exception as e:
                 error_msg = remove_emojis(str(e)) if os.name == 'nt' else str(e)
@@ -877,6 +927,16 @@ class CLIVoiceAdvisor:
         if DRAFT_ADVISOR_AVAILABLE and self.draft_advisor:
             try:
                 self.game_state_mgr.recover_draft_state(self.log_follower)
+                
+                # Fix for Bug #52: Check if the recovered draft event is fresh
+                # If the log contains an old draft (e.g., from yesterday), we don't want to shout advice on startup
+                last_ts = self.game_state_mgr.scanner.last_event_timestamp
+                if last_ts:
+                    now = datetime.datetime.now()
+                    diff_hours = (now - last_ts).total_seconds() / 3600
+                    if diff_hours > 2.0:
+                        logging.info(f"Recovered draft state is stale ({diff_hours:.1f} hours old). Ignoring.")
+                        self.draft_advisor.reset_draft()
             except Exception as e:
                 logging.warning(f"Failed to recover draft state: {e}")
 

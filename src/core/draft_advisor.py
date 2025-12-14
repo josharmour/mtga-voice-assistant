@@ -219,48 +219,59 @@ class DraftAdvisor:
         Apply color-based score adjustments to favor cards that match the deck's colors.
 
         Strategy:
-        - First few picks (P1P1-P1P3): No color adjustment, pick best card
-        - Early picks (P1P4-P1P8): Light color bonus (+5-10 points for on-color)
-        - Mid picks (P1P9+, P2): Moderate color bonus (+10-15 points)
-        - Late picks (P3): Strong color bonus (+15-20 points), penalize off-color
+        - Pack 1 (P1-P5): Open lane, no bias.
+        - Pack 1 (P6-P14): Mild bias (start identifying open colors).
+        - Pack 2: Strong bias (commit to main colors).
+        - Pack 3: Extreme bias (fill gaps, avoid unplayable colors).
         """
         if not self.picked_colors:
-            # No colors established yet, no adjustments
             return cards
 
         # Determine how committed we are to colors
-        total_colored_picks = sum(self.picked_colors.values())
-
-        # Find the dominant colors (top 2)
+        # Find the dominant colors (top 2 colors with at least 2 cards)
         sorted_colors = sorted(self.picked_colors.items(), key=lambda x: x[1], reverse=True)
         dominant_colors = set()
+        
+        # Always take the top color
         if sorted_colors:
             dominant_colors.add(sorted_colors[0][0])
-            if len(sorted_colors) > 1 and sorted_colors[1][1] >= 2:
-                dominant_colors.add(sorted_colors[1][0])
+            
+            # Take second color if we have a meaningful commitment (>= 3 cards)
+            # OR if we have only 1 main color but the second is close
+            if len(sorted_colors) > 1:
+                count_1 = sorted_colors[0][1]
+                count_2 = sorted_colors[1][1]
+                
+                # Dynamic threshold: if we have 10 Blue and 2 Red, Red might not be a lock yet.
+                # But if we have 5 Blue and 4 Red, Red is definitely a lock.
+                # Threshold: at least 3 cards OR within 50% of main color count
+                if count_2 >= 3 or (count_2 >= 2 and count_2 >= count_1 * 0.5):
+                    dominant_colors.add(sorted_colors[1][0])
 
-        # Calculate weight based on how far into draft we are
-        # Pack 1: picks 1-14, Pack 2: picks 15-28, Pack 3: picks 29-42
+        # Calculate weight based on draft progress
+        # Pack 1: picks 1-14, Pack 2: 15-28, Pack 3: 29-42
         total_pick = (pack_num - 1) * 14 + pick_num
 
-        # Weight increases as draft progresses
-        if total_pick <= 3:
-            # P1P1-P1P3: No color weighting, pick best card
-            color_weight = 0
-        elif total_pick <= 8:
-            # P1P4-P1P8: Light weighting
-            color_weight = 0.05 + (total_pick - 3) * 0.01  # 5-10%
-        elif total_pick <= 14:
-            # P1P9-P1P14: Moderate weighting
-            color_weight = 0.10 + (total_pick - 8) * 0.01  # 10-16%
-        elif total_pick <= 28:
-            # Pack 2: Strong weighting
-            color_weight = 0.15 + (total_pick - 14) * 0.005  # 15-22%
-        else:
-            # Pack 3: Maximum weighting
-            color_weight = 0.25  # 25%
+        on_color_bonus = 0.0
+        off_color_penalty = 0.0
 
-        logger.debug(f"Color weighting: {color_weight:.0%}, dominant colors: {dominant_colors}, picked colors: {self.picked_colors}")
+        if total_pick <= 5:
+            # P1P1-P1P5: Open (No bias)
+            pass
+        elif total_pick <= 14:
+            # P1P6-P1P14: Mild Bias
+            on_color_bonus = 0.15   # +15%
+            off_color_penalty = 0.10 # -10%
+        elif total_pick <= 28:
+            # Pack 2: Strong Bias (Commitment phase)
+            on_color_bonus = 0.35   # +35%
+            off_color_penalty = 0.35 # -35% (Significantly increased from original 10%)
+        else:
+            # Pack 3: Hard Commit
+            on_color_bonus = 0.50   # +50%
+            off_color_penalty = 0.60 # -60% (Punish uncastables severely)
+
+        logger.debug(f"Draft Weighting | Pick: {total_pick} | Dominant: {dominant_colors} | Bonus: +{on_color_bonus:.0%} | Penalty: -{off_color_penalty:.0%}")
 
         for card in cards:
             if not card.score:
@@ -269,19 +280,31 @@ class DraftAdvisor:
             card_colors = set(card.colors) if card.colors else set()
 
             if not card_colors:
-                # Colorless cards - slight bonus as they fit any deck
-                card.score += card.score * (color_weight * 0.3)
+                # Colorless: mild bonus (fits anywhere)
+                # Scale bonus by how desperate we are for playables (late pack)
+                utility_bonus = on_color_bonus * 0.5
+                card.score += card.score * utility_bonus
+            
             elif card_colors.issubset(dominant_colors):
-                # On-color: full bonus
-                card.score += card.score * color_weight
+                # Completely on-color: Full Bonus
+                card.score += card.score * on_color_bonus
+                
             elif card_colors & dominant_colors:
-                # Partially on-color (e.g., Gruul card in a mostly Green deck)
-                overlap_ratio = len(card_colors & dominant_colors) / len(card_colors)
-                card.score += card.score * (color_weight * overlap_ratio)
+                # Partially on-color (Gold cards or Hybrid)
+                overlap = len(card_colors & dominant_colors)
+                total = len(card_colors)
+                ratio = overlap / total
+                
+                # If it's a splashable bomb, we might want it.
+                # But generally, partial match gets partial bonus.
+                card.score += card.score * (on_color_bonus * ratio)
+                
+                # If the off-color part is heavy (e.g. 2 off-color pips), we might want to penalize?
+                # For now, simple ratio is safe.
+                
             else:
-                # Off-color: penalty (increases as draft progresses)
-                if total_pick > 14:  # Only penalize after pack 1
-                    card.score -= card.score * (color_weight * 0.5)
+                # Completely Off-color
+                card.score -= card.score * off_color_penalty
 
             # Recalculate grade based on new score
             card.grade = self._score_to_grade(card.score)

@@ -98,6 +98,22 @@ class AIAdvisor:
             return "AI Advisor not initialized. Please configure a provider in the settings."
         return self.advisor.get_tactical_advice(board_state)
 
+    def get_tactical_advice_stream(self, board_state: Dict, user_query: str = ""):
+        """
+        Get streaming tactical advice from the AI.
+        Returns a generator.
+        """
+        if not self.advisor:
+            yield "AI Advisor not initialized. Please configure a provider in the settings."
+            return
+        
+        # Check if the underlying advisor supports streaming (it should via BaseMTGAdvisor)
+        if hasattr(self.advisor, 'get_tactical_advice_stream'):
+            yield from self.advisor.get_tactical_advice_stream(board_state)
+        else:
+            # Fallback for advisors that don't implement stream (though Base does)
+            yield self.advisor.get_tactical_advice(board_state)
+
     def get_draft_pick(self, pack_cards: List[str], current_pool: List[str]) -> str:
         """
         Get draft pick recommendation.
