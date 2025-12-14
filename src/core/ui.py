@@ -87,6 +87,17 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
             logging.debug(f"BarkTTS init failed: {e}")
             return False
 
+    def generate_tone(frequency=880, duration=0.08, sample_rate=24000):
+        """Generate a simple sine wave tone."""
+        t = np.linspace(0, duration, int(sample_rate * duration), False)
+        # Apply a quick fade-in/fade-out to avoid clicks
+        tone = np.sin(2 * np.pi * frequency * t)
+        fade_samples = int(sample_rate * 0.01)  # 10ms fade
+        if fade_samples > 0 and len(tone) > fade_samples * 2:
+            tone[:fade_samples] *= np.linspace(0, 1, fade_samples)
+            tone[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+        return tone.astype(np.float32)
+
     def play_audio(audio_array, sample_rate):
         """Play audio using sounddevice or fallback"""
         try:
@@ -187,6 +198,13 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
                 elif cmd == "set_volume":
                     current_volume = max(0.0, min(1.0, msg.get("volume", current_volume)))
                     logging.info(f"Volume changed to: {current_volume}")
+                elif cmd == "tone":
+                    # Play a quick confirmation tone
+                    freq = msg.get("frequency", 880)
+                    dur = msg.get("duration", 0.08)
+                    tone_audio = generate_tone(freq, dur)
+                    tone_audio = tone_audio * current_volume
+                    play_audio(tone_audio, 24000)
         except Exception as e:
             logging.error(f"TTS worker error: {e}")
 
@@ -265,6 +283,16 @@ class TextToSpeech:
             logging.info(f"Queued TTS: {text[:100]}...")
         except Exception as e:
             logging.error(f"Failed to queue TTS: {e}")
+
+    def play_tone(self, frequency: int = 880, duration: float = 0.08):
+        """Play a quick confirmation tone (non-blocking)"""
+        if not self._started:
+            return
+
+        try:
+            self._queue.put({"cmd": "tone", "frequency": frequency, "duration": duration})
+        except Exception as e:
+            logging.error(f"Failed to queue tone: {e}")
 
     def shutdown(self):
         """Shut down the TTS worker process"""

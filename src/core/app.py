@@ -791,6 +791,10 @@ class CLIVoiceAdvisor:
         """Handle push-to-talk request for manual advice."""
         logging.info(f"Push-to-talk requested (query: {user_query})")
 
+        # Play confirmation tone
+        if self.tts:
+            self.tts.play_tone(frequency=880, duration=0.08)
+
         # Get current board state
         board_state = self._current_board_state
         if not board_state:
