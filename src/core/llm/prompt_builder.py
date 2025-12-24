@@ -409,11 +409,37 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         opp_hand_count = board_state.get('opponent_hand_count', 0)
         context_lines.append(f"  Hand: {opp_hand_count} cards")
 
-        if opp_mana:
-            mana_str = ", ".join([f"{k}:{v}" for k, v in opp_mana.items() if v > 0])
-            context_lines.append(f"  Mana Pool: {mana_str if mana_str else 'No floating mana (lands may be open)'}")
+        # Count opponent's lands (tapped vs untapped) for accurate mana assessment
+        opp_battlefield = board_state.get('opponent_battlefield', [])
+        opp_total_lands = 0
+        opp_untapped_lands = 0
+        for card in opp_battlefield:
+            is_dict = isinstance(card, dict)
+            grp_id = card.get('grp_id') if is_dict else getattr(card, 'grp_id', None)
+            is_tapped = card.get('is_tapped', False) if is_dict else getattr(card, 'is_tapped', False)
+
+            # Look up card data to check if it's a land
+            is_land = False
+            if grp_id and self.arena_db:
+                card_data = self.arena_db.get_card_data(grp_id)
+                if card_data:
+                    type_line = card_data.get('type_line', '')
+                    if 'Land' in type_line:
+                        is_land = True
+
+            if is_land:
+                opp_total_lands += 1
+                if not is_tapped:
+                    opp_untapped_lands += 1
+
+        # Report opponent mana availability based on lands
+        if opp_total_lands > 0:
+            if opp_untapped_lands == 0:
+                context_lines.append(f"  ⚠️ OPPONENT TAPPED OUT - All {opp_total_lands} lands are TAPPED. Safe to act!")
+            else:
+                context_lines.append(f"  Lands: {opp_total_lands} total, {opp_untapped_lands} UNTAPPED (can respond with spells up to CMC {opp_untapped_lands})")
         else:
-            context_lines.append("  Mana Pool: No floating mana (lands may be open)")
+            context_lines.append("  Lands: 0 (no lands on battlefield)")
 
         opp_energy = board_state.get('opponent_energy', 0)
         if opp_energy > 0:

@@ -842,7 +842,7 @@ class AdvisorGUI:
         self.provider_dropdown.pack(pady=(0, 5), fill=tk.X)
         self.provider_dropdown.bind('<<ComboboxSelected>>', self._on_provider_change)
 
-        self.api_key_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        self.api_key_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
         tk.Label(self.api_key_frame, text="API Key:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         
         # Container for Entry + Save Button
@@ -860,34 +860,34 @@ class AdvisorGUI:
                                      bg='#3a3a3a', fg='white', relief=tk.FLAT, width=3, cursor="hand2")
         self.save_key_btn.pack(side=tk.RIGHT, padx=(2, 0))
 
-        self.ollama_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        self.ollama_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
         self.check_ollama_btn = tk.Button(self.ollama_frame, text="Check Ollama & Refresh Models", command=self._check_ollama, bg='#3a3a3a', fg='white', relief=tk.FLAT)
         self.check_ollama_btn.pack(pady=2, fill=tk.X)
 
-        self.llamacpp_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        self.llamacpp_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
         tk.Label(self.llamacpp_frame, text="Server URL:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.llamacpp_url_var = tk.StringVar(value=self.prefs.llamacpp_server_url if self.prefs else "http://localhost:8080")
         self.llamacpp_url_entry = tk.Entry(self.llamacpp_frame, textvariable=self.llamacpp_url_var, width=27)
         self.llamacpp_url_entry.pack(pady=(0, 5), fill=tk.X)
         self.llamacpp_url_entry.bind('<KeyRelease>', self._on_api_key_change)
         
-        tk.Label(settings_frame, text="AI Model:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
+        tk.Label(self.settings_frame, text="AI Model:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.model_var = tk.StringVar()
-        self.model_dropdown = ttk.Combobox(settings_frame, textvariable=self.model_var, width=25)
+        self.model_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.model_var, width=25)
         self.model_dropdown.pack(pady=(0, 10), fill=tk.X)
         self.model_dropdown.bind('<<ComboboxSelected>>', self._on_model_change)
         self.model_dropdown.bind('<Return>', self._on_model_change)
 
         # Voice selection
-        tk.Label(settings_frame, text="Voice:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
+        tk.Label(self.settings_frame, text="Voice:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.voice_var = tk.StringVar()
-        self.voice_dropdown = ttk.Combobox(settings_frame, textvariable=self.voice_var, state='readonly', width=25)
+        self.voice_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.voice_var, state='readonly', width=25)
         self.voice_dropdown.pack(pady=(0, 10), fill=tk.X)
         self.voice_dropdown.bind('<<ComboboxSelected>>', self._on_voice_change)
 
         # Volume slider
-        tk.Label(settings_frame, text="Volume:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
-        volume_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        tk.Label(self.settings_frame, text="Volume:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
+        volume_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
         volume_frame.pack(pady=(0, 10), fill=tk.X)
 
         self.volume_var = tk.IntVar(value=100)
@@ -899,18 +899,18 @@ class AdvisorGUI:
         # Checkboxes
         always_on_top_default = self.prefs.always_on_top if self.prefs else True
         self.always_on_top_var = tk.BooleanVar(value=always_on_top_default)
-        tk.Checkbutton(settings_frame, text="Always on Top", variable=self.always_on_top_var, command=self._on_always_on_top_toggle, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(self.settings_frame, text="Always on Top", variable=self.always_on_top_var, command=self._on_always_on_top_toggle, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
 
         # Voice Toggles
         self.verbose_speech_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(settings_frame, text="Verbose Spoken Advice", variable=self.verbose_speech_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(self.settings_frame, text="Verbose Spoken Advice", variable=self.verbose_speech_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
 
         self.mute_all_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(settings_frame, text="Mute All Audio", variable=self.mute_all_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(self.settings_frame, text="Mute All Audio", variable=self.mute_all_var, bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W, pady=2)
 
         # --- Hotkey Settings ---
-        tk.Label(settings_frame, text="Request Advice (Hotkey):", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
-        hotkey_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        tk.Label(self.settings_frame, text="Request Advice (Hotkey):", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
+        hotkey_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
         hotkey_frame.pack(fill=tk.X, pady=2)
 
         # Get current hotkey from preferences
@@ -922,9 +922,9 @@ class AdvisorGUI:
         tk.Button(hotkey_frame, text="Set", command=self._set_hotkey, bg='#3a3a3a', fg='white', relief=tk.FLAT, width=5).pack(side=tk.LEFT)
 
         # Audio output device selection (speakers)
-        tk.Label(settings_frame, text="Speakers:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(5, 0))
+        tk.Label(self.settings_frame, text="Speakers:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(5, 0))
         self.audio_output_var = tk.StringVar(value=self.prefs.audio_output_device if self.prefs and self.prefs.audio_output_device else "System Default")
-        self.audio_output_dropdown = ttk.Combobox(settings_frame, textvariable=self.audio_output_var, width=25, state='readonly')
+        self.audio_output_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.audio_output_var, width=25, state='readonly')
         self.audio_output_dropdown.pack(pady=2, fill=tk.X)
         self.audio_output_dropdown.bind('<<ComboboxSelected>>', self._on_audio_output_change)
 
@@ -932,10 +932,10 @@ class AdvisorGUI:
         self._populate_audio_devices()
 
         # --- Window Management ---
-        tk.Label(settings_frame, text="Panels:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
+        tk.Label(self.settings_frame, text="Panels:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(10, 0))
         
         # Panel visibility toggles
-        self.panel_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        self.panel_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
         self.panel_frame.pack(fill=tk.X, pady=2)
         
         # Board Panel
@@ -1002,12 +1002,12 @@ class AdvisorGUI:
                       bg=self.bg_color, fg=self.fg_color, selectcolor='#1a1a1a', activebackground=self.bg_color, activeforeground=self.fg_color).pack(anchor=tk.W)
 
 
-        tk.Button(settings_frame, text="Clear Messages", command=self._clear_messages, bg='#3a3a3a', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=(20, 5), fill=tk.X)
-        tk.Button(settings_frame, text="🐛 Bug Report (F12)", command=self._capture_bug_report, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
-        tk.Button(settings_frame, text="👎 Bad Advice", command=self._open_feedback_dialog, bg='#ff5555', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
+        tk.Button(self.settings_frame, text="Clear Messages", command=self._clear_messages, bg='#3a3a3a', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=(20, 5), fill=tk.X)
+        tk.Button(self.settings_frame, text="🐛 Bug Report (F12)", command=self._capture_bug_report, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
+        tk.Button(self.settings_frame, text="👎 Bad Advice", command=self._open_feedback_dialog, bg='#ff5555', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
 
         # Unknown cards warning frame (initially hidden)
-        self._unknown_cards_frame = tk.Frame(settings_frame, bg='#553300')
+        self._unknown_cards_frame = tk.Frame(self.settings_frame, bg='#553300')
         self._unknown_cards_label = tk.Label(
             self._unknown_cards_frame,
             text="⚠ Unknown cards detected!",
@@ -1026,13 +1026,13 @@ class AdvisorGUI:
         ).pack(pady=(0, 5), fill=tk.X, padx=5)
         # Don't pack yet - shown when unknown cards are detected
 
-        button_frame = tk.Frame(settings_frame, bg=self.bg_color)
+        button_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
         button_frame.pack(pady=5, fill=tk.X)
         tk.Button(button_frame, text="🔄 Restart App", command=self._on_restart, bg=self.info_color, fg='#1a1a1a', relief=tk.FLAT, padx=10, pady=5, font=('Consolas', 9, 'bold')).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         tk.Button(button_frame, text="Exit", command=self._on_exit, bg=self.warning_color, fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         # Version label
-        tk.Label(settings_frame, text=f"v{self.version}", bg=self.bg_color, fg='#666666', font=('Consolas', 8)).pack(side=tk.BOTTOM, pady=5)
+        tk.Label(self.settings_frame, text=f"v{self.version}", bg=self.bg_color, fg='#666666', font=('Consolas', 8)).pack(side=tk.BOTTOM, pady=5)
 
         # Main content area with resizable panes
         self._content_paned = tk.PanedWindow(self.root, orient=tk.VERTICAL, bg=self.bg_color,
@@ -1342,22 +1342,34 @@ class AdvisorGUI:
                         if queue_depth % 1000 == 0:
                             logging.debug(f"Log queue depth: {queue_depth}, batch_size: {batch_size}")
 
-                    if self.log_window and self.log_window.winfo_exists():
-                        lines = []
-                        for _ in range(min(batch_size, len(self.log_queue))):
-                            lines.append(self.log_queue.popleft())
+                    # Collect lines from queue
+                    lines = []
+                    for _ in range(min(batch_size, len(self.log_queue))):
+                        lines.append(self.log_queue.popleft())
 
-                        if lines:
+                    if lines:
+                        # Write to pop-out window if it exists
+                        if self.log_window and self.log_window.winfo_exists():
                             self.log_window.append_batch(lines)
+                        
+                        # Also write to embedded log text if it exists and is visible
+                        if hasattr(self, '_embedded_log_text') and self._embedded_log_text.winfo_exists():
+                            try:
+                                self._embedded_log_text.config(state=tk.NORMAL)
+                                for line in lines:
+                                    self._embedded_log_text.insert(tk.END, line + "\n")
+                                # Keep only last 500 lines in embedded view
+                                line_count = int(self._embedded_log_text.index('end-1c').split('.')[0])
+                                if line_count > 500:
+                                    self._embedded_log_text.delete('1.0', f'{line_count - 500}.0')
+                                self._embedded_log_text.see(tk.END)
+                                self._embedded_log_text.config(state=tk.DISABLED)
+                            except tk.TclError:
+                                pass  # Widget may have been destroyed
 
                         # Clear status when caught up
                         if queue_depth > 1000 and len(self.log_queue) <= 1000:
                             self.set_status("Ready")
-                    else:
-                        # Window doesn't exist - prevent unbounded growth
-                        if queue_depth > 9000:
-                            self.log_queue.clear()
-                            logging.debug("Cleared log queue - window not available")
 
                     if self.root and self.root.winfo_exists():
                         self.root.after(next_interval, self._process_log_queue)
