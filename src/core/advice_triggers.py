@@ -153,19 +153,28 @@ class AdviceTriggerManager:
                     is_your_turn=True
                 )
 
-        # Check turn start (your turn just started)
-        elif self._detect_turn_start(turn, is_your_turn, has_priority):
-            if self._should_trigger(TriggerType.TURN_START):
-                trigger_key = f"turn_start_{turn}"
-                if trigger_key not in self._fired_triggers:
-                    self._fired_triggers.add(trigger_key)
-                    trigger_event = TriggerEvent(
-                        trigger_type=TriggerType.TURN_START,
-                        turn=turn,
-                        phase=phase,
-                        is_your_turn=True
-                    )
+        # Update state tracking
+        turn_start_key = f"turn_start_{turn}"
+        
+        # DEBUG LOGGING for Bug #56 diagnosis
+        # logger.info(f"CheckTriggers: Turn={turn} Me={is_your_turn} Prio={has_priority} Fired={turn_start_key in self._fired_triggers} LastTurn={self._last_turn}")
 
+        # Check turn start (your turn just started)
+        # Fix for Bug #56: Check if we haven't triggered yet, rather than just on transition
+        if (is_your_turn and has_priority and
+              self._should_trigger(TriggerType.TURN_START) and
+              turn_start_key not in self._fired_triggers):
+            
+            logger.info(f"TRIGGERING TURN START: {turn_start_key}")
+            trigger_key = turn_start_key
+            self._fired_triggers.add(trigger_key)
+            trigger_event = TriggerEvent(
+                trigger_type=TriggerType.TURN_START,
+                turn=turn,
+                phase=phase,
+                is_your_turn=True
+            )
+        
         # Check phase-specific triggers (only if we have priority)
         elif has_priority:
             phase_trigger = self._check_phase_triggers(turn, phase, is_your_turn)

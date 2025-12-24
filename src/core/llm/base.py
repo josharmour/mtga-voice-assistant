@@ -256,7 +256,7 @@ class BaseMTGAdvisor(ABC):
         """
         try:
             prompt = self.prompt_builder.build_tactical_prompt(board_state, game_history)
-            return self._call_api_stream(self.TACTICAL_SYSTEM_PROMPT, prompt)
+            yield from self._call_api_stream(self.TACTICAL_SYSTEM_PROMPT, prompt)
         except Exception as e:
             logger.error(f"Error getting streaming advice from {self.__class__.__name__}: {e}")
             yield self._format_error_message("tactical advice", e)

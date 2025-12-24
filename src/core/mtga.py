@@ -1067,6 +1067,13 @@ class MatchScanner:
                 if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
                     logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
                     self.reset_match_state()
+                # FIX: Detect ongoing match on startup (mid-match recovery)
+                # If we see turn > 1 but current_turn is 0 (initial state), we're joining mid-match
+                elif new_turn > 1 and self.current_turn == 0:
+                    logging.info(f"🎮 ONGOING MATCH DETECTED at Turn {new_turn} (mid-match startup)")
+                    # Don't call reset_match_state() as it would clear the state we're building
+                    # Just trigger the callback to notify the app
+                    self._trigger_game_callback("match_started")
 
                 state_changed |= self._parse_turn_info(game_state["turnInfo"])
             else:
@@ -1365,10 +1372,17 @@ class MatchScanner:
         # Fix for Bug #52: Ensure new_turn is an int
         if new_turn is None:
             new_turn = 0
-            
+
         if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
             logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
             self.reset_match_state()
+        # FIX: Detect ongoing match on startup (mid-match recovery)
+        # If we see turn > 1 but current_turn is 0 (initial state), we're joining mid-match
+        elif new_turn > 1 and self.current_turn == 0:
+            logging.info(f"🎮 ONGOING MATCH DETECTED at Turn {new_turn} (mid-match startup)")
+            # Don't call reset_match_state() as it would clear the state we're building
+            # Just trigger the callback to notify the app
+            self._trigger_game_callback("match_started")
 
         if self.current_turn != new_turn:
             self.current_turn = new_turn

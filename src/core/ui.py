@@ -98,11 +98,11 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
             tone[-fade_samples:] *= np.linspace(1, 0, fade_samples)
         return tone.astype(np.float32)
 
-    def play_audio(audio_array, sample_rate):
+    def play_audio(audio_array, sample_rate, device=None):
         """Play audio using sounddevice or fallback"""
         try:
             import sounddevice as sd
-            sd.play(audio_array, sample_rate)
+            sd.play(audio_array, sample_rate, device=device)
             sd.wait()  # Wait for playback to finish
         except ImportError:
             # Fallback to file-based playback
@@ -129,17 +129,17 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
         except Exception as e:
             logging.error(f"Audio playback error: {e}")
 
-    def speak_kokoro(text, current_voice, current_volume):
+    def speak_kokoro(text, current_voice, current_volume, device):
         """Generate and play TTS using Kokoro"""
         try:
             clean_text = text.replace('\n', ' ').replace('\r', '').strip()
             audio_array, sample_rate = tts.create(clean_text, voice=current_voice, speed=1.0)
             audio_array = audio_array * current_volume
-            play_audio(audio_array, sample_rate)
+            play_audio(audio_array, sample_rate, device)
         except Exception as e:
             logging.error(f"Kokoro TTS error: {e}")
 
-    def speak_bark(text, current_voice, current_volume):
+    def speak_bark(text, current_voice, current_volume, device):
         """Generate and play TTS using BarkTTS"""
         try:
             inputs = bark_processor(text, voice_preset=current_voice)
@@ -152,13 +152,14 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
             audio_array = audio_array.cpu().numpy().squeeze()
             sample_rate = bark_model.generation_config.sample_rate
             audio_array = audio_array * current_volume
-            play_audio(audio_array, sample_rate)
+            play_audio(audio_array, sample_rate, device)
         except Exception as e:
             logging.error(f"BarkTTS error: {e}")
 
     # Initialize TTS engine
     current_voice = voice
     current_volume = volume
+    current_device = None  # None = System Default
 
     if force_engine == "bark":
         init_bark()
@@ -189,22 +190,30 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
                     text = msg.get("text", "")
                     if text and tts_engine:
                         if tts_engine == "kokoro":
-                            speak_kokoro(text, current_voice, current_volume)
+                            speak_kokoro(text, current_voice, current_volume, current_device)
                         elif tts_engine == "bark":
-                            speak_bark(text, current_voice, current_volume)
+                            speak_bark(text, current_voice, current_volume, current_device)
                 elif cmd == "set_voice":
                     current_voice = msg.get("voice", current_voice)
                     logging.info(f"Voice changed to: {current_voice}")
                 elif cmd == "set_volume":
                     current_volume = max(0.0, min(1.0, msg.get("volume", current_volume)))
                     logging.info(f"Volume changed to: {current_volume}")
+                elif cmd == "set_device":
+                    # Device can be name (str) or index (int) or None
+                    device_val = msg.get("device")
+                    if not device_val:
+                        current_device = None
+                    else:
+                        current_device = device_val
+                    logging.info(f"Output device changed to: {current_device}")
                 elif cmd == "tone":
                     # Play a quick confirmation tone
                     freq = msg.get("frequency", 880)
                     dur = msg.get("duration", 0.08)
                     tone_audio = generate_tone(freq, dur)
                     tone_audio = tone_audio * current_volume
-                    play_audio(tone_audio, 24000)
+                    play_audio(tone_audio, 24000, current_device)
         except Exception as e:
             logging.error(f"TTS worker error: {e}")
 
@@ -266,6 +275,12 @@ class TextToSpeech:
         if self._started and self._queue:
             self._queue.put({"cmd": "set_volume", "volume": self.volume})
         logging.info(f"Volume changed to: {self.volume}")
+
+    def set_output_device(self, device: str):
+        """Set output device (name or index) by notifying the worker process"""
+        if self._started and self._queue:
+            self._queue.put({"cmd": "set_device", "device": device})
+        logging.info(f"Output device changed to: {device}")
 
     def speak(self, text: str):
         """Queue text for speaking in the worker process (non-blocking)"""
@@ -800,28 +815,50 @@ class AdvisorGUI:
         status_frame = tk.Frame(self.root, bg='#1a1a1a', height=30)
         status_frame.pack(side=tk.TOP, fill=tk.X)
         status_frame.pack_propagate(False)
-        self.status_label = tk.Label(status_frame, text="Initializing...", bg='#1a1a1a', fg=self.accent_color, font=('Consolas', 10, 'bold'), anchor=tk.W, padx=10)
+        # Add settings toggle button
+        self.settings_toggle_btn = tk.Button(status_frame, text="≡", command=self._toggle_settings,
+                                            bg='#1a1a1a', fg=self.accent_color, bd=0, 
+                                            font=('Consolas', 12, 'bold'), cursor="hand2",
+                                            activebackground='#333333', activeforeground=self.accent_color,
+                                            width=3)
+        self.settings_toggle_btn.pack(side=tk.LEFT, padx=(5, 0))
+
+        self.status_label = tk.Label(status_frame, text="Initializing...",
+                                    bg='#1a1a1a', fg=self.accent_color,
+                                    font=('Consolas', 10, 'bold'), anchor=tk.W, padx=10)
         self.status_label.pack(fill=tk.BOTH, expand=True)
 
-        settings_frame = tk.Frame(self.root, bg=self.bg_color, width=250)
-        settings_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
-        settings_frame.pack_propagate(False)
+        self.settings_frame = tk.Frame(self.root, bg=self.bg_color, width=250)
+        self.settings_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+        self.settings_frame.pack_propagate(False)
+        self._settings_visible = True
 
-        tk.Label(settings_frame, text="⚙ SETTINGS", bg=self.bg_color, fg=self.accent_color, font=('Consolas', 12, 'bold')).pack(pady=(0, 10))
+        tk.Label(self.settings_frame, text="⚙ SETTINGS", bg=self.bg_color, fg=self.accent_color, font=('Consolas', 12, 'bold')).pack(pady=(0, 10))
 
         # --- AI Provider and Model Selection ---
-        tk.Label(settings_frame, text="AI Provider:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
+        tk.Label(self.settings_frame, text="AI Provider:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.provider_var = tk.StringVar()
-        self.provider_dropdown = ttk.Combobox(settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama", "Llama.cpp"], width=25)
+        self.provider_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama", "Llama.cpp"], width=25)
         self.provider_dropdown.pack(pady=(0, 5), fill=tk.X)
         self.provider_dropdown.bind('<<ComboboxSelected>>', self._on_provider_change)
 
         self.api_key_frame = tk.Frame(settings_frame, bg=self.bg_color)
         tk.Label(self.api_key_frame, text="API Key:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
+        
+        # Container for Entry + Save Button
+        api_entry_container = tk.Frame(self.api_key_frame, bg=self.bg_color)
+        api_entry_container.pack(pady=(0, 5), fill=tk.X)
+
         self.api_key_var = tk.StringVar()
-        self.api_key_entry = tk.Entry(self.api_key_frame, textvariable=self.api_key_var, show="*", width=27)
-        self.api_key_entry.pack(pady=(0, 5), fill=tk.X)
+        self.api_key_entry = tk.Entry(api_entry_container, textvariable=self.api_key_var, show="*", width=20)
+        self.api_key_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.api_key_entry.bind('<KeyRelease>', self._on_api_key_change)
+        self.api_key_entry.bind('<FocusOut>', self._on_api_key_change) # Ensure save on blur
+
+        # Save Button
+        self.save_key_btn = tk.Button(api_entry_container, text="💾", command=self._manual_save_api_key, 
+                                     bg='#3a3a3a', fg='white', relief=tk.FLAT, width=3, cursor="hand2")
+        self.save_key_btn.pack(side=tk.RIGHT, padx=(2, 0))
 
         self.ollama_frame = tk.Frame(settings_frame, bg=self.bg_color)
         self.check_ollama_btn = tk.Button(self.ollama_frame, text="Check Ollama & Refresh Models", command=self._check_ollama, bg='#3a3a3a', fg='white', relief=tk.FLAT)
@@ -1115,11 +1152,11 @@ class AdvisorGUI:
         # Default model lists (updated December 2025)
         model_lists = {
             "Google": [
-                "gemini-3-pro-preview",
+                "gemini-3-flash-preview",
+                "gemini-2.0-flash",
                 "gemini-2.5-pro",
                 "gemini-2.5-flash",
                 "gemini-2.5-flash-lite",
-                "gemini-2.0-flash",
                 "gemini-2.0-flash-lite",
             ],
             "OpenAI": ["gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
@@ -1178,6 +1215,15 @@ class AdvisorGUI:
         if provider in key_map:
             self.prefs.set_api_keys(**key_map[provider])
             logging.debug(f"Updated settings for {provider}")
+
+    def _manual_save_api_key(self):
+        """Manually save API key and provide visual feedback."""
+        self._on_api_key_change()
+        # Visual feedback
+        if hasattr(self, 'save_key_btn'):
+            orig_bg = '#3a3a3a' # Default dark gray
+            self.save_key_btn.config(bg="#00ff88", text="✓", fg="#1a1a1a") # Green success
+            self.root.after(1500, lambda: self.save_key_btn.config(bg=orig_bg, text="💾", fg="white"))
 
     def _check_ollama(self):
         """Check for Ollama installation and list available models."""
@@ -1351,6 +1397,18 @@ class AdvisorGUI:
                     if isinstance(subchild, tk.Button) and "Restart" in str(subchild.cget('text')):
                         return child
         return None
+
+    def _toggle_settings(self):
+        """Toggle the visibility of the settings panel."""
+        if self._settings_visible:
+            self.settings_frame.pack_forget()
+            self._settings_visible = False
+            self.settings_toggle_btn.config(text="⚙") # Change icon to gear when hidden to indicate "Show Settings"
+        else:
+            # Re-pack the settings frame to the left, before the content pane to maintain order
+            self.settings_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5, before=self._content_paned)
+            self._settings_visible = True
+            self.settings_toggle_btn.config(text="≡") # Back to menu icon
 
     def hide_unknown_cards_warning(self):
         """Hide the unknown cards warning."""
@@ -1613,6 +1671,9 @@ class AdvisorGUI:
         if self.prefs:
             self.prefs.set_audio_devices(output_device=device)
 
+        if hasattr(self.advisor_ref, 'tts') and self.advisor_ref.tts:
+            self.advisor_ref.tts.set_output_device(device)
+
         self.add_message(f"✓ Speakers: {device or 'System Default'}", "green")
         logging.info(f"Audio output device changed to: {device or 'System Default'}")
 
@@ -1624,7 +1685,6 @@ class AdvisorGUI:
             if self.prefs: self.prefs.save()
             self.add_message("🔄 Restarting application...", "cyan")
             logging.info("User initiated application restart")
-            self.root.quit()
 
             # Use absolute paths for robust restart
             python_executable = Path(sys.executable).resolve()
@@ -1644,6 +1704,9 @@ class AdvisorGUI:
 
             # Start new process with explicit working directory
             subprocess.Popen(args, cwd=str(project_root))
+
+            # Quit after successful spawn
+            self.root.quit()
         except Exception as e:
             logging.error(f"Error restarting app: {e}")
             self.add_message(f"❌ Failed to restart: {e}", "red")
@@ -1907,10 +1970,10 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
                     
                     # Open folder (only if not uploaded, technically _offer opens parent, this opens child. 
                     # Keeping it simple: open child as well so they can see contents immediately)
-                    try:
-                        os.startfile(report_dir)
-                    except:
-                        pass
+                    # try:
+                    #     os.startfile(report_dir)
+                    # except:
+                    #     pass
 
                 self.root.after(0, on_complete)
 

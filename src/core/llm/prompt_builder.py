@@ -409,12 +409,11 @@ Which card should I pick? Briefly explain why (synergy, power level, curve)."""
         opp_hand_count = board_state.get('opponent_hand_count', 0)
         context_lines.append(f"  Hand: {opp_hand_count} cards")
 
-        opp_mana = board_state.get('opponent_mana_pool', {})
         if opp_mana:
             mana_str = ", ".join([f"{k}:{v}" for k, v in opp_mana.items() if v > 0])
-            context_lines.append(f"  Mana Pool: {mana_str if mana_str else 'Empty (Tapped Out)'}")
+            context_lines.append(f"  Mana Pool: {mana_str if mana_str else 'No floating mana (lands may be open)'}")
         else:
-            context_lines.append("  Mana Pool: Unknown (assume open)")
+            context_lines.append("  Mana Pool: No floating mana (lands may be open)")
 
         opp_energy = board_state.get('opponent_energy', 0)
         if opp_energy > 0:
@@ -582,10 +581,11 @@ Recent Events:
         """Format opponent resource information."""
         lines = ["**Opponent Resources:**"]
         lines.append(f"  Hand: {board_state.get('opponent_hand_count', 0)} cards")
-        opp_mana = board_state.get('opponent_mana_pool', {})
         if opp_mana:
             mana_str = ", ".join([f"{k}:{v}" for k, v in opp_mana.items() if v > 0])
-            lines.append(f"  Mana: {mana_str or 'Tapped out'}")
+            lines.append(f"  Mana: {mana_str or 'No floating mana (lands may be open)'}")
+        else:
+            lines.append("  Mana: No floating mana (lands may be open)")
         return "\n".join(lines)
 
     def _format_card_short(self, card) -> str:

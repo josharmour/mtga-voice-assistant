@@ -777,6 +777,16 @@ class CLIVoiceAdvisor:
             log_thread = threading.Thread(target=self._follow_log, daemon=True)
             log_thread.start()
 
+            # Register global hotkey for manual advice (F1)
+            try:
+                import keyboard
+                keyboard.add_hotkey('f1', lambda: self._on_push_to_talk(user_query=None))
+                logging.info("Global hotkey 'F1' registered for manual advice.")
+            except ImportError:
+                logging.warning("Keyboard module not found. Global hotkeys disabled.")
+            except Exception as e:
+                logging.error(f"Failed to register global hotkeys: {e}")
+
             self.tk_root.mainloop()
         else:
             # CLI mode
@@ -952,10 +962,9 @@ class CLIVoiceAdvisor:
                 logging.info("Voice announcement: Catching up (processing historical logs)")
 
             # Stream log to GUI if enabled
-            # OPTIMIZATION: Only show logs in GUI if we are caught up to live events.
-            # This prevents flooding the UI with thousands of historical log lines on startup,
-            # which causes the application to freeze/hang.
-            if self.use_gui and self.gui and self.log_follower.is_caught_up:
+            # Note: We stream logs even during catch-up to show progress to the user.
+            # The GUI's adaptive batching system (_process_log_queue in ui.py) prevents freezing.
+            if self.use_gui and self.gui:
                 # Filter out spammy UI/Hover messages from the GUI display to reduce noise
                 if not SPAM_FILTER_PATTERN.search(line):
                     self.gui.append_log(line)
@@ -974,6 +983,32 @@ class CLIVoiceAdvisor:
             if self.arena_db and not getattr(self, '_unknown_tracking_enabled', False):
                 self._unknown_tracking_enabled = True
                 self.arena_db.enable_tracking()
+
+            # FIX: Detect ongoing match after catchup
+            # When we first catch up, check if there's an active match in progress
+            # This handles the case where the app starts mid-match
+            if not getattr(self, '_checked_ongoing_match', False):
+                self._checked_ongoing_match = True
+                try:
+                    board_state = self.game_state_mgr.get_current_board_state()
+                    if board_state and board_state.current_turn > 0:
+                        logging.info(f"🎮 Detected ongoing match at Turn {board_state.current_turn}")
+                        # Announce that we've joined mid-match
+                        self._announce("Match in progress")
+                        # Force initial advice check if it's your turn and you have priority
+                        if board_state.is_your_turn and board_state.has_priority:
+                            trigger_event = self.advice_trigger_mgr.check_triggers(board_state)
+                            if trigger_event:
+                                logging.info(f"Initial advice trigger: {trigger_event.trigger_type.name}")
+                                self._get_advice_for_trigger(board_state, trigger_event)
+                        # Cache for manual advice
+                        self._current_board_state = board_state
+                        # Update GUI
+                        if self.use_gui and self.gui:
+                            self._pending_board_state = board_state
+                            self._maybe_update_gui()
+                except Exception as e:
+                    logging.warning(f"Failed to check for ongoing match: {e}")
 
             # PERFORMANCE FIX: Only get board state when game state changes
             # This prevents rebuilding the board state thousands of times per second
@@ -1004,9 +1039,12 @@ class CLIVoiceAdvisor:
                 if self.game_state_mgr.scanner.last_event_timestamp:
                     now = datetime.datetime.now()
                     diff = (now - self.game_state_mgr.scanner.last_event_timestamp).total_seconds()
-                    if diff > 30:
-                        logging.debug(f"Skipping advice for stale event (delay: {diff:.1f}s)")
+                    if diff > 120:
+                        logging.info(f"Skipping advice: Event stale (delay: {diff:.1f}s)")
                         is_fresh = False
+                
+                # DEBUG LOGGING
+                # logging.info(f"Loop Trace: Turn={board_state.current_turn} Prio={board_state.has_priority} Fresh={is_fresh}")
 
                 if is_fresh:
                     # Check if any automatic trigger should fire

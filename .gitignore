@@ -35,8 +35,8 @@ models/
 
 # Bug reports (keep folder, ignore contents)
 # Bug reports (keep folder, ignore contents)
-# bug_reports/*
-# !bug_reports/.gitkeep
+bug_reports/*
+!bug_reports/.gitkeep
 
 # IDE and Editor configs
 .vscode/

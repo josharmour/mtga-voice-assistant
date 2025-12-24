@@ -25,6 +25,7 @@ class CardRating:
     ever_drawn_win_rate: Optional[float]
     drawn_improvement_win_rate: Optional[float]  # IWD equivalent
     play_rate: Optional[float]
+    avg_taken_at: Optional[float]
 
 
 class SeventeenLandsAPIClient:
@@ -117,6 +118,7 @@ class SeventeenLandsAPIClient:
                     ever_drawn_win_rate=card.get("ever_drawn_win_rate"),
                     drawn_improvement_win_rate=card.get("drawn_improvement_win_rate"),
                     play_rate=card.get("play_rate"),
+                    avg_taken_at=card.get("avg_taken_at")
                 ))
 
             # Cache result
