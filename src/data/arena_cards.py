@@ -31,6 +31,7 @@ class ArenaCardDatabase:
     def __init__(self, db_path: str = "data/unified_cards.db"):
         self.db_path = Path(db_path)
         self._cache = {}  # In-memory cache: grpId -> dict
+        self._name_cache = {}  # In-memory cache: name -> dict
         self._unknown_cards = set()  # Track unique unknown grpIds
         self._unknown_card_callback = None  # Callback when threshold exceeded
         self._tracking_enabled = False  # Only track after caught up with logs
@@ -85,7 +86,9 @@ class ArenaCardDatabase:
             
             for row in rows:
                 # Convert Row object to dict
-                self._cache[row["grpId"]] = dict(row)
+                card_data = dict(row)
+                self._cache[row["grpId"]] = card_data
+                self._name_cache[row["name"]] = card_data
                 
             conn.close()
             elapsed = time.time() - start_time
@@ -116,6 +119,10 @@ class ArenaCardDatabase:
             self._track_unknown_card(grp_id)
 
         return None
+
+    def get_card_by_name(self, name: str) -> Optional[Dict]:
+        """Get card data by name."""
+        return self._name_cache.get(name)
 
     def _track_unknown_card(self, grp_id: int):
         """Track an unknown card and trigger callback if threshold exceeded."""

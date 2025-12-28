@@ -15,6 +15,8 @@ from collections import Counter
 import sqlite3
 import threading
 
+from src.data.arena_cards import ArenaCardDatabase
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,10 +89,15 @@ class DeckBuilderV2:
 
     BASIC_LANDS = {"Plains": "W", "Island": "U", "Swamp": "B", "Mountain": "R", "Forest": "G"}
 
+    # Penalties for unmet requirements
+    CREATURE_COUNT_PENALTY = 0.03  # per missing creature
+    CURVE_SLOT_PENALTY = 0.02      # per missing creature at specific CMC
+
     def __init__(self, db_path: Path = Path("data/card_stats.db")):
         """Initialize deck builder with card stats database"""
         self.db_path = db_path
         self._local = threading.local()
+        self.arena_db = ArenaCardDatabase()
 
     def _get_connection(self):
         """Get thread-local database connection"""
@@ -113,12 +120,28 @@ class DeckBuilderV2:
 
             row = cursor.fetchone()
             if row:
+                # Fetch additional info (CMC, type) from Arena database
+                arena_data = self.arena_db.get_card_by_name(card_name)
+                cmc = 0
+                is_creature = False
+
+                if arena_data:
+                    cmc = int(arena_data.get('cmc', 0) or 0)
+                    # Check if "Creature" is in the type line
+                    # 'types' usually is a list like ["Creature"] or string "Creature,Human"
+                    # arena_db stores types as string if fetched from SQL, or checking type_line
+                    type_line = str(arena_data.get('type_line', '')).lower()
+                    if 'creature' in type_line:
+                        is_creature = True
+
                 return CardRating(
                     name=row['card_name'],
                     color=row['color'] or "",
                     rarity=row['rarity'] or "",
                     gih_win_rate=row['gih_win_rate'] or 0.0,
                     avg_taken_at=row['avg_taken_at'] or 99.0,
+                    cmc=cmc,
+                    is_creature=is_creature
                 )
             return None
         except Exception as e:
@@ -270,7 +293,26 @@ class DeckBuilderV2:
 
         # Calculate penalty for unmet requirements
         penalty = 0.0
-        # TODO: Implement curve/creature count penalties
+
+        # 1. Creature Count Penalty
+        creature_count = sum(count for c, count in maindeck.items() if card_ratings[c].is_creature)
+        if creature_count < archetype["min_creatures"]:
+            missing = archetype["min_creatures"] - creature_count
+            penalty += missing * self.CREATURE_COUNT_PENALTY
+
+        # 2. Curve Penalty (min creatures at specific CMCs)
+        if "curve_requirements" in archetype:
+            # Count creatures by CMC in maindeck
+            cmc_counts = Counter()
+            for c, count in maindeck.items():
+                if card_ratings[c].is_creature:
+                    cmc_counts[card_ratings[c].cmc] += count
+
+            for cmc, min_req in archetype["curve_requirements"].items():
+                actual = cmc_counts.get(cmc, 0)
+                if actual < min_req:
+                    missing = min_req - actual
+                    penalty += missing * self.CURVE_SLOT_PENALTY
 
         score = avg_gihwr - penalty
 
