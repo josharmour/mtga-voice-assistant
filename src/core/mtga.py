@@ -8,6 +8,10 @@ from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional
 
 from .monitoring import get_monitor
+from src.core.domain.game_state import GameState
+from src.core.domain.adapters import BoardStateAdapter
+from .zone_manager import ZoneManager
+from .gre_parser import GREParser
 
 # Zone Type Enum for fast comparisons
 class ZoneType(Enum):
@@ -278,129 +282,7 @@ class LogFollower:
         if self.file:
             self.file.close()
 
-# Content of src/game_state.py
-# Constants for counter types
-P1P1_COUNTERS_KEY = "P1P1" # Represents +1/+1 counters
-
-@dataclasses.dataclass
-class GameObject:
-    instance_id: int
-    grp_id: int
-    zone_id: int
-    owner_seat_id: int
-    name: str = ""
-    color_identity: str = ""  # Card color(s): W, U, B, R, G, or combinations
-    base_power: Optional[int] = None
-    base_toughness: Optional[int] = None
-    is_tapped: bool = False
-    is_attacking: bool = False
-    summoning_sick: bool = False
-    counters: Dict[str, int] = dataclasses.field(default_factory=dict)  # {counter_type: count}
-    attached_to: Optional[int] = None  # Instance ID of attached permanent
-    visibility: str = "public"  # "public", "private", "revealed"
-    type_line: str = ""  # Added to prevent AttributeError in some contexts
-
-    @property
-    def effective_power(self) -> Optional[int]:
-        if self.base_power is None:
-            return None
-        p1p1_count = self.counters.get(P1P1_COUNTERS_KEY, 0)
-        return self.base_power + p1p1_count
-
-    @property
-    def effective_toughness(self) -> Optional[int]:
-        if self.base_toughness is None:
-            return None
-        p1p1_count = self.counters.get(P1P1_COUNTERS_KEY, 0)
-        return self.base_toughness + p1p1_count
-
-@dataclasses.dataclass
-class PlayerState:
-    seat_id: int
-    life_total: int = 20
-    hand_count: int = 0
-    has_priority: bool = False
-    mana_pool: Dict[str, int] = dataclasses.field(default_factory=dict)  # {"W": 2, "U": 1, etc.}
-    energy: int = 0
-
-@dataclasses.dataclass
-class GameHistory:
-    """Tracks important events from current turn for tactical context"""
-    turn_number: int = 0
-    cards_played_this_turn: List[GameObject] = dataclasses.field(default_factory=list)
-    attackers_this_turn: List[GameObject] = dataclasses.field(default_factory=list)
-    blockers_this_turn: List[GameObject] = dataclasses.field(default_factory=list)
-    damage_dealt: Dict[int, int] = dataclasses.field(default_factory=dict)
-    died_this_turn: List[str] = dataclasses.field(default_factory=list)
-    lands_played_this_turn: int = 0
-
-    # Current combat state (during combat phase)
-    current_attackers: List[int] = dataclasses.field(default_factory=list)  # Instance IDs
-    current_blockers: Dict[int, int] = dataclasses.field(default_factory=dict)  # {attacker_id: blocker_id}
-    combat_damage_assignments: Dict[int, int] = dataclasses.field(default_factory=dict)  # {instance_id: damage}
-
-@dataclasses.dataclass
-class BoardState:
-    your_seat_id: int
-    opponent_seat_id: int
-
-    # Life totals
-    your_life: int = 20
-    opponent_life: int = 20
-
-    # Mana and energy
-    your_mana_pool: Dict[str, int] = dataclasses.field(default_factory=dict)
-    your_energy: int = 0
-    opponent_energy: int = 0
-
-    # Zone: Hand
-    your_hand_count: int = 0
-    your_hand: List[GameObject] = dataclasses.field(default_factory=list)
-    opponent_hand_count: int = 0
-
-    # Zone: Battlefield
-    your_battlefield: List[GameObject] = dataclasses.field(default_factory=list)
-    opponent_battlefield: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Zone: Graveyard
-    your_graveyard: List[GameObject] = dataclasses.field(default_factory=list)
-    opponent_graveyard: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Zone: Exile
-    your_exile: List[GameObject] = dataclasses.field(default_factory=list)
-    opponent_exile: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Zone: Library
-    your_library_count: int = 0
-    opponent_library_count: int = 0
-
-    # Zone: Stack
-    stack: List[GameObject] = dataclasses.field(default_factory=list)
-
-    # Turn tracking
-    current_turn: int = 0
-    current_phase: str = ""
-    is_your_turn: bool = False
-    has_priority: bool = False
-
-    # Game history
-    history: Optional[GameHistory] = None
-
-    # Deck tracking (Phase 3)
-    your_decklist: Dict[str, int] = dataclasses.field(default_factory=dict)  # {card_name: count}
-    your_deck_remaining: int = 0  # Cards left in library
-
-    # Known cards tracking (Phase 3)
-    library_top_known: List[str] = dataclasses.field(default_factory=list)  # Card names on top of library
-    scry_info: Optional[str] = None  # "Top 2: Lightning Bolt, Forest"
-
-    # Mulligan phase tracking
-    in_mulligan_phase: bool = False
-    game_stage: str = ""  # "GameStage_Start" or "GameStage_Play"
-
-    # Decision prompt tracking (for triggering advice at key moments)
-    pending_decision: Optional[str] = None  # Type of decision awaiting input
-    decision_context: Dict[str, Any] = dataclasses.field(default_factory=dict)  # Context for the decision
+from .legacy_models import BoardState, GameObject, PlayerState, GameHistory
 
 import datetime
 
@@ -712,10 +594,11 @@ class DraftEventParser:
 
 class MatchScanner:
     """
-    Parses GRE messages to track game state.
+    A container for the raw game state data, such as game objects and player states.
+    It no longer contains any parsing logic itself.
     """
 
-    def __init__(self, card_lookup=None):
+    def __init__(self, card_lookup=None, zone_manager: ZoneManager = None):
         self.game_objects: Dict[int, GameObject] = {}
         self.players: Dict[int, PlayerState] = {}
         self.current_turn = 0
@@ -723,15 +606,10 @@ class MatchScanner:
         self.active_player_seat: Optional[int] = None
         self.priority_player_seat: Optional[int] = None
         self.local_player_seat_id: Optional[int] = None
-        self.zone_type_to_ids: Dict[str, int] = {}
-        self.observed_zone_ids: set = set()
-        self.zone_id_to_type: Dict[int, str] = {}
-        self.zone_id_to_enum: Dict[int, ZoneType] = {}  # P1: Enum-based zone mapping
-        self.zone_id_to_owner: Dict[int, int] = {}  # BUG FIX: Cache zone owners
-        self._zone_objects: Dict[int, set] = {}
+        self.zone_manager = zone_manager
         self.game_history: GameHistory = GameHistory()
-        self.last_event_timestamp: Optional[datetime.datetime] = None # Track when the last event happened
-        self._last_timestamp_str: str = "" # P1 Performance: Cache for timestamp string to avoid redundant parsing
+        self.last_event_timestamp: Optional[datetime.datetime] = None
+        self._last_timestamp_str: str = ""
 
         # Phase 3: Deck tracking
         self.submitted_decklist: Dict[int, int] = {}
@@ -921,34 +799,9 @@ class MatchScanner:
         except Exception:
             pass # Ignore parsing errors, timestamp is optional hint
 
-    def _update_object_zone(self, instance_id: int, old_zone_id: Optional[int], new_zone_id: int):
-        """
-        Update zone membership cache for an object.
-
-        This maintains the _zone_objects index which maps zone_id -> set of instance_ids.
-        This cache eliminates O(n) iteration in get_current_board_state().
-
-        Args:
-            instance_id: The instance ID of the game object
-            old_zone_id: The previous zone ID (None if object is new)
-            new_zone_id: The new zone ID
-        """
-        # Remove from old zone if it exists
-        if old_zone_id is not None and old_zone_id in self._zone_objects:
-            self._zone_objects[old_zone_id].discard(instance_id)
-            # Clean up empty zone sets to save memory
-            if not self._zone_objects[old_zone_id]:
-                del self._zone_objects[old_zone_id]
-
-        # Add to new zone
-        if new_zone_id not in self._zone_objects:
-            self._zone_objects[new_zone_id] = set()
-        self._zone_objects[new_zone_id].add(instance_id)
-
     def reset_match_state(self, log_offset: int = None):
         """Clear all game state when a new match starts"""
         logging.info("🔄 NEW MATCH DETECTED - Clearing all previous match state")
-        # Trigger match_started callback before clearing state
         self._trigger_game_callback("match_started")
         self.game_objects.clear()
         self.players.clear()
@@ -956,29 +809,21 @@ class MatchScanner:
         self.current_phase = ""
         self.active_player_seat = None
         self.priority_player_seat = None
-        # BUG FIX: Reset local_player_seat_id on new match
-        # Seat IDs can change between matches (sometimes you're seat 1, sometimes seat 2)
-        # It will be re-set when we receive the systemSeatIds message for the new match
         self.local_player_seat_id = None
 
-        # Generate new match ID and save state
-        self.match_id = None  # Will be generated when we save
+        self.match_id = None
         self.match_start_offset = log_offset
         if log_offset is not None:
             self._save_match_state(log_offset, status="active")
-        self.zone_type_to_ids.clear()
-        self.observed_zone_ids.clear()
-        self.zone_id_to_type.clear()
-        self.zone_id_to_enum.clear()  # P1: Clear enum mapping
-        self.zone_id_to_owner.clear()  # BUG FIX: Clear zone owner cache
+
         self.game_history = GameHistory()
         self.cards_seen.clear()
         self.library_top_known.clear()
         self.scry_info = None
         self.game_stage = ""
         self.in_mulligan_phase = False
-        self._zone_objects.clear()
-        # Note: submitted_decklist is set by _parse_deck_submission, so don't clear it here
+        if self.zone_manager:
+            self.zone_manager.clear()
 
     def _resolve_card_metadata(self, game_obj: GameObject) -> None:
         """
@@ -1001,805 +846,18 @@ class MatchScanner:
             except Exception as e:
                 logging.debug(f"Could not fetch color for {game_obj.grp_id}: {e}")
 
-    def parse_gre_to_client_event(self, event_data: dict) -> bool:
-        if "greToClientEvent" not in event_data: return False
-        gre_event = event_data["greToClientEvent"]
-        
-        # Check if this is just a UI message batch to reduce log spam
-        messages = gre_event.get("greToClientMessages", [])
-        is_ui_only = all(m.get("type") == "GREMessageType_UIMessage" for m in messages)
-        
-        if is_ui_only:
-            logging.debug(f"GREToClientEvent received (UI Messages only) - type: {gre_event.get('type', 'N/A')}")
-        else:
-            logging.info(f"GREToClientEvent received - type: {gre_event.get('type', 'N/A')}")
-
-        if not messages: return False
-        
-        if not is_ui_only:
-            logging.info(f"Processing {len(messages)} messages")
-            
-        state_changed = False
-        for message in messages:
-            msg_type = message.get("type", "")
-            
-            if msg_type == "GREMessageType_UIMessage":
-                logging.debug(f"Message type: {msg_type}")
-            else:
-                logging.info(f"Message type: {msg_type}")
-
-            # BUG FIX: Only set seat ID once on initial detection
-            # Different message types report systemSeatIds from different perspectives,
-            # causing oscillation between seat 1 and seat 2 if we blindly trust every message.
-            # Once we know our seat ID, it never changes during a match.
-            if "systemSeatIds" in message and self.local_player_seat_id is None:
-                self.local_player_seat_id = message["systemSeatIds"][0]
-                logging.info(f"Set local player seat ID to: {self.local_player_seat_id} (via systemSeatIds)")
-
-            if msg_type == "GREMessageType_GameStateMessage":
-                state_changed |= self._parse_game_state_message(message)
-            elif msg_type == "GREMessageType_ActionsAvailableReq":
-                logging.info("ActionsAvailableReq - player has priority")
-                self._pending_decision = "actions_available"
-                self._decision_context = {"type": "priority", "actions": message.get("actionsAvailableReq", {})}
-                state_changed = True # This is a key decision point
-            elif msg_type == "GREMessageType_PromptReq":
-                # Player must make a choice (modal spell, choose one, etc.)
-                prompt = message.get("promptReq", message.get("prompt", {}))
-                logging.info(f"PromptReq - player must choose: {prompt.get('promptType', 'unknown')}")
-                self._pending_decision = "prompt"
-                self._decision_context = {"type": "prompt", "prompt": prompt}
-                state_changed = True
-            elif msg_type == "GREMessageType_SelectTargetsReq":
-                # Player must select targets for a spell/ability
-                targets = message.get("selectTargetsReq", {})
-                logging.info(f"SelectTargetsReq - player must select targets")
-                self._pending_decision = "select_targets"
-                self._decision_context = {"type": "targeting", "targets": targets}
-                state_changed = True
-            elif msg_type == "GREMessageType_SelectNReq":
-                # Player must select N items (e.g., discard, sacrifice)
-                select_n = message.get("selectNReq", {})
-                logging.info(f"SelectNReq - player must select from options")
-                self._pending_decision = "select_n"
-                self._decision_context = {"type": "selection", "options": select_n}
-                state_changed = True
-            elif msg_type == "GREMessageType_DeclareAttackersReq":
-                # Player must declare attackers
-                logging.info("DeclareAttackersReq - player must declare attackers")
-                self._pending_decision = "declare_attackers"
-                self._decision_context = {"type": "combat", "phase": "attackers"}
-                state_changed = True
-            elif msg_type == "GREMessageType_DeclareBlockersReq":
-                # Player must declare blockers
-                logging.info("DeclareBlockersReq - player must declare blockers")
-                self._pending_decision = "declare_blockers"
-                self._decision_context = {"type": "combat", "phase": "blockers"}
-                state_changed = True
-            elif msg_type == "GREMessageType_MulliganReq":
-                # Player must decide on mulligan
-                logging.info("MulliganReq - mulligan decision required")
-                self._pending_decision = "mulligan"
-                self._decision_context = {"type": "mulligan"}
-                self.in_mulligan_phase = True
-                state_changed = True
-            elif msg_type == "GREMessageType_OrderDamageConfirmation":
-                # Player must order damage (multiple blockers)
-                logging.info("OrderDamageConfirmation - damage ordering required")
-                self._pending_decision = "order_damage"
-                self._decision_context = {"type": "combat", "phase": "damage_order"}
-                state_changed = True
-            elif msg_type == "GREMessageType_Annotation":
-                state_changed |= self._parse_annotations(message)
-
-        return state_changed
-
-    def _parse_game_state_message(self, message: dict) -> bool:
-        """
-        Parse the massive GameStateMessage.
-        This is the primary source of truth for the board state.
-        """
-        monitor = get_monitor()
-        with monitor.measure("mtga.parse_game_state_message"):
-            if "gameStateMessage" not in message:
-                return False
-
-            # Handle potential JSON string within the message
-            game_state_raw = message["gameStateMessage"]
-            game_state = None
-
-            if isinstance(game_state_raw, str):
-                try:
-                    # Clean up potential leading/trailing garbage characters if any
-                    clean_json = game_state_raw.strip()
-                    # Some logs have weird prefixes like "ClientToGREMessage "
-                    if "{" in clean_json:
-                        clean_json = clean_json[clean_json.find("{"):]
-
-                    game_state = json.loads(clean_json)
-                except json.JSONDecodeError as e:
-                    logging.warning(f"Failed to parse GameStateMessage JSON: {e}")
-                    return False
-            elif isinstance(game_state_raw, dict):
-                game_state = game_state_raw
-            else:
-                logging.warning(f"Unknown GameStateMessage format: {type(game_state_raw)}")
-                return False
-
-            if not game_state:
-                return False
-
-            logging.info(f"GameStateMessage received")
-            logging.info(f"Game State keys: {list(game_state.keys()) if game_state else 'empty'}")
-            state_changed = False
-
-            # Parse game stage (for mulligan detection)
-            if "gameInfo" in game_state:
-                game_info = game_state["gameInfo"]
-                old_stage = self.game_stage
-                self.game_stage = game_info.get("stage", self.game_stage)
-                if old_stage != self.game_stage:
-                    logging.info(f"🎮 Game stage changed: {old_stage} → {self.game_stage}")
-                    state_changed = True
-
-                    # Detect match end and save state
-                    if "GameStage_GameOver" in self.game_stage:
-                        logging.info("🏁 Match ended - saving match state as ended")
-                        # Note: log_offset not available here, will be updated in GameStateManager
-                        self._save_match_state(0, status="ended")
-
-                # P3 FIX: More robust mulligan phase detection
-                if "GameStage_Mulligan" in self.game_stage and not self.in_mulligan_phase:
-                    self.in_mulligan_phase = True
-                    logging.info("🎴 Mulligan phase detected via GameStage!")
-                    state_changed = True
-                elif "GameStage_Mulligan" not in self.game_stage and self.in_mulligan_phase:
-                    self.in_mulligan_phase = False
-                    logging.info("🎴 Mulligan phase ended via GameStage!")
-                    state_changed = True
-
-            # Handle deleted objects FIRST before processing new ones
-            if "diffDeletedInstanceIds" in game_state:
-                deleted_ids = game_state["diffDeletedInstanceIds"]
-                logging.debug(f"Removing {len(deleted_ids)} deleted objects")
-                for obj_id in deleted_ids:
-                    if obj_id in self.game_objects:
-                        # P0 Performance: Remove from zone cache before deleting
-                        obj = self.game_objects[obj_id]
-                        old_zone_id = obj.zone_id
-                        if old_zone_id in self._zone_objects:
-                            self._zone_objects[old_zone_id].discard(obj_id)
-                            # Clean up empty zone sets to save memory
-                            if not self._zone_objects[old_zone_id]:
-                                del self._zone_objects[old_zone_id]
-
-                        del self.game_objects[obj_id]
-                        state_changed = True
-
-            if "gameObjects" in game_state:
-                logging.info(f"Found gameObjects with {len(game_state['gameObjects'])} items")
-                state_changed |= self._parse_game_objects(game_state["gameObjects"])
-            else:
-                logging.info("No gameObjects in game state message")
-
-            if "zones" in game_state:
-                logging.info(f"Found zones - THIS IS WHERE CARDS ARE! {type(game_state['zones'])}")
-                state_changed |= self._parse_zones(game_state["zones"])
-            else:
-                logging.info("No zones in game state message")
-
-            if "annotations" in game_state:
-                logging.info(f"Found annotations with {len(game_state['annotations'])} items")
-                state_changed |= self._parse_annotations(game_state["annotations"])
-            if "players" in game_state:
-                logging.info(f"Found players with {len(game_state['players'])} items")
-                state_changed |= self._parse_players(game_state["players"])
-            else:
-                logging.info("No players in game state message")
-            if "turnInfo" in game_state:
-                logging.info(f"Found turnInfo: {game_state['turnInfo']}")
-
-                # Detect new match: if turn number goes from high to 1, it's a new game
-                new_turn = game_state['turnInfo'].get('turnNumber', 0)
-                if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
-                    logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
-                    self.reset_match_state()
-                # FIX: Detect ongoing match on startup (mid-match recovery)
-                # If we see turn > 1 but current_turn is 0 (initial state), we're joining mid-match
-                elif new_turn > 1 and self.current_turn == 0:
-                    logging.info(f"🎮 ONGOING MATCH DETECTED at Turn {new_turn} (mid-match startup)")
-                    # Don't call reset_match_state() as it would clear the state we're building
-                    # Just trigger the callback to notify the app
-                    self._trigger_game_callback("match_started")
-
-                state_changed |= self._parse_turn_info(game_state["turnInfo"])
-            else:
-                logging.info("No turnInfo in game state message")
-            return state_changed
-
-    def _parse_game_objects(self, game_objects: list) -> bool:
-        monitor = get_monitor()
-        with monitor.measure("mtga.parse_game_objects"):
-            state_changed = False
-            logging.info(f"Parsing {len(game_objects)} game objects")
-            return self._parse_game_objects_impl(game_objects)
-
-    def _parse_game_objects_impl(self, game_objects: list) -> bool:
-        state_changed = False
-        for obj_data in game_objects:
-            instance_id = obj_data.get("instanceId")
-            if not instance_id: continue
-
-            zone_id = obj_data.get("zoneId")
-            grp_id = obj_data.get("grpId")
-            owner_seat_id = obj_data.get("ownerSeatId")
-
-            # Skip objects without valid grpId (e.g., tokens, placeholder objects)
-            if not grp_id or grp_id == 0:
-                logging.debug(f"  Skipping GameObject with invalid grpId: instanceId={instance_id}, grpId={grp_id}")
-            # Parse new tactical fields
-            is_tapped = obj_data.get("isTapped", False)
-            is_attacking = obj_data.get("isAttacking", False)
-            summoning_sick = obj_data.get("summoningSickness", False)
-            counters = obj_data.get("counters", {})
-            attached_to = obj_data.get("attachedTo")
-            visibility = obj_data.get("visibility", "public")
-
-            # Extract power value (can be int or {'value': int})
-            power = obj_data.get("power")
-            if isinstance(power, dict):
-                power = power.get("value")
-
-            # Extract toughness value (can be int or {'value': int})
-            toughness = obj_data.get("toughness")
-            if isinstance(toughness, dict):
-                toughness = toughness.get("value")
-
-            logging.debug(f"  GameObject: instanceId={instance_id}, grpId={grp_id}, zoneId={zone_id}, ownerSeatId={owner_seat_id}, tapped={is_tapped}")
-
-            # CRITICAL FIX: Ensure player exists if we see their cards
-            # This handles cases where we join mid-match and missed the player definition
-            if owner_seat_id and owner_seat_id not in self.players:
-                logging.info(f"Inferred existence of Player {owner_seat_id} from object {instance_id}")
-                self.players[owner_seat_id] = PlayerState(seat_id=owner_seat_id)
-
-            # BUG FIX #11: Infer local_player_seat_id from visible hand cards
-            # If we can see a card with a real grpId in a hand zone, it must be our hand
-            # (opponent's hand cards are hidden/face-down with grpId=0)
-            # CRITICAL REFINEMENT: Only infer if visibility is private (not revealed/public)
-            if not self.local_player_seat_id and owner_seat_id and grp_id and grp_id != 0:
-                if visibility != "public":
-                    # Check if this card is in a hand zone
-                    zone_type = self.zone_id_to_type.get(zone_id, "")
-                    if "Hand" in zone_type:
-                        self.local_player_seat_id = owner_seat_id
-                        logging.info(f"BUG FIX #11: Inferred local_player_seat_id={owner_seat_id} from private hand card (grpId={grp_id})")
-
-            if instance_id not in self.game_objects:
-                self.game_objects[instance_id] = GameObject(
-                    instance_id=instance_id,
-                    grp_id=grp_id,
-                    zone_id=zone_id,
-                    owner_seat_id=owner_seat_id,
-                    is_tapped=is_tapped,
-                    is_attacking=is_attacking,
-                    summoning_sick=summoning_sick,
-                    counters=counters if isinstance(counters, dict) else {},
-                    attached_to=attached_to,
-                    visibility=visibility,
-                    base_power=power,
-                    base_toughness=toughness
-                )
-                # P0 Performance: Resolve card name and color once on creation
-                self._resolve_card_metadata(self.game_objects[instance_id])
-                self._update_object_zone(instance_id, None, zone_id)
-                logging.info(f"    -> Created new GameObject")
-                state_changed = True
-            else:
-                # Update existing object
-                game_obj = self.game_objects[instance_id]
-
-                # UPGRADE PLACEHOLDER: If we have a real grpId and the object was a placeholder (grpId=0)
-                if game_obj.grp_id == 0 and grp_id and grp_id != 0:
-                    logging.info(f"    -> Upgrading placeholder {instance_id} with real grpId {grp_id}")
-                    game_obj.grp_id = grp_id
-                    # P0 Performance: Resolve card name and color once on upgrade
-                    self._resolve_card_metadata(game_obj)
-                    state_changed = True
-
-                if zone_id is not None and game_obj.zone_id != zone_id:
-                    logging.info(f"    -> Zone changed from {game_obj.zone_id} to {zone_id}")
-
-                    # P0 Performance: Update zone cache when zone changes
-                    old_zone_id = game_obj.zone_id
-                    self._update_object_zone(instance_id, old_zone_id, zone_id)
-
-                    game_obj.zone_id = zone_id
-                    state_changed = True
-
-                # Update tactical state
-                if game_obj.is_tapped != is_tapped:
-                    game_obj.is_tapped = is_tapped
-                    state_changed = True
-
-                # Track combat state changes
-                if game_obj.is_attacking != is_attacking:
-                    game_obj.is_attacking = is_attacking
-                    if is_attacking:
-                        # Creature declared as attacker
-                        if instance_id not in self.game_history.current_attackers:
-                            self.game_history.current_attackers.append(instance_id)
-                            logging.info(f"⚔️ Creature {instance_id} declared as attacker")
-                    else:
-                        # Creature no longer attacking (combat ended or removed)
-                        if instance_id in self.game_history.current_attackers:
-                            self.game_history.current_attackers.remove(instance_id)
-                    state_changed = True
-
-                if game_obj.summoning_sick != summoning_sick:
-                    game_obj.summoning_sick = summoning_sick
-                    state_changed = True
-                if counters and game_obj.counters != counters:
-                    game_obj.counters = counters if isinstance(counters, dict) else {}
-                    state_changed = True
-                if attached_to and game_obj.attached_to != attached_to:
-                    game_obj.attached_to = attached_to
-                    state_changed = True
-                if power is not None and game_obj.base_power != power:
-                    logging.info(f"💪 Base Power change for {game_obj.name} ({instance_id}): {game_obj.base_power} -> {power}")
-                    game_obj.base_power = power
-                    state_changed = True
-                if toughness is not None and game_obj.base_toughness != toughness:
-                    logging.info(f"🛡️ Base Toughness change for {game_obj.name} ({instance_id}): {game_obj.base_toughness} -> {toughness}")
-                    game_obj.base_toughness = toughness
-                    state_changed = True
-
-        return state_changed
-
-
-
-    def _parse_zones(self, zones) -> bool:
-        """Parse the zones structure which contains cards in hand, battlefield, etc."""
-        state_changed = False
-
-        if not isinstance(zones, list):
-            logging.debug(f"Zones is not a list as expected. Type: {type(zones)}")
-            return False
-
-        for idx, zone_obj in enumerate(zones):
-            if not isinstance(zone_obj, dict):
-                continue
-
-            zone_type_str = zone_obj.get("type")  # e.g., "ZoneType_Hand"
-            zone_id = zone_obj.get("zoneId")
-            owner_seat_id = zone_obj.get("ownerSeatId")
-
-            # Update zone owner cache if provided
-            if zone_id and owner_seat_id:
-                self.zone_id_to_owner[zone_id] = owner_seat_id
-            
-            # Use cached owner if not provided in this update
-            if zone_id and not owner_seat_id:
-                owner_seat_id = self.zone_id_to_owner.get(zone_id)
-            
-            # BUG FIX #69: 'objectInstanceIds' can be omitted in differential updates.
-            # If it's omitted, it means the zone's cards DID NOT CHANGE.
-            # If it's an empty list [], it means the zone IS EMPTY.
-            # Previous logic incorrectly treated omission as empty, causing cards to disappear.
-            object_instance_ids = zone_obj.get("objectInstanceIds")
-
-            if zone_type_str and zone_id:
-                # Map zone type string to zone ID
-                if zone_type_str not in self.zone_type_to_ids or self.zone_type_to_ids[zone_type_str] != zone_id:
-                    logging.info(f"Zone mapping found: {zone_type_str} -> zoneId {zone_id} (owner: {owner_seat_id})")
-
-                self.zone_type_to_ids[zone_type_str] = zone_id
-                self.zone_id_to_type[zone_id] = zone_type_str
-                self.zone_id_to_enum[zone_id] = get_zone_type(zone_type_str)
-
-                # Update cards in this zone IF ids are provided
-                if object_instance_ids is not None:
-                    # P1: Use enum for visibility logic
-                    zone_enum = get_zone_type(zone_type_str)
-                    is_private_zone = zone_enum in (ZoneType.HAND, ZoneType.LIBRARY)
-
-                    for card_id in object_instance_ids:
-                        if card_id not in self.game_objects:
-                            # Create placeholder
-                            self.game_objects[card_id] = GameObject(
-                                instance_id=card_id,
-                                grp_id=0,
-                                zone_id=zone_id,
-                                owner_seat_id=owner_seat_id,
-                                name=f"Unknown Card {card_id}",
-                                visibility="private" if is_private_zone else "public"
-                            )
-                            self._update_object_zone(card_id, None, zone_id)
-                            state_changed = True
-
-                        card = self.game_objects[card_id]
-                        if card.zone_id != zone_id:
-                            logging.debug(f"Updating card {card_id} zone from {card.zone_id} to {zone_id} ({zone_type_str})")
-                            self._update_object_zone(card_id, card.zone_id, zone_id)
-                            card.zone_id = zone_id
-                            state_changed = True
-
-            elif zone_id:
-                logging.warning(f"Zone with ID {zone_id} has no type! Owner: {owner_seat_id}")
-
-            # Prune objects that are no longer in this zone (Ghost Card Fix)
-            # ONLY prune if we have a complete list of IDs (object_instance_ids is not None)
-            if zone_id and object_instance_ids is not None:
-                current_zone_ids = self._zone_objects.get(zone_id, set()).copy()
-                incoming_ids_set = set(object_instance_ids)
-                
-                for instance_id in current_zone_ids:
-                    if instance_id not in incoming_ids_set:
-                        obj = self.game_objects.get(instance_id)
-                        if obj and obj.zone_id == zone_id:
-                            logging.debug(f"👻 Ghost Busting: Removing object {instance_id} from zone {zone_id}")
-                            self._update_object_zone(instance_id, zone_id, -1)
-                            obj.zone_id = -1
-                            state_changed = True
-
-        return state_changed
-
-    def _parse_players(self, players: list) -> bool:
-        state_changed = False
-        for player_data in players:
-            seat_id = player_data.get("systemSeatNumber")
-            if not seat_id: continue
-
-            if seat_id not in self.players:
-                self.players[seat_id] = PlayerState(seat_id=seat_id)
-                state_changed = True
-
-            player = self.players[seat_id]
-
-            # Parse life total
-            if "lifeTotal" in player_data and player.life_total != player_data["lifeTotal"]:
-                new_life = player_data["lifeTotal"]
-                if new_life is not None:
-                    player.life_total = new_life
-                    state_changed = True
-
-            # Parse hand count
-            if "handCardCount" in player_data:
-                new_count = player_data["handCardCount"]
-                # Fix for 'NoneType' > 'int' error: Ensure count is an integer
-                if new_count is None:
-                    new_count = 0
-                
-                if player.hand_count != new_count:
-                    logging.info(f"Player {seat_id} hand count changed: {player.hand_count} -> {new_count}")
-                    player.hand_count = new_count
-                    state_changed = True
-
-            # Parse mana pool (e.g., {"W": 2, "U": 1, "G": 0})
-            if "manaPool" in player_data:
-                mana_pool = player_data["manaPool"]
-                if isinstance(mana_pool, dict) and mana_pool != player.mana_pool:
-                    player.mana_pool = mana_pool
-                    logging.debug(f"  Player {seat_id} mana pool: {mana_pool}")
-                    state_changed = True
-
-            # Parse energy counters
-            if "energy" in player_data and player.energy != player_data["energy"]:
-                player.energy = player_data["energy"]
-                logging.debug(f"  Player {seat_id} energy: {player.energy}")
-                state_changed = True
-
-        return state_changed
-
-    def _parse_turn_info(self, turn_info: dict) -> bool:
-        state_changed = False
-        if self.priority_player_seat != turn_info.get("priorityPlayer"):
-            self.priority_player_seat = turn_info.get("priorityPlayer")
-            state_changed = True
-
-        # Reset game history on new turn
-        new_turn = turn_info.get("turnNumber", 0)
-        # Fix for Bug #52: Ensure new_turn is an int
-        if new_turn is None:
-            new_turn = 0
-
-        if new_turn == 1 and self.current_turn is not None and self.current_turn > 1:
-            logging.info(f"🔄 NEW MATCH DETECTED (turn reset from {self.current_turn} to 1)")
-            self.reset_match_state()
-        # FIX: Detect ongoing match on startup (mid-match recovery)
-        # If we see turn > 1 but current_turn is 0 (initial state), we're joining mid-match
-        elif new_turn > 1 and self.current_turn == 0:
-            logging.info(f"🎮 ONGOING MATCH DETECTED at Turn {new_turn} (mid-match startup)")
-            # Don't call reset_match_state() as it would clear the state we're building
-            # Just trigger the callback to notify the app
-            self._trigger_game_callback("match_started")
-
-        if self.current_turn != new_turn:
-            self.current_turn = new_turn
-            self.game_history = GameHistory(turn_number=new_turn)
-            logging.info(f"🔄 New turn {new_turn} - resetting game history")
-            
-            # BUG FIX: Force clear mulligan phase if we are past turn 1
-            if new_turn > 1 and self.in_mulligan_phase:
-                logging.info(f"🛑 Force clearing stuck mulligan phase at turn {new_turn}")
-                self.in_mulligan_phase = False
-                
-            state_changed = True
-
-        # Clear combat state when exiting combat phases
-        new_phase = turn_info.get("phase", self.current_phase)
-        if self.current_phase != new_phase:
-            old_phase = self.current_phase
-            self.current_phase = new_phase
-
-            # Clear combat data when moving from combat to post-combat
-            if "Combat" in old_phase and "Combat" not in new_phase:
-                if self.game_history.current_attackers:
-                    logging.info(f"Combat ended - clearing {len(self.game_history.current_attackers)} attackers")
-                    self.game_history.current_attackers.clear()
-                    self.game_history.current_blockers.clear()
-                    self.game_history.combat_damage_assignments.clear()
-                    state_changed = True
-
-        self.active_player_seat = turn_info.get("activePlayer", self.active_player_seat)
-        return state_changed
-
-    def _parse_annotations(self, data) -> bool:
-        """
-        Parse annotation messages for zone transfers, damage, abilities, and identity updates.
-        Handles both 'message' dict (containing 'annotations' key) and direct list of annotations.
-        """
-        annotations_list = []
-        if isinstance(data, list):
-            annotations_list = data
-        elif isinstance(data, dict):
-            annotations_list = data.get("annotations", [])
-        
-        if not annotations_list:
-            return False
-
-        state_changed = False
-
-        for annotation in annotations_list:
-            if not isinstance(annotation, dict):
-                continue
-
-            ann_type = annotation.get("type", [])
-            affected_ids = annotation.get("affectedIds", [])
-            details = annotation.get("details", [])
-
-            # 1. ZONE TRANSFERS - THE CRITICAL ANNOTATION TYPE
-            if "AnnotationType_ZoneTransfer" in ann_type:
-                # Parse source/dest zones
-                zone_src = None
-                zone_dest = None
-                category = None
-
-                for detail in details:
-                    key = detail.get("key")
-                    if key == "zone_src":
-                        zone_src = detail.get("valueInt32", [None])[0]
-                    elif key == "zone_dest":
-                        zone_dest = detail.get("valueInt32", [None])[0]
-                    elif key == "category":
-                        category = detail.get("valueString", [None])[0]
-
-                # Update game objects with new zones
-                for instance_id in affected_ids:
-                    if instance_id in self.game_objects:
-                        obj = self.game_objects[instance_id]
-                        old_zone = obj.zone_id
-
-                        if zone_dest is not None and old_zone != zone_dest:
-                            obj.zone_id = zone_dest
-
-                            # P1: Get zone enums for fast comparisons
-                            zone_src_enum = self.zone_id_to_enum.get(zone_src, ZoneType.UNKNOWN)
-                            zone_dest_enum = self.zone_id_to_enum.get(zone_dest, ZoneType.UNKNOWN)
-
-                            # Update cache
-                            self._update_object_zone(instance_id, old_zone, zone_dest)
-                            state_changed = True
-
-                            # Get zone names for logging
-                            zone_src_name = self.zone_id_to_type.get(zone_src, f"Zone{zone_src}")
-                            zone_dest_name = self.zone_id_to_type.get(zone_dest, f"Zone{zone_dest}")
-
-                            # P1: Track game history events using enum comparisons (faster)
-                            if zone_dest_enum == ZoneType.BATTLEFIELD:
-                                # Card entered battlefield (played/put into play)
-                                self.game_history.cards_played_this_turn.append(obj)
-                                if hasattr(obj, 'card_types') and "CardType_Land" in str(obj.card_types):
-                                    self.game_history.lands_played_this_turn += 1
-
-                            if zone_dest_enum == ZoneType.GRAVEYARD and zone_src_enum == ZoneType.BATTLEFIELD:
-                                # Creature died
-                                card_name = getattr(obj, 'name', f"Card{instance_id}")
-                                self.game_history.died_this_turn.append(card_name)
-                                logging.debug(f"💀 {card_name} died this turn")
-
-                            logging.info(f"⚡ Zone transfer via Annotation: Card {instance_id} (grpId:{obj.grp_id}) "
-                                       f"{zone_src_name} → {zone_dest_name} ({category})")
-
-            # 2. Identity Discovery (grpId)
-            found_grp_id = None
-            for d in details:
-                key = str(d.get("key", "")).lower()
-                if key in ("grpid", "grpid", "gameobjectgrpid"):
-                    val_int = d.get("valueInt32", [])
-                    if val_int:
-                        found_grp_id = val_int[0]
-                        break
-
-            if found_grp_id and found_grp_id != 0:
-                for instance_id in affected_ids:
-                    if instance_id in self.game_objects:
-                        obj = self.game_objects[instance_id]
-                        if obj.grp_id == 0:
-                            logging.info(f"    -> Identified placeholder {instance_id} as card {found_grp_id} via annotation")
-                            obj.grp_id = found_grp_id
-                            self._resolve_card_metadata(obj)
-                            state_changed = True
-
-            # 3. Handle ObjectIdChanged (maintain tracking)
-            if 1 in ann_type or "AnnotationType_ObjectIdChanged" in ann_type:
-                detail_dict = {str(d.get("key")): d.get("valueInt32", [None])[0] for d in details if d.get("key")}
-                old_id = detail_dict.get("oldInstanceId")
-                new_id = detail_dict.get("newInstanceId")
-                if old_id and new_id and old_id in self.game_objects:
-                    logging.info(f"    -> Instance ID changed from {old_id} to {new_id} via annotation")
-                    obj = self.game_objects.pop(old_id)
-                    obj.instance_id = new_id
-                    self.game_objects[new_id] = obj
-                    # Update zone cache
-                    zone_id = obj.zone_id
-                    if zone_id in self._zone_objects:
-                        self._zone_objects[zone_id].discard(old_id)
-                        self._zone_objects[zone_id].add(new_id)
-                    state_changed = True
-        
-        return state_changed
-
-
-
-class JsonStreamParser:
-    """
-    Robust JSON stream parser that correctly handles braces within strings.
-
-    Uses a simple state machine to track:
-    - Whether we're inside a string
-    - Escape sequences within strings
-    - Actual JSON depth (ignoring braces in strings)
-    """
-
-    def __init__(self):
-        self.buffer: str = ""
-        self.depth: int = 0
-
-    def feed(self, line: str) -> Optional[str]:
-        """
-        Feed a line of text to the parser.
-
-        Returns:
-            Complete JSON string if a full object was detected, None otherwise.
-        """
-        # If we're not in a JSON object, look for the start
-        if self.depth == 0:
-            json_start = line.find('{')
-            if json_start == -1:
-                return None
-            line = line[json_start:]
-            self.buffer = ""
-
-        # Add line to buffer
-        self.buffer += line
-
-        # Update depth by parsing character by character
-        self.depth = self._calculate_depth(self.buffer)
-
-        # Detect corruption (more closing than opening)
-        if self.depth < 0:
-            logging.warning(f"JSON depth corruption detected (depth={self.depth}). Resetting parser.")
-            self.reset()
-            return None
-
-        # If we have a complete object, return it
-        if self.depth == 0 and self.buffer:
-            result = self.buffer
-            self.reset()
-            return result
-
-        return None
-
-    def _calculate_depth(self, text: str) -> int:
-        """
-        Calculate JSON depth while properly handling strings.
-
-        This state machine tracks:
-        - in_string: Whether we're inside a quoted string
-        - escaped: Whether the previous character was a backslash
-        - depth: Current brace nesting level
-
-        Args:
-            text: The text to analyze
-
-        Returns:
-            Current JSON depth (0 = complete object)
-        """
-        depth = 0
-        in_string = False
-        escaped = False
-
-        for char in text:
-            if escaped:
-                # Previous char was backslash, this char is escaped
-                escaped = False
-                continue
-
-            if char == '\\' and in_string:
-                # Start escape sequence
-                escaped = True
-                continue
-
-            if char == '"':
-                # Toggle string state
-                in_string = not in_string
-                continue
-
-            # Only count braces outside of strings
-            if not in_string:
-                if char == '{':
-                    depth += 1
-                elif char == '}':
-                    depth -= 1
-
-        return depth
-
-    def reset(self):
-        """Reset parser state."""
-        self.buffer = ""
-        self.depth = 0
-
-    def is_valid_json(self, text: str) -> bool:
-        """
-        Quick validation to check if text looks like valid JSON.
-
-        This provides early validation before attempting to parse.
-
-        Args:
-            text: Text to validate
-
-        Returns:
-            True if text appears to be valid JSON structure
-        """
-        if not text or not text.strip():
-            return False
-
-        trimmed = text.strip()
-
-        # Must start with { and end with }
-        if not (trimmed.startswith('{') and trimmed.endswith('}')):
-            return False
-
-        # Depth should be exactly 0 for complete object
-        return self._calculate_depth(trimmed) == 0
-
-
 class GameStateManager:
     def __init__(self, card_lookup: "ArenaCardDatabase"):
-        self.scanner = MatchScanner(card_lookup=card_lookup)
+        self.zone_manager = ZoneManager()
+        self.scanner = MatchScanner(card_lookup=card_lookup, zone_manager=self.zone_manager)
         self.card_lookup = card_lookup
+        self.gre_parser = GREParser(self.scanner, self.zone_manager, self.card_lookup)
 
-        # P3: Robust JSON stream parser (replaces simple brace counting)
         self._json_parser = JsonStreamParser()
-
-        # P2: Consolidated draft event parser
         self.draft_parser = DraftEventParser()
-
-        # P2 Performance: BoardState caching
-        self._cached_board_state: Optional[BoardState] = None
+        self._cached_game_state: Optional[GameState] = None
         self._board_state_dirty: bool = True
-        self._last_board_state_hash: int = 0
+        self._last_game_state_hash: int = 0
 
     def register_draft_callback(self, event_type: str, callback: Callable):
         """Register a callback for a specific draft event type."""
@@ -1855,28 +913,19 @@ class GameStateManager:
         """
         self._board_state_dirty = True
 
-    def _compute_state_hash(self, board_state: BoardState) -> int:
+    def _compute_state_hash(self, game_state: GameState) -> int:
         """
-        Quick hash to detect meaningful changes in board state.
-
-        P2 Performance: This hash allows us to skip updates when the state
-        hasn't actually changed, even if marked dirty.
-
-        Args:
-            board_state: The board state to hash
-
-        Returns:
-            Integer hash representing the current state
+        Quick hash to detect meaningful changes in game state.
         """
         return hash((
-            board_state.your_life,
-            board_state.opponent_life,
-            board_state.current_turn,
-            board_state.current_phase,
-            len(board_state.your_battlefield),
-            len(board_state.opponent_battlefield),
-            board_state.your_hand_count,
-            board_state.has_priority,
+            game_state.local_player.life_total,
+            game_state.opponent.life_total,
+            game_state.turn_number,
+            game_state.phase,
+            len(game_state.local_battlefield),
+            len(game_state.opponent_battlefield),
+            game_state.local_player.hand_size,
+            game_state.local_player.has_priority,
         ))
 
     def get_pending_decision(self) -> Optional[tuple]:
@@ -2044,99 +1093,66 @@ class GameStateManager:
         return False
 
     def parse_log_line(self, line: str) -> bool:
-        logging.debug(f"Full log line received by GameStateManager: {line}")
-
-        # P1 Performance: Only parse timestamp for lines that trigger game state changes
-        # This reduces unnecessary datetime.strptime() calls from ~1000s/game to ~100s/game
-        # Timestamp is only used for freshness checks in app.py (30-second stale event detection)
         if "greToClientEvent" in line or "GREMessageType" in line or "gameStateMessage" in line:
             self.scanner.parse_timestamp(line)
 
-        # P2: Consolidated draft event detection
-        # Use DraftEventParser to handle all draft-related log lines
         draft_event = self.draft_parser.parse(line)
         if draft_event is not None:
-            # Draft event was detected and callbacks were triggered
-            return False  # Draft events don't change game state
+            return False
 
-        # P3: Use robust JSON stream parser
         json_to_parse = self._json_parser.feed(line)
-
-        # If no complete JSON object yet, return
         if json_to_parse is None:
             return False
 
-        # P3: Early validation before attempting to parse
         if not self._json_parser.is_valid_json(json_to_parse):
-            logging.warning(f"Invalid JSON structure detected. Skipping malformed content: {json_to_parse[:200]}...")
+            logging.warning(f"Invalid JSON structure detected: {json_to_parse[:200]}...")
             return False
 
-        # Try to parse the complete JSON object
         try:
             parsed_data = json.loads(json_to_parse)
-
-            # Parse deck submission (but don't return - let GRE event processing continue)
-            # This is important because GRE event processing sets local_player_seat_id
             self._parse_deck_submission(parsed_data)
-
-            # Parse UX events (but don't return - let GRE event processing continue)
             self._parse_ux_event(parsed_data)
-
-            # Original GRE event parsing (this sets local_player_seat_id from systemSeatIds)
             gre_event_data = self._find_gre_event(parsed_data)
-
             if gre_event_data:
-                logging.debug("Successfully found and parsed GreToClientEvent JSON.")
-                state_changed = self.scanner.parse_gre_to_client_event(gre_event_data)
-                # P2 Performance: Mark board state dirty when GRE event changes state
+                state_changed = self.gre_parser.parse_gre_to_client_event(gre_event_data)
                 if state_changed:
                     self._mark_board_state_dirty()
                 return state_changed
-            else:
-                logging.debug("Parsed JSON but 'greToClientEvent' not found within the object.")
-                return False
+            return False
         except json.JSONDecodeError as e:
-            logging.warning(f"JSON parsing failed despite validation. Error: {e}. Content: {json_to_parse[:200]}...")
+            logging.warning(f"JSON parsing failed: {e}. Content: {json_to_parse[:200]}...")
             return False
 
-        return False
-
-    def get_current_board_state(self) -> Optional[BoardState]:
+    def get_current_game_state(self) -> Optional[GameState]:
         """
-        Get current board state with caching.
-
-        P2 Performance: Uses dirty flag to avoid rebuilding board state when nothing changed.
-        If the state hasn't changed since last call, returns cached copy.
+        Get current game state with caching.
         """
         monitor = get_monitor()
-        with monitor.measure("mtga.get_current_board_state"):
-            # If not dirty and we have a cached state, return it
-            if not self._board_state_dirty and self._cached_board_state is not None:
-                logging.debug("PERFORMANCE: Returning cached board state (no changes detected)")
-                return self._cached_board_state
+        with monitor.measure("mtga.get_current_game_state"):
+            if not self._board_state_dirty and self._cached_game_state is not None:
+                return self._cached_game_state
 
-            # Build new board state
             board_state = self._build_board_state()
 
             if board_state is None:
-                # Can't build state yet (missing player data, etc.)
                 return None
 
-            # Compute hash to detect if state actually changed
-            new_hash = self._compute_state_hash(board_state)
+            game_state = BoardStateAdapter.to_game_state(board_state)
 
-            if new_hash == self._last_board_state_hash and self._cached_board_state is not None:
-                # State hash hasn't changed - return cached version
-                logging.debug("PERFORMANCE: State hash unchanged, returning cached board state")
+            if game_state is None:
+                return None
+
+            new_hash = self._compute_state_hash(game_state)
+
+            if new_hash == self._last_game_state_hash and self._cached_game_state is not None:
                 self._board_state_dirty = False
-                return self._cached_board_state
+                return self._cached_game_state
 
-            # State actually changed - cache it
-            self._cached_board_state = board_state
+            self._cached_game_state = game_state
             self._board_state_dirty = False
-            self._last_board_state_hash = new_hash
+            self._last_game_state_hash = new_hash
 
-            return board_state
+            return game_state
 
     def _build_board_state(self) -> Optional[BoardState]:
         """
@@ -2223,20 +1239,13 @@ class GameStateManager:
         # P1: Helper function to process objects in a zone using enum comparisons (faster)
         def process_zone(zone_type_enum: ZoneType, owner_filter: Optional[int] = None):
             """Get all objects in a specific zone type, optionally filtered by owner."""
-            # P1: Find all zone IDs that match this zone type using enum equality (faster than string substring)
-            zone_ids = [zid for zid, zt in self.scanner.zone_id_to_enum.items() if zt == zone_type_enum]
-
+            zone_ids = [zid for zid, zt in self.zone_manager.zone_id_to_enum.items() if zt == zone_type_enum]
             objects = []
             for zone_id in zone_ids:
-                if zone_id in self.scanner._zone_objects:
-                    for instance_id in self.scanner._zone_objects[zone_id]:
-                        obj = self.scanner.game_objects.get(instance_id)
-                        if obj:
-                            # Filter by owner if specified
-                            if owner_filter is None or obj.owner_seat_id == owner_filter:
-                                objects.append(obj)
-                                zone_name = self.scanner.zone_id_to_type.get(zone_id, f"Zone{zone_id}")
-                                logging.debug(f"Card {obj.grp_id} ({obj.name}), color={obj.color_identity}, zone={zone_id} ({zone_name}), owner={obj.owner_seat_id}")
+                for instance_id in self.zone_manager.get_zone_contents(zone_id):
+                    obj = self.scanner.game_objects.get(instance_id)
+                    if obj and (owner_filter is None or obj.owner_seat_id == owner_filter):
+                        objects.append(obj)
             return objects
 
         # P1: Process each zone type efficiently using enum comparisons
