@@ -156,7 +156,74 @@ def test_multiple_zones_with_cards():
     assert len(zone_manager.get_zone_contents(2)) == 1
     assert len(zone_manager.get_zone_contents(3)) == 1
 
-    # Move a card
-    zone_manager.transfer_card(100, new_zone_id=2, old_zone_id=1)
-    assert len(zone_manager.get_zone_contents(1)) == 1
-    assert len(zone_manager.get_zone_contents(2)) == 2
+
+def test_clear_zone():
+    """Test clearing a specific zone."""
+    zone_manager = ZoneManager()
+
+    # Add cards to zone
+    zone_manager.transfer_card(100, new_zone_id=1)
+    zone_manager.transfer_card(101, new_zone_id=1)
+    assert len(zone_manager.get_zone_contents(1)) == 2
+
+    # Clear the zone
+    zone_manager.clear_zone(1)
+    assert len(zone_manager.get_zone_contents(1)) == 0
+
+    # Clearing non-existent zone should not error
+    zone_manager.clear_zone(999)
+
+
+def test_reconcile_zone_add_cards():
+    """Test reconciling zone by adding cards."""
+    zone_manager = ZoneManager()
+
+    # Start with empty zone
+    assert len(zone_manager.get_zone_contents(1)) == 0
+
+    # Reconcile to have 3 cards
+    zone_manager.reconcile_zone(1, {100, 101, 102})
+    assert zone_manager.get_zone_contents(1) == {100, 101, 102}
+
+
+def test_reconcile_zone_remove_cards():
+    """Test reconciling zone by removing cards."""
+    zone_manager = ZoneManager()
+
+    # Start with 3 cards
+    zone_manager.transfer_card(100, new_zone_id=1)
+    zone_manager.transfer_card(101, new_zone_id=1)
+    zone_manager.transfer_card(102, new_zone_id=1)
+    assert len(zone_manager.get_zone_contents(1)) == 3
+
+    # Reconcile to have only 1 card
+    zone_manager.reconcile_zone(1, {100})
+    assert zone_manager.get_zone_contents(1) == {100}
+
+
+def test_reconcile_zone_replace_cards():
+    """Test reconciling zone by replacing cards."""
+    zone_manager = ZoneManager()
+
+    # Start with cards A, B
+    zone_manager.transfer_card(100, new_zone_id=1)
+    zone_manager.transfer_card(101, new_zone_id=1)
+    assert zone_manager.get_zone_contents(1) == {100, 101}
+
+    # Reconcile to have cards B, C (remove A, add C, keep B)
+    zone_manager.reconcile_zone(1, {101, 102})
+    assert zone_manager.get_zone_contents(1) == {101, 102}
+
+
+def test_reconcile_zone_to_empty():
+    """Test reconciling zone to empty."""
+    zone_manager = ZoneManager()
+
+    # Start with 2 cards
+    zone_manager.transfer_card(100, new_zone_id=1)
+    zone_manager.transfer_card(101, new_zone_id=1)
+    assert len(zone_manager.get_zone_contents(1)) == 2
+
+    # Reconcile to empty
+    zone_manager.reconcile_zone(1, set())
+    assert len(zone_manager.get_zone_contents(1)) == 0

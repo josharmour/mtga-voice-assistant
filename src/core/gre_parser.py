@@ -162,6 +162,13 @@ class GREParser:
         return state_changed
 
     def _parse_zones(self, zones) -> bool:
+        """
+        Parse zone information from game state.
+
+        CRITICAL: Zones are AUTHORITATIVE - when a zone is reported,
+        we reconcile it to exactly match the reported contents.
+        Missing objectInstanceIds is treated as an empty zone.
+        """
         state_changed = False
         for zone_obj in zones:
             if not isinstance(zone_obj, dict): continue
@@ -173,25 +180,39 @@ class GREParser:
             if zone_id and zone_type_str:
                 self.zone_manager.update_zone_metadata(zone_id, zone_type_str, owner_seat_id)
 
+            # CRITICAL FIX: Treat missing objectInstanceIds as empty list
+            # Zone reports are authoritative - if a zone is reported, we must reconcile it
             object_instance_ids = zone_obj.get("objectInstanceIds")
-            if object_instance_ids is not None:
-                for card_id in object_instance_ids:
-                    if card_id not in self.scanner.game_objects:
-                        self.scanner.game_objects[card_id] = GameObject(
-                            instance_id=card_id,
-                            grp_id=0,
-                            zone_id=zone_id,
-                            owner_seat_id=owner_seat_id,
-                            name=f"Unknown Card {card_id}"
-                        )
-                        self.zone_manager.transfer_card(card_id, zone_id)
+            if object_instance_ids is None:
+                object_instance_ids = []
+
+            # Create GameObject entries for any cards we haven't seen before
+            for card_id in object_instance_ids:
+                if card_id not in self.scanner.game_objects:
+                    self.scanner.game_objects[card_id] = GameObject(
+                        instance_id=card_id,
+                        grp_id=0,
+                        zone_id=zone_id,
+                        owner_seat_id=owner_seat_id,
+                        name=f"Unknown Card {card_id}"
+                    )
+                    state_changed = True
+                else:
+                    # Update zone_id in GameObject if it changed
+                    card = self.scanner.game_objects[card_id]
+                    if card.zone_id != zone_id:
+                        card.zone_id = zone_id
                         state_changed = True
-                    else:
-                        card = self.scanner.game_objects[card_id]
-                        if card.zone_id != zone_id:
-                            self.zone_manager.transfer_card(card_id, zone_id, card.zone_id)
-                            card.zone_id = zone_id
-                            state_changed = True
+
+            # CRITICAL FIX: Reconcile zone contents authoritatively
+            # This ensures the zone manager exactly matches what MTGA reported
+            old_contents = self.zone_manager.get_zone_contents(zone_id)
+            new_contents = set(object_instance_ids)
+
+            if old_contents != new_contents:
+                self.zone_manager.reconcile_zone(zone_id, new_contents)
+                state_changed = True
+
         return state_changed
 
     def _parse_players(self, players: list) -> bool:

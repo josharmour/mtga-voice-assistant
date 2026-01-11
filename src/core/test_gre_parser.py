@@ -530,3 +530,91 @@ def test_should_clear_mana_on_phase_change(gre_parser):
 
     # Non-major phases should not trigger clearing
     assert gre_parser._should_clear_mana_on_phase_change("Phase_Unknown", "Phase_Main1") == False
+
+
+def test_parse_zones_missing_object_instance_ids(gre_parser, mock_scanner, zone_manager):
+    """Test parsing zones when objectInstanceIds is missing (should treat as empty)."""
+    # First, add cards to zone 1
+    mock_scanner.game_objects[100] = GameObject(
+        instance_id=100,
+        grp_id=1000,
+        zone_id=1,
+        owner_seat_id=1
+    )
+    mock_scanner.game_objects[101] = GameObject(
+        instance_id=101,
+        grp_id=1001,
+        zone_id=1,
+        owner_seat_id=1
+    )
+    zone_manager.transfer_card(100, new_zone_id=1)
+    zone_manager.transfer_card(101, new_zone_id=1)
+    assert len(zone_manager.get_zone_contents(1)) == 2
+
+    # Now parse a zone update WITHOUT objectInstanceIds (simulates MTGA bug)
+    event_data = {
+        "greToClientEvent": {
+            "type": "SomeEvent",
+            "greToClientMessages": [
+                {
+                    "type": "GREMessageType_GameStateMessage",
+                    "gameStateMessage": {
+                        "zones": [
+                            {
+                                "zoneId": 1,
+                                "type": "ZoneType_Hand",
+                                "ownerSeatId": 1
+                                # NOTE: objectInstanceIds is MISSING
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    result = gre_parser.parse_gre_to_client_event(event_data)
+
+    assert result is True
+    # Zone should be reconciled to empty (missing objectInstanceIds treated as [])
+    assert len(zone_manager.get_zone_contents(1)) == 0
+
+
+def test_parse_zones_reconcile_removes_old_cards(gre_parser, mock_scanner, zone_manager):
+    """Test that zone reconciliation removes cards no longer in the zone."""
+    # Start with 3 cards in zone 1
+    for card_id in [100, 101, 102]:
+        mock_scanner.game_objects[card_id] = GameObject(
+            instance_id=card_id,
+            grp_id=1000 + card_id,
+            zone_id=1,
+            owner_seat_id=1
+        )
+        zone_manager.transfer_card(card_id, new_zone_id=1)
+    assert zone_manager.get_zone_contents(1) == {100, 101, 102}
+
+    # Now parse a zone update with only 1 card (101)
+    event_data = {
+        "greToClientEvent": {
+            "type": "SomeEvent",
+            "greToClientMessages": [
+                {
+                    "type": "GREMessageType_GameStateMessage",
+                    "gameStateMessage": {
+                        "zones": [
+                            {
+                                "zoneId": 1,
+                                "type": "ZoneType_Hand",
+                                "ownerSeatId": 1,
+                                "objectInstanceIds": [101]  # Only card 101 remains
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    result = gre_parser.parse_gre_to_client_event(event_data)
+
+    assert result is True
+    # Zone should be reconciled - only card 101 remains
+    assert zone_manager.get_zone_contents(1) == {101}

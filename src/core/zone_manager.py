@@ -30,6 +30,46 @@ class ZoneManager:
         self._zone_objects.clear()
         logging.info("ZoneManager cleared for new match.")
 
+    def clear_zone(self, zone_id: int):
+        """
+        Clear all cards from a specific zone.
+        Used when a zone is explicitly reported as empty.
+        """
+        if zone_id in self._zone_objects:
+            del self._zone_objects[zone_id]
+            logging.debug(f"Zone {zone_id} cleared")
+
+    def reconcile_zone(self, zone_id: int, card_ids: Set[int]):
+        """
+        Reconcile a zone to exactly match the provided set of card IDs.
+        This is the authoritative zone update - any cards not in card_ids
+        are removed, and any new cards are added.
+
+        Args:
+            zone_id: The zone to reconcile
+            card_ids: The complete set of instance IDs that should be in this zone
+        """
+        old_cards = self._zone_objects.get(zone_id, set())
+        new_cards = card_ids
+
+        # Find differences
+        removed_cards = old_cards - new_cards
+        added_cards = new_cards - old_cards
+
+        if removed_cards or added_cards:
+            # Update the zone
+            if new_cards:
+                self._zone_objects[zone_id] = set(new_cards)
+            else:
+                # Zone is now empty
+                if zone_id in self._zone_objects:
+                    del self._zone_objects[zone_id]
+
+            if removed_cards:
+                logging.debug(f"Zone {zone_id}: removed {len(removed_cards)} cards: {removed_cards}")
+            if added_cards:
+                logging.debug(f"Zone {zone_id}: added {len(added_cards)} cards: {added_cards}")
+
     def update_zone_metadata(self, zone_id: int, zone_type_str: str, owner_seat_id: Optional[int] = None):
         """
         Update metadata for a given zone (type, owner).
