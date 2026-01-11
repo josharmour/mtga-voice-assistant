@@ -127,6 +127,19 @@ class GREParser:
 
             # Update existing object
             game_obj = self.scanner.game_objects[instance_id]
+
+            # CRITICAL FIX: Upgrade placeholder with real grpId
+            # When cards are first seen in zones, they're created as placeholders with grp_id=0
+            # Later gameObjects messages provide the real grp_id - we must upgrade them here
+            grp_id = obj_data.get("grpId")
+            if game_obj.grp_id == 0 and grp_id and grp_id != 0:
+                logging.info(f"    -> Upgrading placeholder {instance_id} with real grpId {grp_id}")
+                game_obj.grp_id = grp_id
+                # Resolve card name and metadata now that we have the real grpId
+                self.scanner._resolve_card_metadata(game_obj)
+                state_changed = True
+
+            # Update zone if changed
             if obj_data.get("zoneId") is not None and game_obj.zone_id != obj_data.get("zoneId"):
                 self.zone_manager.transfer_card(instance_id, obj_data.get("zoneId"), game_obj.zone_id)
                 game_obj.zone_id = obj_data.get("zoneId")
