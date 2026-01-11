@@ -1247,6 +1247,20 @@ class GameStateManager:
 
             return game_state
 
+    def get_current_board_state(self) -> Optional[BoardState]:
+        """
+        Get current board state (legacy BoardState model).
+
+        This method is maintained for backward compatibility with tools
+        and debug interfaces that expect the legacy BoardState structure.
+        For new code, prefer get_current_game_state() which returns the
+        cleaner domain model.
+
+        Returns:
+            BoardState: The current board state, or None if no active match
+        """
+        return self._build_board_state()
+
     def _build_board_state(self) -> Optional[BoardState]:
         """
         Actually build the board state (existing logic).
