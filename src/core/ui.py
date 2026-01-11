@@ -2251,12 +2251,22 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
     def on_closing(self):
         """Handle window close event."""
         try:
+            # Save window geometry preferences
             if self.root and self.prefs:
                 self.prefs.window_geometry = self.root.geometry()
                 if self.deck_window and self.deck_window.winfo_exists(): self.prefs.deck_window_geometry = self.deck_window.geometry()
                 if self.board_window and self.board_window.winfo_exists(): self.prefs.board_window_geometry = self.board_window.geometry()
                 if self.log_window and self.log_window.winfo_exists(): self.prefs.log_window_geometry = self.log_window.geometry()
                 self.prefs.save()
+
+            # Shutdown TTS worker process
+            if hasattr(self, 'tts') and self.tts:
+                try:
+                    self.tts.shutdown()
+                except Exception as e:
+                    logging.error(f"Error shutting down TTS: {e}")
+
+            # Destroy the window
             self.root.destroy()
         except Exception as e:
             logging.error(f"Error during window close: {e}")

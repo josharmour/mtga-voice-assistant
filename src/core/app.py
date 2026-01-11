@@ -833,6 +833,27 @@ class CLIVoiceAdvisor:
 
             self.tk_root.mainloop()
 
+            # Cleanup after mainloop exits
+            logging.info("Main loop exited, cleaning up...")
+            try:
+                # Unregister keyboard hotkey
+                try:
+                    import keyboard
+                    keyboard.unhook_all()
+                    logging.info("Keyboard hotkeys unregistered")
+                except:
+                    pass
+
+                # Shutdown TTS if it exists
+                if self.tts:
+                    try:
+                        self.tts.shutdown()
+                        logging.info("TTS shut down")
+                    except Exception as e:
+                        logging.error(f"Error shutting down TTS: {e}")
+            except Exception as e:
+                logging.error(f"Error during cleanup: {e}")
+
         else:
             # CLI mode
             print(f"Listening to log: {self.log_path}")
