@@ -446,3 +446,87 @@ def test_parse_game_state_message_invalid_json(gre_parser):
     result = gre_parser.parse_gre_to_client_event(event_data)
 
     assert result is False
+
+
+def test_parse_mana_pool_list_format(gre_parser):
+    """Test parsing mana pool in list format."""
+    mana_data = [
+        {"color": ["ManaColor_Red"], "count": 2},
+        {"color": ["ManaColor_Green"], "count": 1},
+        {"color": ["ManaColor_Blue"], "count": 3}
+    ]
+
+    result = gre_parser._parse_mana_pool(mana_data)
+
+    assert result == {"R": 2, "G": 1, "U": 3}
+
+
+def test_parse_mana_pool_dict_format(gre_parser):
+    """Test parsing mana pool in dict format."""
+    mana_data = {
+        "Red": 2,
+        "White": 1,
+        "Colorless": 3
+    }
+
+    result = gre_parser._parse_mana_pool(mana_data)
+
+    assert result == {"R": 2, "W": 1, "C": 3}
+
+
+def test_parse_players_with_mana_pool(gre_parser, mock_scanner):
+    """Test parsing players with mana pool data."""
+    players_data = [
+        {
+            "systemSeatNumber": 1,
+            "lifeTotal": 20,
+            "pendingMana": [
+                {"color": ["ManaColor_Red"], "count": 2},
+                {"color": ["ManaColor_Green"], "count": 1}
+            ]
+        }
+    ]
+
+    result = gre_parser._parse_players(players_data)
+
+    assert result == True
+    assert 1 in mock_scanner.players
+    assert mock_scanner.players[1].mana_pool == {"R": 2, "G": 1}
+
+
+def test_mana_pool_cleared_on_phase_change(gre_parser, mock_scanner):
+    """Test that mana pool is cleared on major phase changes."""
+    from src.core.legacy_models import PlayerState
+
+    # Setup initial state
+    mock_scanner.current_phase = "Phase_Main1"
+    mock_scanner.players[1] = PlayerState(seat_id=1, mana_pool={"R": 2, "G": 1})
+    mock_scanner.players[2] = PlayerState(seat_id=2, mana_pool={"U": 3})
+
+    # Simulate phase change to combat
+    turn_info = {
+        "turnNumber": 1,
+        "phase": "Phase_Combat",
+        "activePlayer": 1,
+        "priorityPlayer": 1
+    }
+
+    result = gre_parser._parse_turn_info(turn_info)
+
+    assert result == True
+    assert mock_scanner.current_phase == "Phase_Combat"
+    assert mock_scanner.players[1].mana_pool == {}
+    assert mock_scanner.players[2].mana_pool == {}
+
+
+def test_should_clear_mana_on_phase_change(gre_parser):
+    """Test the mana clearing logic."""
+    # Major phase transitions should clear mana
+    assert gre_parser._should_clear_mana_on_phase_change("Phase_Main1", "Phase_Combat") == True
+    assert gre_parser._should_clear_mana_on_phase_change("Phase_Combat", "Phase_Main2") == True
+
+    # Same phase should not clear mana
+    assert gre_parser._should_clear_mana_on_phase_change("Phase_Main1", "Phase_Main1") == False
+
+    # Non-major phases should not trigger clearing
+    assert gre_parser._should_clear_mana_on_phase_change("Phase_Unknown", "Phase_Main1") == False

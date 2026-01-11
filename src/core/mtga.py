@@ -806,14 +806,18 @@ class MatchScanner:
         if not game_obj.name or game_obj.name.startswith("Unknown Card"):
             game_obj.name = self.card_lookup.get_card_name(game_obj.grp_id)
 
-        # Resolve color identity if not already set
-        if not game_obj.color_identity:
+        # Resolve color identity and type_line if not already set
+        # CRITICAL FIX: type_line is required for land detection!
+        if not game_obj.color_identity or not game_obj.type_line:
             try:
                 card_data = self.card_lookup.get_card_data(game_obj.grp_id)
                 if card_data:
-                    game_obj.color_identity = card_data.get("color_identity", "")
+                    if not game_obj.color_identity:
+                        game_obj.color_identity = card_data.get("color_identity", "")
+                    if not game_obj.type_line:
+                        game_obj.type_line = card_data.get("type_line", "")
             except Exception as e:
-                logging.debug(f"Could not fetch color for {game_obj.grp_id}: {e}")
+                logging.debug(f"Could not fetch metadata for {game_obj.grp_id}: {e}")
 
 
 class JsonStreamParser:
@@ -1314,7 +1318,7 @@ class GameStateManager:
         for obj_id, obj in self.scanner.game_objects.items():
             logging.debug(f"  Object {obj_id}: grpId={obj.grp_id}, zoneId={obj.zone_id}, owner={obj.owner_seat_id}")
 
-        # P0 Performance: Card names/colors are now resolved once on object creation.
+        # P0 Performance: Card names/colors/type_line are now resolved once on object creation.
         # This minimal fallback handles only edge cases (e.g., objects created before card_lookup was available).
         fallback_count = 0
         for obj in self.scanner.game_objects.values():
@@ -1327,15 +1331,19 @@ class GameStateManager:
                     fallback_count += 1
                     logging.debug(f"Fallback resolution success for {obj.grp_id}: {obj.name}")
 
-            if obj.grp_id != 0 and not obj.color_identity:
+            # CRITICAL FIX: Also populate type_line and color_identity in fallback
+            if obj.grp_id != 0 and (not obj.color_identity or not obj.type_line):
                 try:
                     card_data = self.card_lookup.get_card_data(obj.grp_id)
                     if card_data:
-                        obj.color_identity = card_data.get("color_identity", "")
-                        # We don't count color updates as "fallback resolution needed" warning worthy
+                        if not obj.color_identity:
+                            obj.color_identity = card_data.get("color_identity", "")
+                        if not obj.type_line:
+                            obj.type_line = card_data.get("type_line", "")
+                        # We don't count color/type_line updates as "fallback resolution needed" warning worthy
                         # as they are less critical than names
                 except Exception as e:
-                    logging.debug(f"Could not fetch color for {obj.grp_id}: {e}")
+                    logging.debug(f"Could not fetch metadata for {obj.grp_id}: {e}")
 
         if fallback_count > 0:
             logging.info(f"⚠️ Fallback resolution needed for {fallback_count} objects (should be rare)")

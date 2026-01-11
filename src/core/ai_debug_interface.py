@@ -116,12 +116,18 @@ class AIDebugInterface:
             return {"status": "no_ui"}
 
         try:
+            # Check for TTS on the app object (not the UI object)
+            # TTS is stored in app.tts, not gui.tts
+            tts_enabled = False
+            if self.app and hasattr(self.app, 'tts'):
+                tts_enabled = self.app.tts is not None
+
             return {
                 "mode": "gui" if self.ui else "cli",
                 "preferences": {
                     "ai_provider": self.ui.prefs.model_provider if hasattr(self.ui, 'prefs') and self.ui.prefs else None,
                     "ai_model": self.ui.prefs.current_model if hasattr(self.ui, 'prefs') and self.ui.prefs else None,
-                    "voice_enabled": hasattr(self.ui, 'tts') and self.ui.tts is not None
+                    "voice_enabled": tts_enabled
                 },
                 "recent_messages": self._get_recent_ui_messages() if hasattr(self.ui, 'messages_text') else [],
                 "settings_visible": getattr(self.ui, '_settings_visible', False) if self.ui else False
