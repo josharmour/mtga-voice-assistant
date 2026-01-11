@@ -87,9 +87,10 @@ class DeckBuilderV2:
 
     BASIC_LANDS = {"Plains": "W", "Island": "U", "Swamp": "B", "Mountain": "R", "Forest": "G"}
 
-    def __init__(self, db_path: Path = Path("data/card_stats.db")):
+    def __init__(self, db_path: Path = Path("data/card_stats.db"), arena_db=None):
         """Initialize deck builder with card stats database"""
         self.db_path = db_path
+        self.arena_db = arena_db
         self._local = threading.local()
 
     def _get_connection(self):
@@ -113,13 +114,25 @@ class DeckBuilderV2:
 
             row = cursor.fetchone()
             if row:
-                return CardRating(
+                rating = CardRating(
                     name=row['card_name'],
                     color=row['color'] or "",
                     rarity=row['rarity'] or "",
                     gih_win_rate=row['gih_win_rate'] or 0.0,
                     avg_taken_at=row['avg_taken_at'] or 99.0,
                 )
+                
+                # Use ArenaCardDatabase to fill in missing gaps (color, cmc, type)
+                if self.arena_db:
+                    # Lookup by name (note: name might slightly differ, e.g. // cards)
+                    arena_data = self.arena_db.get_card_by_name(card_name)
+                    if arena_data:
+                        if not rating.color:
+                            rating.color = arena_data.get("colors", "")
+                        rating.cmc = arena_data.get("cmc", 0)
+                        rating.is_creature = "Creature" in arena_data.get("type_line", "")
+                
+                return rating
             return None
         except Exception as e:
             logger.error(f"Error getting card info for {card_name}: {e}")

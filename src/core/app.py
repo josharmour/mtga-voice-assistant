@@ -12,6 +12,7 @@ import time
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
+from src.cognitive import get_synergy_graph
 
 import requests
 
@@ -227,10 +228,28 @@ class CLIVoiceAdvisor:
 
     # List of voice IDs for internal use
     AVAILABLE_VOICES = list(VOICE_DISPLAY_NAMES.keys())
-
+    """
+    Main application controller.
+    """
+    
+    # Bark voices (legacy, kept for backwards compatibility)
     BARK_VOICES = []
 
+    def _warmup_synergy_graph(self):
+        """Load synergy graph in background to prevent UI freeze on first query."""
+        try:
+            get_synergy_graph()
+            logging.info("Synergy graph warmup complete")
+        except Exception as e:
+            logging.warning(f"Synergy graph warmup failed: {e}")
+    
     def __init__(self, use_gui: bool = True):
+        # Startup background tasks (warmup)
+        # This prevents UI freeze when the first advice request comes in
+        # by pre-loading the massive synergy graph (2.2M edges)
+        threading.Thread(target=self._warmup_synergy_graph, daemon=True).start()
+
+        self.start_time = datetime.datetime.now()  # Capture startup time
         self.use_gui = use_gui
         self.gui = None
         self.tk_root = None
@@ -258,7 +277,9 @@ class CLIVoiceAdvisor:
             "claude-3-opus-20240229",
             # Local (Ollama)
             "llama3",
-            "mistral"
+            "mistral",
+            # Agentic
+            "Planeswalker Agent"
         ]
 
         # Load user preferences
@@ -302,9 +323,17 @@ class CLIVoiceAdvisor:
         self.tts_loading = True
         threading.Thread(target=self._init_tts_async, daemon=True).start()
 
+        # Check for saved match state to enable efficient mid-match resume
+        resume_offset = None
+        try:
+            import os
+            if os.path.exists(self.log_path):
+                file_size = os.path.getsize(self.log_path)
+                resume_offset = self.game_state_mgr.get_resume_offset(file_size)
+        except Exception as e:
+            logging.warning(f"Failed to check for saved match state: {e}")
 
-
-        self.log_follower = LogFollower(self.log_path)
+        self.log_follower = LogFollower(self.log_path, resume_offset=resume_offset)
 
         # Initialize draft advisor
         self.draft_advisor = None
@@ -313,7 +342,7 @@ class CLIVoiceAdvisor:
             try:
                 # Pass CardStatsDB and ArenaCardDatabase to DraftAdvisor
                 self.draft_advisor = DraftAdvisor(self.card_stats, self.ai_advisor, self.arena_db)
-                self.deck_builder = DeckBuilderV2()
+                self.deck_builder = DeckBuilderV2(arena_db=self.arena_db)
 
                 self.game_state_mgr.register_draft_callback("EventGetCoursesV2", self._on_draft_pool)
                 self.game_state_mgr.register_draft_callback("LogBusinessEvents", self._on_premier_draft_pick)
@@ -504,6 +533,7 @@ class CLIVoiceAdvisor:
     # Game event callbacks
     def _on_match_started(self, data: dict):
         """Handle match started event - announce via voice."""
+        logging.info("⚡ EVENT: match_started")
         # Only announce if caught up (not processing old logs)
         if self.log_follower.is_caught_up and self._last_announced_game_state != "match":
             self._last_announced_game_state = "match"
@@ -542,6 +572,20 @@ class CLIVoiceAdvisor:
             )
 
             self._display_draft_recommendation(pack_cards, pack_num, pick_num, recommendation)
+            
+            # Async AI Explanation (enriched by Planeswalker if available)
+            # Only trigger if we're caught up AND this is a live pick (not replaying logs)
+            if self.log_follower.is_caught_up and pack_cards:
+                def get_ai_explanation_async():
+                    try:
+                        explanation = self.draft_advisor.get_ai_explanation(pack_cards, recommendation)
+                        if explanation:
+                            self._output(f"💡 {explanation}", "cyan")
+                            if self.tts:
+                                self.tts.speak(explanation)
+                    except Exception as e:
+                        logging.warning(f"AI explanation failed: {e}")
+                threading.Thread(target=get_ai_explanation_async, daemon=True).start()
             
         except Exception as e:
             logging.error(f"Error handling Draft.Notify: {e}")
@@ -788,6 +832,7 @@ class CLIVoiceAdvisor:
                 logging.error(f"Failed to register global hotkeys: {e}")
 
             self.tk_root.mainloop()
+
         else:
             # CLI mode
             print(f"Listening to log: {self.log_path}")
@@ -839,14 +884,44 @@ class CLIVoiceAdvisor:
         """Get and output advice for a trigger event using streaming."""
         def get_advice():
             try:
+                logging.info(f"⚡ EVENT: advice_requested | trigger={trigger_event.trigger_type.name}")
                 logging.info(f"Getting advice for trigger: {trigger_event.trigger_type.name}")
-                
+
                 # Show thinking indicator in UI
                 if self.use_gui and self.gui:
                     self.gui.show_thinking()
 
                 # Convert BoardState dataclass to dict for AI advisor
                 board_state_dict = dataclasses.asdict(board_state)
+
+                # DEBUG LOGGING: Log what data is being sent to AI
+                logging.info("=" * 60)
+                logging.info("AI ADVICE REQUEST - BOARD STATE DATA:")
+                logging.info(f"  Turn: {board_state.current_turn}, Phase: {board_state.current_phase}")
+                logging.info(f"  Your Turn: {board_state.is_your_turn}, Priority: {board_state.has_priority}")
+                logging.info(f"  Life: You {board_state.your_life} / Opp {board_state.opponent_life}")
+
+                # Log hand
+                hand_cards = [f"{card.name}" for card in board_state.your_hand]
+                logging.info(f"  Hand ({len(hand_cards)}): {hand_cards}")
+
+                # Log battlefield
+                battlefield_cards = [f"{card.name}" for card in board_state.your_battlefield]
+                logging.info(f"  Battlefield ({len(battlefield_cards)}): {battlefield_cards}")
+
+                # Log decklist if available
+                if board_state.your_decklist:
+                    deck_summary = {name: count for name, count in list(board_state.your_decklist.items())[:10]}
+                    logging.info(f"  Decklist (first 10): {deck_summary}")
+                    logging.info(f"  Decklist Total: {len(board_state.your_decklist)} unique cards")
+                else:
+                    logging.info(f"  Decklist: NOT AVAILABLE")
+
+                # Log mana pool
+                if board_state.your_mana_pool:
+                    logging.info(f"  Mana Pool: {board_state.your_mana_pool}")
+
+                logging.info("=" * 60)
 
                 # Add trigger context to help AI understand the situation
                 if trigger_event.user_query:
@@ -971,6 +1046,14 @@ class CLIVoiceAdvisor:
 
             # Process with GameStateManager
             self.game_state_mgr.parse_log_line(line)
+
+            # Save match state periodically (every 10 turns) for efficient resume
+            if hasattr(self.game_state_mgr.scanner, 'current_turn'):
+                turn = self.game_state_mgr.scanner.current_turn
+                if turn > 0 and turn % 10 == 0 and self.log_follower.offset:
+                    if not hasattr(self, '_last_saved_turn') or self._last_saved_turn != turn:
+                        self._last_saved_turn = turn
+                        self.game_state_mgr.scanner._save_match_state(self.log_follower.offset, status="active")
 
             # CRITICAL OPTIMIZATION:
             # Do not recalculate board state or update UI if we are not caught up with the log.

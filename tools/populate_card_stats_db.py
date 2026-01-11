@@ -29,6 +29,8 @@ def populate_card_stats(set_code: str, format: str = "PremierDraft"):
         stats_to_update.append({
             "name": rating.name,
             "set_code": set_code.upper(), # Ensure set code is uppercase
+            "color": rating.color,
+            "rarity": rating.rarity,
             "win_rate": rating.win_rate,
             "gih_win_rate": rating.drawn_win_rate,
             "avg_taken_at": rating.avg_taken_at,

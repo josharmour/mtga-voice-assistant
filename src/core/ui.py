@@ -35,7 +35,13 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
     Runs in a separate process to avoid blocking the main UI thread.
     """
     import logging
-    logging.basicConfig(level=logging.INFO, format='[TTS Worker] %(message)s')
+    # Clear any inherited handlers from parent process to avoid file locking conflicts
+    # Only use StreamHandler for console output (don't write to log file from worker)
+    logging.root.handlers = []
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('[TTS Worker] %(message)s'))
+    logging.root.addHandler(handler)
+    logging.root.setLevel(logging.INFO)
 
     tts_engine = None
     tts = None
@@ -563,9 +569,10 @@ class AdvisorGUI:
 
         # Performance: Batched UI update system with dirty flags
         self._pending_updates = {}  # key -> value for pending updates
+        self._updates_lock = threading.Lock() # Protect against concurrent updates from background threads
         self._update_scheduled = False
 
-        self.root.bind('<F12>', lambda e: self._capture_bug_report())
+        self.root.bind('<F12>', lambda e: self._export_debug_bundle())
         # Bind push-to-talk hotkey from preferences (default: space)
         # Convert display name to Tkinter binding format
         hotkey_display = self.prefs.push_to_talk_key if self.prefs else "space"
@@ -838,7 +845,7 @@ class AdvisorGUI:
         # --- AI Provider and Model Selection ---
         tk.Label(self.settings_frame, text="AI Provider:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.provider_var = tk.StringVar()
-        self.provider_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama", "Llama.cpp"], width=25)
+        self.provider_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama", "Llama.cpp", "Planeswalker"], width=25)
         self.provider_dropdown.pack(pady=(0, 5), fill=tk.X)
         self.provider_dropdown.bind('<<ComboboxSelected>>', self._on_provider_change)
 
@@ -920,6 +927,13 @@ class AdvisorGUI:
                                        font=('Consolas', 10, 'bold'), width=12, relief=tk.SUNKEN, padx=5)
         self.hotkey_display.pack(side=tk.LEFT, padx=(0, 5))
         tk.Button(hotkey_frame, text="Set", command=self._set_hotkey, bg='#3a3a3a', fg='white', relief=tk.FLAT, width=5).pack(side=tk.LEFT)
+
+        # Prominent "Get Advice" button - always works (no admin required unlike global hotkeys)
+        self.get_advice_btn = tk.Button(self.settings_frame, text="🎯 GET ADVICE", 
+                                        command=self._on_get_advice_click,
+                                        bg='#4a90d9', fg='white', font=('Consolas', 11, 'bold'),
+                                        relief=tk.RAISED, cursor="hand2", height=2)
+        self.get_advice_btn.pack(fill=tk.X, pady=(10, 5))
 
         # Audio output device selection (speakers)
         tk.Label(self.settings_frame, text="Speakers:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W, pady=(5, 0))
@@ -1003,7 +1017,7 @@ class AdvisorGUI:
 
 
         tk.Button(self.settings_frame, text="Clear Messages", command=self._clear_messages, bg='#3a3a3a', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=(20, 5), fill=tk.X)
-        tk.Button(self.settings_frame, text="🐛 Bug Report (F12)", command=self._capture_bug_report, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
+        tk.Button(self.settings_frame, text="🔍 Debug Export (F12)", command=self._export_debug_bundle, bg='#5555ff', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
         tk.Button(self.settings_frame, text="👎 Bad Advice", command=self._open_feedback_dialog, bg='#ff5555', fg=self.fg_color, relief=tk.FLAT, padx=10, pady=5).pack(pady=5, fill=tk.X)
 
         # Unknown cards warning frame (initially hidden)
@@ -1152,6 +1166,7 @@ class AdvisorGUI:
         # Default model lists (updated December 2025)
         model_lists = {
             "Google": [
+                "gemini-3-pro-preview",
                 "gemini-3-flash-preview",
                 "gemini-2.0-flash",
                 "gemini-2.5-pro",
@@ -1167,7 +1182,8 @@ class AdvisorGUI:
                 "claude-3-haiku-20240307",
             ],
             "Ollama": [],
-            "Llama.cpp": ["default"]
+            "Llama.cpp": ["default"],
+            "Planeswalker": ["Planeswalker Agent"]
         }
 
         if provider == "Ollama":
@@ -1511,6 +1527,20 @@ class AdvisorGUI:
         """Set the callback for push-to-talk advice requests."""
         self._push_to_talk_callback = callback
 
+    def _on_get_advice_click(self):
+        """Handle click on the Get Advice button."""
+        logging.info("Get Advice button clicked")
+        self.add_message("🎯 Requesting advice...", "cyan")
+        
+        if self._push_to_talk_callback:
+            try:
+                self._push_to_talk_callback()
+            except Exception as e:
+                logging.error(f"Get advice error: {e}")
+                self.add_message(f"❌ Error getting advice: {e}", "red")
+        else:
+            self.add_message("⚠ Advice system not ready", "yellow")
+
     def _display_to_binding(self, display_name: str) -> str:
         """
         Convert a display name like 'F5' or 'Control+space' to Tkinter binding format.
@@ -1692,6 +1722,7 @@ class AdvisorGUI:
     def _on_restart(self):
         """Handle restart button click - restarts the application."""
         import sys
+        import os
         from pathlib import Path
         try:
             if self.prefs: self.prefs.save()
@@ -1717,8 +1748,10 @@ class AdvisorGUI:
             # Start new process with explicit working directory
             subprocess.Popen(args, cwd=str(project_root))
 
-            # Quit after successful spawn
-            self.root.quit()
+            # BUG FIX: Force terminate the process instead of just quitting mainloop
+            # self.root.quit() only stops the mainloop but doesn't exit, causing lockup
+            # Use os._exit() to immediately terminate without cleanup (new process already spawned)
+            os._exit(0)
         except Exception as e:
             logging.error(f"Error restarting app: {e}")
             self.add_message(f"❌ Failed to restart: {e}", "red")
@@ -1735,6 +1768,50 @@ class AdvisorGUI:
     def _open_feedback_dialog(self):
         """Open the bad advice feedback dialog."""
         FeedbackDialog(self.root, self._on_feedback_submit)
+
+    def _export_debug_bundle(self):
+        """Export a complete debug bundle for AI-assisted debugging."""
+        self.add_message("🔍 Exporting debug bundle...", "cyan")
+
+        def export_in_background():
+            try:
+                from .ai_debug_interface import create_debug_interface
+                import os
+
+                # Create debug interface with app reference
+                debug = create_debug_interface(self.advisor_ref)
+
+                # Export bundle (overwrite mode)
+                bundle_path = debug.export_debug_bundle(overwrite=True)
+
+                # Get just the filename for display
+                bundle_name = os.path.basename(bundle_path)
+                bundle_dir = os.path.dirname(bundle_path)
+
+                def on_complete():
+                    self.add_message(f"✅ Debug bundle exported: {bundle_name}", "green")
+                    self.add_message(f"📁 Location: {bundle_dir}", "blue")
+                    self.add_message("💡 Share this file with AI to get help debugging!", "cyan")
+
+                    # TTS Announcement
+                    if hasattr(self.advisor_ref, 'tts') and self.advisor_ref.tts:
+                        self.advisor_ref.tts.speak("Debug bundle exported.")
+
+                    # Open folder
+                    try:
+                        import webbrowser
+                        webbrowser.open(bundle_dir)
+                    except:
+                        pass
+
+                self.root.after(0, on_complete)
+
+            except Exception as e:
+                logging.error(f"Debug export failed: {e}")
+                self.root.after(0, lambda: self.add_message(f"❌ Debug export failed: {e}", "red"))
+
+        # Run in background thread
+        threading.Thread(target=export_in_background, daemon=True).start()
 
     def _generate_bug_report(self, title, description, extra_files=None):
         """
@@ -2205,11 +2282,12 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
             key: Update identifier (e.g., "status", "board_state", "deck_content")
             value: The value to update (type depends on key)
         """
-        self._pending_updates[key] = value
-        if not self._update_scheduled:
-            self._update_scheduled = True
-            # Flush updates at ~60fps (16ms) for smooth UI
-            self.root.after(16, self._flush_updates)
+        with self._updates_lock:
+            self._pending_updates[key] = value
+            if not self._update_scheduled:
+                self._update_scheduled = True
+                # Flush updates at ~60fps (16ms) for smooth UI
+                self.root.after(16, self._flush_updates)
 
     def _flush_updates(self):
         """
@@ -2221,9 +2299,11 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
         """
         monitor = get_monitor()
         with monitor.measure("ui.flush_updates"):
-            self._update_scheduled = False
-            updates = self._pending_updates.copy()
-            self._pending_updates.clear()
+            updates = {}
+            with self._updates_lock:
+                self._update_scheduled = False
+                updates = self._pending_updates.copy()
+                self._pending_updates.clear()
 
             for key, value in updates.items():
                 self._apply_update(key, value)
@@ -2385,12 +2465,13 @@ Volume: {safe_get_var(self.volume_var) if hasattr(self, 'volume_var') else 'N/A'
 
     def add_message(self, msg: str, color=None):
         """Add message to the advisor messages display (batched, thread-safe)."""
-        # Batch messages together - append to existing messages list or create new one
-        if "messages" not in self._pending_updates:
-            self._pending_updates["messages"] = []
-        self._pending_updates["messages"].append((msg, color))
+        with self._updates_lock:
+            # Batch messages together - append to existing messages list or create new one
+            if "messages" not in self._pending_updates:
+                self._pending_updates["messages"] = []
+            self._pending_updates["messages"].append((msg, color))
 
-        # Schedule flush if not already scheduled
-        if not self._update_scheduled:
-            self._update_scheduled = True
-            self.root.after(16, self._flush_updates)
+            # Schedule flush if not already scheduled
+            if not self._update_scheduled:
+                self._update_scheduled = True
+                self.root.after(16, self._flush_updates)

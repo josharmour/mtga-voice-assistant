@@ -43,109 +43,95 @@ def get_zone_type(zone_type_str: str) -> ZoneType:
 # Content of src/log_parser.py
 class LogFollower:
     """Follows the Arena Player.log file and yields new lines as they're added."""
-    def __init__(self, log_path: str):
+    def __init__(self, log_path: str, resume_offset: Optional[int] = None):
         self.log_path = log_path
         self.file = None
         self.inode = None
         self.offset = 0
         self.first_open = True  # Track if this is first time opening
         self.is_caught_up = False # Track if we have processed the backlog
+        self.resume_offset = resume_offset  # Optional offset to resume from (for mid-match restart)
+
+    def _check_timestamp_freshness(self, line: bytes, current_time, max_age_hours) -> bool:
+        """Helper to check if a log line has a recent timestamp."""
+        import datetime
+        import re
+        # Timestamp pattern (bytes): [UnityCrossThreadLogger]MM/DD/YYYY HH:MM:SS AM/PM
+        timestamp_pattern = re.compile(rb'\[UnityCrossThreadLogger\](\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)')
+        ts_match = timestamp_pattern.search(line)
+        if ts_match:
+            try:
+                ts_str = ts_match.group(1).decode('utf-8', errors='ignore')
+                log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+                age_hours = (current_time - log_time).total_seconds() / 3600
+                return age_hours <= max_age_hours
+            except ValueError:
+                pass
+        return False
 
     def _find_current_session_start(self) -> int:
         """
         Find the byte offset where the current/most recent MTGA session begins.
-        Uses binary mode for robust offset calculation to avoid JSON corruption.
+        
+        Strategy: Scan backward from EOF to find session or draft markers.
+        Returns an offset that ensures we capture recent events without
+        replaying the entire log.
         """
         import datetime
         import re
-
         try:
             with open(self.log_path, 'rb') as f:
-                # Get file size
                 f.seek(0, 2)  # Seek to end
                 file_size = f.tell()
 
                 if file_size == 0:
                     return 0
 
-                # Strategy: Read backwards in chunks to find session markers
-                chunk_size = 100000  # 100KB chunks
-                current_time = datetime.datetime.now()
-                max_age_hours = 6  # Only process logs from last 6 hours
-
-                best_offset = 0
-                last_good_match_offset = 0
-
-                # Timestamp pattern (bytes): [UnityCrossThreadLogger]MM/DD/YYYY HH:MM:SS AM/PM
+                # Patterns to look for
+                session_start_pattern = re.compile(rb'Client\.Connected|Connecting to matchmaker|\"authenticateResponse\"')
+                match_start_pattern = re.compile(rb'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp|Draft\.Notify|BotDraft|DraftStatus|\"draftId\"')
                 timestamp_pattern = re.compile(rb'\[UnityCrossThreadLogger\](\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)')
-                session_start_pattern = re.compile(rb'Client\.Connected|Connecting to matchmaker|"authenticateResponse"')
-                match_start_pattern = re.compile(rb'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp|Draft\.Notify|BotDraft|DraftStatus|"draftId"')
 
-                # Read from end backwards in chunks
-                pos = max(0, file_size - chunk_size)
-
-                while pos >= 0:
-                    f.seek(pos)
-                    chunk = f.read(min(chunk_size, file_size - pos))
-                    lines = chunk.split(b'\n')
-
-                    for i, line in enumerate(lines):
-                        # Check for session start markers
-                        if session_start_pattern.search(line):
-                            # Calculate exact byte offset
-                            # Note: splitting by b'\n' removes the delimiter, so we add 1 for it
-                            # CAUTION: On Windows \r\n, split(b'\n') leaves \r at end of line.
-                            # len(l) + 1 accounts for the \n we split on.
-                            # If the last line has no newline, this might be off by one?
-                            # But usually log lines end with newline.
-                            line_offset = pos + sum(len(l) + 1 for l in lines[:i])
-                            best_offset = line_offset
-
-                        # Check for match start (more granular)
-                        if match_start_pattern.search(line):
-                            line_offset = pos + sum(len(l) + 1 for l in lines[:i])
-                            last_good_match_offset = line_offset
-
-                        # Check timestamp freshness
-                        ts_match = timestamp_pattern.search(line)
-                        if ts_match:
-                            try:
-                                ts_str = ts_match.group(1).decode('utf-8', errors='ignore')
-                                log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
-                                age_hours = (current_time - log_time).total_seconds() / 3600
-
-                                if age_hours <= max_age_hours:
-                                    if best_offset > 0:
-                                        logging.info(f"Found recent session start at offset {best_offset} (age: {age_hours:.1f}h)")
-                                        return best_offset
-                                    elif last_good_match_offset > 0:
-                                        logging.info(f"Found recent match start at offset {last_good_match_offset} (age: {age_hours:.1f}h)")
-                                        return last_good_match_offset
-                            except ValueError:
-                                pass
-
-                    if pos == 0:
-                        break
-                    pos = max(0, pos - chunk_size + 1000)
-
-                # Fallback: check start of file
-                f.seek(0)
-                first_chunk = f.read(10000)
-                ts_match = timestamp_pattern.search(first_chunk)
-                if ts_match:
-                    try:
-                        ts_str = ts_match.group(1).decode('utf-8', errors='ignore')
-                        log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
-                        age_hours = (current_time - log_time).total_seconds() / 3600
-                        
-                        if age_hours > max_age_hours:
-                            skip_to = max(0, file_size - 50000)
-                            logging.info(f"Log file is {age_hours:.1f}h old, skipping to offset {skip_to}")
-                            return skip_to
-                    except ValueError:
-                        pass
+                # Read the last 500KB of the file
+                scan_size = min(500000, file_size)
+                scan_start = max(0, file_size - scan_size)
                 
-                return 0
+                f.seek(scan_start)
+                chunk = f.read(scan_size)
+                
+                # Find all timestamps and their offsets to determine freshness context
+                current_time = datetime.datetime.now()
+                max_age_hours = 0.5  # 30 minutes - for mid-match restarts
+                
+                # Find the latest match/session/draft marker in this chunk
+                # Search backward (from end of chunk)
+                lines = chunk.split(b'\n')
+                
+                # Track the most recent timestamp we've seen (for context)
+                last_seen_timestamp_fresh = None
+                
+                # First pass: Scan forward to find timestamps and track freshness
+                for line in lines:
+                    ts_match = timestamp_pattern.search(line)
+                    if ts_match:
+                        try:
+                            ts_str = ts_match.group(1).decode('utf-8', errors='ignore')
+                            log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+                            age_hours = (current_time - log_time).total_seconds() / 3600
+                            last_seen_timestamp_fresh = age_hours <= max_age_hours
+                        except ValueError:
+                            pass
+                
+                # If the most recent timestamp is fresh, start from scan_start
+                # This is a simple heuristic: if recent logs are fresh, process them
+                if last_seen_timestamp_fresh:
+                    logging.info(f"Recent logs are fresh, starting from offset {scan_start}")
+                    return scan_start
+                
+                # If log is stale, skip most of it but keep last 50KB for safety
+                skip_to = max(0, file_size - 50000)
+                logging.info(f"Log appears stale, skipping to offset {skip_to}")
+                return skip_to
 
         except Exception as e:
             logging.error(f"Error finding session start: {e}")
@@ -200,19 +186,35 @@ class LogFollower:
                     self.inode = current_inode
                     
                     if self.first_open:
-                        start_offset = self._find_current_session_start() or 0
-                        self.file.seek(0, 2)
+                        # SMART STARTUP: Use saved match offset if available, otherwise start 500KB before EOF
+                        self.file.seek(0, 2)  # Seek to end
                         file_size = self.file.tell()
-                        if start_offset >= file_size:
-                            start_offset = 0
-                        
-                        self.file.seek(start_offset)
+
+                        if self.resume_offset is not None and 0 <= self.resume_offset <= file_size:
+                            # Resume from saved match offset
+                            start_offset = self.resume_offset
+                            logging.info(f"📍 Resuming from saved match offset: {start_offset}")
+                        else:
+                            # SMART STARTUP: Start 500KB before EOF to capture current match context
+                            # This balances two needs:
+                            # 1. Don't replay entire old matches (stale advice problem)
+                            # 2. Recover current game state if app restarts mid-match
+                            # MTGA uses diff updates, so we need enough history to reconstruct full state
+
+                            # Start 500KB before EOF (or from start if file is smaller)
+                            # 500KB is typically enough for ~1-2 games worth of state
+                            context_size = 500000  # 500KB of context for mid-game recovery
+                            start_offset = max(0, file_size - context_size)
+                            logging.info(f"Log file opened - starting at offset {start_offset} ({context_size/1000:.0f}KB from EOF). Processing recent context...")
+
                         self.offset = start_offset
                         self.first_open = False
-                        logging.info(f"Log file opened - starting from offset {start_offset}")
+                        self.is_caught_up = False  # Need to catch up on recent context
+
                     else:
                         self.offset = 0
                         logging.info("Log file rotated - starting from beginning.")
+
 
                 self.file.seek(0, 2)
                 current_file_size = self.file.tell()
@@ -725,6 +727,8 @@ class MatchScanner:
         self.observed_zone_ids: set = set()
         self.zone_id_to_type: Dict[int, str] = {}
         self.zone_id_to_enum: Dict[int, ZoneType] = {}  # P1: Enum-based zone mapping
+        self.zone_id_to_owner: Dict[int, int] = {}  # BUG FIX: Cache zone owners
+        self._zone_objects: Dict[int, set] = {}
         self.game_history: GameHistory = GameHistory()
         self.last_event_timestamp: Optional[datetime.datetime] = None # Track when the last event happened
         self._last_timestamp_str: str = "" # P1 Performance: Cache for timestamp string to avoid redundant parsing
@@ -733,9 +737,17 @@ class MatchScanner:
         self.submitted_decklist: Dict[int, int] = {}
         self.cards_seen: Dict[int, int] = {}
 
+        # BUG FIX: Load last known deck from persistent storage
+        # This allows deck data to survive mid-match restarts
+        self._load_last_deck()
+
         # Phase 3: Known library cards
         self.library_top_known: List[str] = []
         self.scry_info: Optional[str] = None
+
+        # Match state tracking for efficient mid-match resume
+        self.match_id: Optional[str] = None
+        self.match_start_offset: Optional[int] = None
 
         # Mulligan tracking
         self.game_stage: str = ""
@@ -744,11 +756,6 @@ class MatchScanner:
         # Decision prompt tracking (for triggering advice at key moments)
         self._pending_decision: Optional[str] = None  # Type of decision awaiting input
         self._decision_context: Dict[str, Any] = {}  # Context for the decision
-
-        # P0 Performance: Zone-based object caching
-        # Maps zone_id -> set of instance_ids in that zone
-        # This eliminates O(n) iteration in get_current_board_state()
-        self._zone_objects: Dict[int, set] = {}
 
         # P0 Performance: Card name resolution
         # Resolve card names once on object creation, not repeatedly
@@ -769,6 +776,114 @@ class MatchScanner:
                 self._game_callbacks[event_type](data or {})
             except Exception as e:
                 logging.error(f"Error in game callback for {event_type}: {e}")
+
+    def _save_last_deck(self):
+        """Save the current deck to persistent storage."""
+        try:
+            from pathlib import Path
+            deck_file = Path("logs") / "last_deck.json"
+            deck_file.parent.mkdir(exist_ok=True)
+
+            # Save deck with timestamp
+            deck_data = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "decklist": self.submitted_decklist,  # {grpId: count}
+                "total_cards": sum(self.submitted_decklist.values()),
+                "unique_cards": len(self.submitted_decklist)
+            }
+
+            with open(deck_file, 'w') as f:
+                json.dump(deck_data, f, indent=2)
+
+            logging.debug(f"Saved deck to {deck_file}: {deck_data['total_cards']} cards, {deck_data['unique_cards']} unique")
+        except Exception as e:
+            logging.warning(f"Failed to save deck to persistent storage: {e}")
+
+    def _load_last_deck(self):
+        """Load the last known deck from persistent storage."""
+        try:
+            from pathlib import Path
+            deck_file = Path("logs") / "last_deck.json"
+
+            if not deck_file.exists():
+                logging.debug("No saved deck found - this is expected on first run")
+                return
+
+            with open(deck_file, 'r') as f:
+                deck_data = json.load(f)
+
+            # Restore the decklist (convert string keys back to int if needed)
+            decklist = {}
+            for key, value in deck_data.get("decklist", {}).items():
+                decklist[int(key)] = value
+
+            self.submitted_decklist = decklist
+
+            timestamp = deck_data.get("timestamp", "unknown")
+            total_cards = deck_data.get("total_cards", 0)
+            unique_cards = deck_data.get("unique_cards", 0)
+
+            logging.info(f"📋 Loaded saved deck from {timestamp}: {total_cards} cards, {unique_cards} unique")
+        except Exception as e:
+            logging.warning(f"Failed to load saved deck: {e}")
+
+    def _save_match_state(self, log_offset: int, status: str = "active"):
+        """Save current match state including log offset for efficient resume."""
+        try:
+            from pathlib import Path
+            import hashlib
+
+            state_file = Path("logs") / "match_state.json"
+            state_file.parent.mkdir(exist_ok=True)
+
+            # Generate match ID if we don't have one
+            if not self.match_id:
+                # Use timestamp + player seats as match identifier
+                timestamp = datetime.datetime.now().isoformat()
+                match_str = f"{timestamp}_{self.local_player_seat_id}"
+                self.match_id = hashlib.md5(match_str.encode()).hexdigest()[:16]
+
+            match_state = {
+                "match_id": self.match_id,
+                "match_start_time": datetime.datetime.now().isoformat(),
+                "match_start_offset": self.match_start_offset or log_offset,
+                "last_update_offset": log_offset,
+                "status": status,  # "active" or "ended"
+                "player_seat_id": self.local_player_seat_id,
+                "current_turn": self.current_turn,
+                "current_phase": self.current_phase
+            }
+
+            with open(state_file, 'w') as f:
+                json.dump(match_state, f, indent=2)
+
+            logging.debug(f"Saved match state: {status} at offset {log_offset}")
+        except Exception as e:
+            logging.warning(f"Failed to save match state: {e}")
+
+    def _load_match_state(self) -> Optional[dict]:
+        """Load last match state if available."""
+        try:
+            from pathlib import Path
+            state_file = Path("logs") / "match_state.json"
+
+            if not state_file.exists():
+                logging.debug("No saved match state found")
+                return None
+
+            with open(state_file, 'r') as f:
+                match_state = json.load(f)
+
+            # Only return if match was active (not ended)
+            if match_state.get("status") == "active":
+                logging.info(f"📍 Found active match state from offset {match_state.get('last_update_offset')}")
+                return match_state
+            else:
+                logging.debug("Last match was already ended")
+                return None
+        except Exception as e:
+            logging.warning(f"Failed to load match state: {e}")
+            return None
 
     def parse_timestamp(self, line: str):
         """
@@ -830,7 +945,7 @@ class MatchScanner:
             self._zone_objects[new_zone_id] = set()
         self._zone_objects[new_zone_id].add(instance_id)
 
-    def reset_match_state(self):
+    def reset_match_state(self, log_offset: int = None):
         """Clear all game state when a new match starts"""
         logging.info("🔄 NEW MATCH DETECTED - Clearing all previous match state")
         # Trigger match_started callback before clearing state
@@ -845,10 +960,17 @@ class MatchScanner:
         # Seat IDs can change between matches (sometimes you're seat 1, sometimes seat 2)
         # It will be re-set when we receive the systemSeatIds message for the new match
         self.local_player_seat_id = None
+
+        # Generate new match ID and save state
+        self.match_id = None  # Will be generated when we save
+        self.match_start_offset = log_offset
+        if log_offset is not None:
+            self._save_match_state(log_offset, status="active")
         self.zone_type_to_ids.clear()
         self.observed_zone_ids.clear()
         self.zone_id_to_type.clear()
         self.zone_id_to_enum.clear()  # P1: Clear enum mapping
+        self.zone_id_to_owner.clear()  # BUG FIX: Clear zone owner cache
         self.game_history = GameHistory()
         self.cards_seen.clear()
         self.library_top_known.clear()
@@ -906,9 +1028,13 @@ class MatchScanner:
             else:
                 logging.info(f"Message type: {msg_type}")
 
-            if "systemSeatIds" in message and not self.local_player_seat_id:
+            # BUG FIX: Only set seat ID once on initial detection
+            # Different message types report systemSeatIds from different perspectives,
+            # causing oscillation between seat 1 and seat 2 if we blindly trust every message.
+            # Once we know our seat ID, it never changes during a match.
+            if "systemSeatIds" in message and self.local_player_seat_id is None:
                 self.local_player_seat_id = message["systemSeatIds"][0]
-                logging.info(f"Set local player seat ID to: {self.local_player_seat_id}")
+                logging.info(f"Set local player seat ID to: {self.local_player_seat_id} (via systemSeatIds)")
 
             if msg_type == "GREMessageType_GameStateMessage":
                 state_changed |= self._parse_game_state_message(message)
@@ -1016,6 +1142,12 @@ class MatchScanner:
                     logging.info(f"🎮 Game stage changed: {old_stage} → {self.game_stage}")
                     state_changed = True
 
+                    # Detect match end and save state
+                    if "GameStage_GameOver" in self.game_stage:
+                        logging.info("🏁 Match ended - saving match state as ended")
+                        # Note: log_offset not available here, will be updated in GameStateManager
+                        self._save_match_state(0, status="ended")
+
                 # P3 FIX: More robust mulligan phase detection
                 if "GameStage_Mulligan" in self.game_stage and not self.in_mulligan_phase:
                     self.in_mulligan_phase = True
@@ -1049,11 +1181,16 @@ class MatchScanner:
                 state_changed |= self._parse_game_objects(game_state["gameObjects"])
             else:
                 logging.info("No gameObjects in game state message")
+
             if "zones" in game_state:
                 logging.info(f"Found zones - THIS IS WHERE CARDS ARE! {type(game_state['zones'])}")
                 state_changed |= self._parse_zones(game_state["zones"])
             else:
                 logging.info("No zones in game state message")
+
+            if "annotations" in game_state:
+                logging.info(f"Found annotations with {len(game_state['annotations'])} items")
+                state_changed |= self._parse_annotations(game_state["annotations"])
             if "players" in game_state:
                 logging.info(f"Found players with {len(game_state['players'])} items")
                 state_changed |= self._parse_players(game_state["players"])
@@ -1100,11 +1237,6 @@ class MatchScanner:
             # Skip objects without valid grpId (e.g., tokens, placeholder objects)
             if not grp_id or grp_id == 0:
                 logging.debug(f"  Skipping GameObject with invalid grpId: instanceId={instance_id}, grpId={grp_id}")
-                continue
-
-            if zone_id is not None:
-                self.observed_zone_ids.add(zone_id)
-
             # Parse new tactical fields
             is_tapped = obj_data.get("isTapped", False)
             is_attacking = obj_data.get("isAttacking", False)
@@ -1134,12 +1266,14 @@ class MatchScanner:
             # BUG FIX #11: Infer local_player_seat_id from visible hand cards
             # If we can see a card with a real grpId in a hand zone, it must be our hand
             # (opponent's hand cards are hidden/face-down with grpId=0)
+            # CRITICAL REFINEMENT: Only infer if visibility is private (not revealed/public)
             if not self.local_player_seat_id and owner_seat_id and grp_id and grp_id != 0:
-                # Check if this card is in a hand zone
-                zone_type = self.zone_id_to_type.get(zone_id, "")
-                if "Hand" in zone_type:
-                    self.local_player_seat_id = owner_seat_id
-                    logging.info(f"BUG FIX #11: Inferred local_player_seat_id={owner_seat_id} from visible hand card (grpId={grp_id})")
+                if visibility != "public":
+                    # Check if this card is in a hand zone
+                    zone_type = self.zone_id_to_type.get(zone_id, "")
+                    if "Hand" in zone_type:
+                        self.local_player_seat_id = owner_seat_id
+                        logging.info(f"BUG FIX #11: Inferred local_player_seat_id={owner_seat_id} from private hand card (grpId={grp_id})")
 
             if instance_id not in self.game_objects:
                 self.game_objects[instance_id] = GameObject(
@@ -1221,7 +1355,9 @@ class MatchScanner:
                     state_changed = True
 
         return state_changed
-        
+
+
+
     def _parse_zones(self, zones) -> bool:
         """Parse the zones structure which contains cards in hand, battlefield, etc."""
         state_changed = False
@@ -1237,7 +1373,20 @@ class MatchScanner:
             zone_type_str = zone_obj.get("type")  # e.g., "ZoneType_Hand"
             zone_id = zone_obj.get("zoneId")
             owner_seat_id = zone_obj.get("ownerSeatId")
-            object_instance_ids = zone_obj.get("objectInstanceIds", [])
+
+            # Update zone owner cache if provided
+            if zone_id and owner_seat_id:
+                self.zone_id_to_owner[zone_id] = owner_seat_id
+            
+            # Use cached owner if not provided in this update
+            if zone_id and not owner_seat_id:
+                owner_seat_id = self.zone_id_to_owner.get(zone_id)
+            
+            # BUG FIX #69: 'objectInstanceIds' can be omitted in differential updates.
+            # If it's omitted, it means the zone's cards DID NOT CHANGE.
+            # If it's an empty list [], it means the zone IS EMPTY.
+            # Previous logic incorrectly treated omission as empty, causing cards to disappear.
+            object_instance_ids = zone_obj.get("objectInstanceIds")
 
             if zone_type_str and zone_id:
                 # Map zone type string to zone ID
@@ -1246,70 +1395,51 @@ class MatchScanner:
 
                 self.zone_type_to_ids[zone_type_str] = zone_id
                 self.zone_id_to_type[zone_id] = zone_type_str
-                self.zone_id_to_enum[zone_id] = get_zone_type(zone_type_str)  # P1: Populate enum mapping
+                self.zone_id_to_enum[zone_id] = get_zone_type(zone_type_str)
 
-                # P1: Use enum for visibility logic (faster than string comparisons)
-                zone_enum = get_zone_type(zone_type_str)
-                is_private_zone = zone_enum in (ZoneType.HAND, ZoneType.LIBRARY)
+                # Update cards in this zone IF ids are provided
+                if object_instance_ids is not None:
+                    # P1: Use enum for visibility logic
+                    zone_enum = get_zone_type(zone_type_str)
+                    is_private_zone = zone_enum in (ZoneType.HAND, ZoneType.LIBRARY)
 
-                # Update all cards in this zone with the correct zone ID
-                for card_id in object_instance_ids:
-                    if card_id not in self.game_objects:
-                        # If a card is in a zone but not yet in game_objects, create a minimal placeholder.
-                        self.game_objects[card_id] = GameObject(
-                            instance_id=card_id,
-                            grp_id=0, # Placeholder grpId
-                            zone_id=zone_id,
-                            owner_seat_id=owner_seat_id,
-                            name=f"Unknown Card {card_id}", # Temporary name
-                            visibility="private" if is_private_zone else "public"
-                        )
-                        logging.debug(f"    -> Created minimal placeholder GameObject {card_id} for zone {zone_id} ({zone_type_str})")
+                    for card_id in object_instance_ids:
+                        if card_id not in self.game_objects:
+                            # Create placeholder
+                            self.game_objects[card_id] = GameObject(
+                                instance_id=card_id,
+                                grp_id=0,
+                                zone_id=zone_id,
+                                owner_seat_id=owner_seat_id,
+                                name=f"Unknown Card {card_id}",
+                                visibility="private" if is_private_zone else "public"
+                            )
+                            self._update_object_zone(card_id, None, zone_id)
+                            state_changed = True
 
-                        # P0 Performance: Update zone cache for new placeholder
-                        self._update_object_zone(card_id, None, zone_id)
-
-                        state_changed = True
-
-                    card = self.game_objects[card_id]
-                    if card.zone_id != zone_id:
-                        logging.debug(f"Updating card {card_id} zone from {card.zone_id} to {zone_id} ({zone_type_str})")
-
-                        # P0 Performance: Update zone cache when zone changes
-                        old_zone_id = card.zone_id
-                        self._update_object_zone(card_id, old_zone_id, zone_id)
-
-                        card.zone_id = zone_id
-                        state_changed = True
+                        card = self.game_objects[card_id]
+                        if card.zone_id != zone_id:
+                            logging.debug(f"Updating card {card_id} zone from {card.zone_id} to {zone_id} ({zone_type_str})")
+                            self._update_object_zone(card_id, card.zone_id, zone_id)
+                            card.zone_id = zone_id
+                            state_changed = True
 
             elif zone_id:
-                # Zone with ID but no type?
                 logging.warning(f"Zone with ID {zone_id} has no type! Owner: {owner_seat_id}")
 
             # Prune objects that are no longer in this zone (Ghost Card Fix)
-            # If the zone update provides a list of IDs, we assume it's the COMPLETE list for that zone.
-            # Any object we think is in this zone but isn't in the list must be removed.
+            # ONLY prune if we have a complete list of IDs (object_instance_ids is not None)
             if zone_id and object_instance_ids is not None:
-                # Get copy of IDs we currently think are in this zone
-                # We use a copy because we might modify _zone_objects during the loop
                 current_zone_ids = self._zone_objects.get(zone_id, set()).copy()
                 incoming_ids_set = set(object_instance_ids)
                 
                 for instance_id in current_zone_ids:
                     if instance_id not in incoming_ids_set:
-                        # This object is in our cache for this zone, but not in the update.
-                        # It has been removed (or moved, but we haven't processed the 'to' zone yet).
-                        
                         obj = self.game_objects.get(instance_id)
-                        # Only move if the object still thinks it's in this zone
-                        # (It might have been moved to another zone in a previous iteration of this same loop)
                         if obj and obj.zone_id == zone_id:
-                            logging.debug(f"👻 Ghost Busting: Removing object {instance_id} from zone {zone_id} (not in update)")
-                            
-                            # Move to Limbo (-1)
+                            logging.debug(f"👻 Ghost Busting: Removing object {instance_id} from zone {zone_id}")
                             self._update_object_zone(instance_id, zone_id, -1)
                             obj.zone_id = -1
-                            
                             state_changed = True
 
         return state_changed
@@ -1388,6 +1518,12 @@ class MatchScanner:
             self.current_turn = new_turn
             self.game_history = GameHistory(turn_number=new_turn)
             logging.info(f"🔄 New turn {new_turn} - resetting game history")
+            
+            # BUG FIX: Force clear mulligan phase if we are past turn 1
+            if new_turn > 1 and self.in_mulligan_phase:
+                logging.info(f"🛑 Force clearing stuck mulligan phase at turn {new_turn}")
+                self.in_mulligan_phase = False
+                
             state_changed = True
 
         # Clear combat state when exiting combat phases
@@ -1408,26 +1544,32 @@ class MatchScanner:
         self.active_player_seat = turn_info.get("activePlayer", self.active_player_seat)
         return state_changed
 
-    def _parse_annotations(self, message: dict) -> bool:
+    def _parse_annotations(self, data) -> bool:
         """
-        Parse annotation messages for zone transfers, damage, abilities.
-
-        Zone transfers are THE authoritative source for card movement.
-        This fixes the board state accuracy issues for LLM context.
+        Parse annotation messages for zone transfers, damage, abilities, and identity updates.
+        Handles both 'message' dict (containing 'annotations' key) and direct list of annotations.
         """
-        if "annotations" not in message:
+        annotations_list = []
+        if isinstance(data, list):
+            annotations_list = data
+        elif isinstance(data, dict):
+            annotations_list = data.get("annotations", [])
+        
+        if not annotations_list:
             return False
 
         state_changed = False
 
-        for annotation in message["annotations"]:
+        for annotation in annotations_list:
+            if not isinstance(annotation, dict):
+                continue
+
             ann_type = annotation.get("type", [])
+            affected_ids = annotation.get("affectedIds", [])
+            details = annotation.get("details", [])
 
-            # ZONE TRANSFERS - THE CRITICAL ANNOTATION TYPE
+            # 1. ZONE TRANSFERS - THE CRITICAL ANNOTATION TYPE
             if "AnnotationType_ZoneTransfer" in ann_type:
-                affected_ids = annotation.get("affectedIds", [])
-                details = annotation.get("details", [])
-
                 # Parse source/dest zones
                 zone_src = None
                 zone_dest = None
@@ -1448,14 +1590,18 @@ class MatchScanner:
                         obj = self.game_objects[instance_id]
                         old_zone = obj.zone_id
 
-                        if zone_dest is not None:
+                        if zone_dest is not None and old_zone != zone_dest:
                             obj.zone_id = zone_dest
 
                             # P1: Get zone enums for fast comparisons
                             zone_src_enum = self.zone_id_to_enum.get(zone_src, ZoneType.UNKNOWN)
                             zone_dest_enum = self.zone_id_to_enum.get(zone_dest, ZoneType.UNKNOWN)
 
-                            # Get zone names for logging (still use strings for readability)
+                            # Update cache
+                            self._update_object_zone(instance_id, old_zone, zone_dest)
+                            state_changed = True
+
+                            # Get zone names for logging
                             zone_src_name = self.zone_id_to_type.get(zone_src, f"Zone{zone_src}")
                             zone_dest_name = self.zone_id_to_type.get(zone_dest, f"Zone{zone_dest}")
 
@@ -1472,73 +1618,49 @@ class MatchScanner:
                                 self.game_history.died_this_turn.append(card_name)
                                 logging.debug(f"💀 {card_name} died this turn")
 
-                            logging.info(f"⚡ Zone transfer: Card {instance_id} (grpId:{obj.grp_id}) "
+                            logging.info(f"⚡ Zone transfer via Annotation: Card {instance_id} (grpId:{obj.grp_id}) "
                                        f"{zone_src_name} → {zone_dest_name} ({category})")
 
+            # 2. Identity Discovery (grpId)
+            found_grp_id = None
+            for d in details:
+                key = str(d.get("key", "")).lower()
+                if key in ("grpid", "grpid", "gameobjectgrpid"):
+                    val_int = d.get("valueInt32", [])
+                    if val_int:
+                        found_grp_id = val_int[0]
+                        break
+
+            if found_grp_id and found_grp_id != 0:
+                for instance_id in affected_ids:
+                    if instance_id in self.game_objects:
+                        obj = self.game_objects[instance_id]
+                        if obj.grp_id == 0:
+                            logging.info(f"    -> Identified placeholder {instance_id} as card {found_grp_id} via annotation")
+                            obj.grp_id = found_grp_id
+                            self._resolve_card_metadata(obj)
                             state_changed = True
-                    else:
-                        # Card not in game_objects yet - will be created in next GameStateMessage
-                        logging.debug(f"Zone transfer for unknown instance {instance_id} "
-                                    f"(will be created shortly)")
 
-            # OTHER ANNOTATION TYPES (optional but useful)
-            elif "AnnotationType_DamageDealt" in ann_type:
-                # Track damage for better tactical advice
-                affected_ids = annotation.get("affectedIds", [])
-                details = annotation.get("details", [])
-
-                damage_amount = 0
-                for detail in details:
-                    if detail.get("key") == "damage":
-                        damage_amount = detail.get("valueInt32", [0])[0]
-
-                for instance_id in affected_ids:
-                    self.game_history.damage_dealt[instance_id] = damage_amount
-
-                logging.debug(f"💥 Damage dealt: {damage_amount} to {affected_ids}")
-
-            elif "AnnotationType_ObjectIdChanged" in ann_type:
-                # Card transformed (e.g., daybound/nightbound)
-                logging.debug(f"Card transformed: {annotation.get('affectedIds', [])}")
-
-            elif "AnnotationType_BlockerAssigned" in ann_type or "AnnotationType_Blocking" in ann_type:
-                # Track blocker assignments
-                affected_ids = annotation.get("affectedIds", [])
-                details = annotation.get("details", [])
-
-                attacker_id = None
-                blocker_id = None
-
-                # Parse blocker assignment details
-                for detail in details:
-                    key = detail.get("key")
-                    if key == "attacker" or key == "attackedTarget":
-                        attacker_id = detail.get("valueInt32", [None])[0]
-                    elif key == "blocker" or key == "blockingCreature":
-                        blocker_id = detail.get("valueInt32", [None])[0]
-
-                # If we found blocker assignment, record it
-                if attacker_id and blocker_id:
-                    self.game_history.current_blockers[attacker_id] = blocker_id
-                    logging.info(f"🛡️ Blocker assigned: creature {blocker_id} blocks attacker {attacker_id}")
+            # 3. Handle ObjectIdChanged (maintain tracking)
+            if 1 in ann_type or "AnnotationType_ObjectIdChanged" in ann_type:
+                detail_dict = {str(d.get("key")): d.get("valueInt32", [None])[0] for d in details if d.get("key")}
+                old_id = detail_dict.get("oldInstanceId")
+                new_id = detail_dict.get("newInstanceId")
+                if old_id and new_id and old_id in self.game_objects:
+                    logging.info(f"    -> Instance ID changed from {old_id} to {new_id} via annotation")
+                    obj = self.game_objects.pop(old_id)
+                    obj.instance_id = new_id
+                    self.game_objects[new_id] = obj
+                    # Update zone cache
+                    zone_id = obj.zone_id
+                    if zone_id in self._zone_objects:
+                        self._zone_objects[zone_id].discard(old_id)
+                        self._zone_objects[zone_id].add(new_id)
                     state_changed = True
-
-            elif "AnnotationType_CombatDamage" in ann_type or "AnnotationType_DamageAssigned" in ann_type:
-                # Track combat damage assignments
-                affected_ids = annotation.get("affectedIds", [])
-                details = annotation.get("details", [])
-
-                damage_amount = 0
-                for detail in details:
-                    if detail.get("key") == "damage" or detail.get("key") == "amount":
-                        damage_amount = detail.get("valueInt32", [0])[0]
-
-                # Record damage for each affected creature
-                for instance_id in affected_ids:
-                    self.game_history.combat_damage_assignments[instance_id] = damage_amount
-                    logging.debug(f"⚔️ Combat damage: {damage_amount} assigned to creature {instance_id}")
-
+        
         return state_changed
+
+
 
 class JsonStreamParser:
     """
@@ -1686,6 +1808,28 @@ class GameStateManager:
     def register_game_callback(self, event_type: str, callback: Callable):
         """Register a callback for a game event (e.g., 'match_started')."""
         self.scanner.register_game_callback(event_type, callback)
+
+    def get_resume_offset(self, current_file_size: int) -> Optional[int]:
+        """
+        Get recommended log offset for resuming based on saved match state.
+        Returns None if no saved match found, otherwise returns offset to resume from.
+        """
+        match_state = self.scanner._load_match_state()
+        if not match_state:
+            return None
+
+        last_offset = match_state.get("last_update_offset", 0)
+
+        # Validate offset is reasonable (within current file size)
+        if last_offset > 0 and last_offset <= current_file_size:
+            logging.info(f"📍 Resuming from saved match offset: {last_offset} (saved turn {match_state.get('current_turn')})")
+            # Restore match ID so we continue the same match
+            self.scanner.match_id = match_state.get("match_id")
+            self.scanner.match_start_offset = match_state.get("match_start_offset")
+            return last_offset
+        else:
+            logging.warning(f"Saved offset {last_offset} is invalid (file size: {current_file_size})")
+            return None
 
     def recover_draft_state(self, log_follower: "LogFollower"):
         """
@@ -1843,6 +1987,10 @@ class GameStateManager:
                 unique_cards = len(deck_composition)
                 logging.info(f"📋 Deck submission parsed: {total_cards} cards, {unique_cards} unique")
                 logging.debug(f"Deck composition (grpIds): {deck_composition}")
+
+                # BUG FIX: Save deck to persistent storage
+                # This allows deck data to survive mid-match restarts
+                self.scanner._save_last_deck()
 
                 return True
 

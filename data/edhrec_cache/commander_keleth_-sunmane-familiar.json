@@ -1,0 +1,1329 @@
+{
+  "commander": "Keleth, Sunmane Familiar",
+  "url": "https://edhrec.com/commanders/keleth-sunmane-familiar",
+  "fetched_at": 1768114012.9320395,
+  "cards": [
+    {
+      "name": "Knight of the White Orchid",
+      "synergy": 0.47,
+      "inclusion": 3,
+      "num_decks": 3,
+      "category": "Creatures"
+    },
+    {
+      "name": "Guardian Sunmare",
+      "synergy": 0.49,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Yoshimaru, Ever Faithful",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Tomik, Distinguished Advokist",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Daxos, Blessed by the Sun",
+      "synergy": 0.38,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Odric, Lunarch Marshal",
+      "synergy": 0.44,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Lae'zel, Vlaakith's Champion",
+      "synergy": 0.47,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Teshar, Ancestor's Apostle",
+      "synergy": 0.45,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Tegan Jovanka",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Isamaru, Hound of Konda",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Sarah Jane Smith",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Taranika, Akroan Veteran",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Kongming, \"Sleeping Dragon\"",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Danitha Capashen, Paragon",
+      "synergy": 0.38,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Rune-Tail, Kitsune Ascendant",
+      "synergy": 0.48,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Mangara of Corondor",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Mikaeus, the Lunarch",
+      "synergy": 0.47,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Bastion Protector",
+      "synergy": 0.39,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Abzan Falconer",
+      "synergy": 0.47,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Thalia, Guardian of Thraben",
+      "synergy": 0.44,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Loyal Warhound",
+      "synergy": 0.39,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Anafenza, Kin-Tree Spirit",
+      "synergy": 0.48,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Creatures"
+    },
+    {
+      "name": "Summon: Ixion",
+      "synergy": 0.49,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Thurid, Mare of Destiny",
+      "synergy": 0.33,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Eternal Dragon",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Hedron Crawler",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Thalia, Heretic Cathar",
+      "synergy": 0.15,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Mirror Entity",
+      "synergy": 0.18,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Inspiring Unicorn",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "World Queller",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Reidane, God of the Worthy",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Adeline, Resplendent Cathar",
+      "synergy": 0.16,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Loyal Pegasus",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Herald of the Host",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Archon of Sun's Grace",
+      "synergy": 0.21,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Heliod, Sun-Crowned",
+      "synergy": 0.16,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Clockwork Servant",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Baird, Steward of Argive",
+      "synergy": 0.2,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Loyal Unicorn",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Palladium Myr",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Odric, Master Tactician",
+      "synergy": 0.17,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Loran of the Third Path",
+      "synergy": 0.03,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Celestial Unicorn",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Senu, Keen-Eyed Protector",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Steadfast Unicorn",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Mangara, the Diplomat",
+      "synergy": 0.07,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Palace Sentinels",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Boromir, Warden of the Tower",
+      "synergy": 0.15,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Magus of the Balance",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Regal Bunnicorn",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Creatures"
+    },
+    {
+      "name": "Generous Gift",
+      "synergy": 0.31,
+      "inclusion": 3,
+      "num_decks": 3,
+      "category": "Instants"
+    },
+    {
+      "name": "Swords to Plowshares",
+      "synergy": -0.01,
+      "inclusion": 3,
+      "num_decks": 3,
+      "category": "Instants"
+    },
+    {
+      "name": "Path to Exile",
+      "synergy": 0.07,
+      "inclusion": 3,
+      "num_decks": 3,
+      "category": "Instants"
+    },
+    {
+      "name": "Stroke of Midnight",
+      "synergy": 0.24,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Instants"
+    },
+    {
+      "name": "Disenchant",
+      "synergy": 0.33,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Instants"
+    },
+    {
+      "name": "Brave the Elements",
+      "synergy": 0.37,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Instants"
+    },
+    {
+      "name": "Rootborn Defenses",
+      "synergy": 0.21,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Fated Retribution",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Mana Tithe",
+      "synergy": 0.13,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Heliod's Intervention",
+      "synergy": 0.15,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Rebuff the Wicked",
+      "synergy": 0.07,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Akroma's Will",
+      "synergy": 0.01,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Flawless Maneuver",
+      "synergy": 0,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Unbreakable Formation",
+      "synergy": 0.12,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Reprieve",
+      "synergy": 0.03,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Forsake the Worldly",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Dawn Charm",
+      "synergy": 0.16,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Crush Contraband",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Instants"
+    },
+    {
+      "name": "Secret Rendezvous",
+      "synergy": 0.62,
+      "inclusion": 3,
+      "num_decks": 3,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Urza's Ruinous Blast",
+      "synergy": 0.48,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Cut a Deal",
+      "synergy": 0.35,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Austere Command",
+      "synergy": 0.21,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Mass Calcify",
+      "synergy": 0.37,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Vanquish the Horde",
+      "synergy": 0.39,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Revoke Existence",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Phyrexian Rebirth",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Angelic Purge",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Catastrophe",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Global Ruin",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Farewell",
+      "synergy": 0,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "End Hostilities",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Hour of Revelation",
+      "synergy": 0.21,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Akroma's Vengeance",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Armageddon",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Search for Glory",
+      "synergy": 0.21,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Planar Outburst",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Profound Journey",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Martial Coup",
+      "synergy": 0.18,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Storm Herd",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Ascend from Avernus",
+      "synergy": 0.19,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Balancing Act",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Slaughter the Strong",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Planar Cleansing",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Cataclysm",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Oketra's Monument",
+      "synergy": 0.46,
+      "inclusion": 3,
+      "num_decks": 3,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Tarrian's Soulcleaver",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Heroes' Podium",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Spear of Heliod",
+      "synergy": 0.46,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Pearl Medallion",
+      "synergy": -0.09,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Sword of the Chosen",
+      "synergy": 0.5,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Swiftfoot Boots",
+      "synergy": 0.14,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Blackblade Reforged",
+      "synergy": 0.43,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "The Wind Crystal",
+      "synergy": 0.29,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Spare Supplies",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Stone of Erech",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Shadowspear",
+      "synergy": 0.16,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Vanquisher's Banner",
+      "synergy": 0.14,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Mask of Memory",
+      "synergy": 0.17,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Hero's Heirloom",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Gerrard's Hourglass Pendant",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Parhelion II",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Luxior, Giada's Gift",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Rogue's Gloves",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Eye of Vecna",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Hall of Triumph",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Mirror of Galadriel",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Nevinyrral's Disk",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Seer's Sundial",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Candles of Leng",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Wayfarer's Bauble",
+      "synergy": 0.13,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Mithril Coat",
+      "synergy": 0.17,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Ichor Wellspring",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Caduceus, Staff of Hermes",
+      "synergy": 0.16,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Eater of Virtue",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Farsight Mask",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Tome of Legends",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Commander's Plate",
+      "synergy": 0.13,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Sword of the Animist",
+      "synergy": 0.06,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Archaeomancer's Map",
+      "synergy": 0.01,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Magnifying Glass",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Commander's Insignia",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Flowering of the White Tree",
+      "synergy": 0.37,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Flaming Fist",
+      "synergy": 0.49,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Blessed Sanctuary",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Noble Heritage",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Sigil of the Empty Throne",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Divine Visitation",
+      "synergy": 0.19,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Oblivion Ring",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Cathars' Crusade",
+      "synergy": 0.1,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Intangible Virtue",
+      "synergy": 0.15,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Martial Law",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Honor of the Pure",
+      "synergy": 0.19,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Banishing Light",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "True Conviction",
+      "synergy": 0.16,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Rule of Law",
+      "synergy": 0.21,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Deafening Silence",
+      "synergy": 0.2,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Leyline of Hope",
+      "synergy": 0.21,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Trouble in Pairs",
+      "synergy": 0.1,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Angelic Renewal",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Consulate Crackdown",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Fall of the Thran",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Authority of the Consuls",
+      "synergy": 0.06,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Blind Obedience",
+      "synergy": 0.14,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Day of Destiny",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Far Traveler",
+      "synergy": 0.22,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "On Serra's Wings",
+      "synergy": 0.2,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Gideon Blackblade",
+      "synergy": 0.48,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Ajani, Caller of the Pride",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "The Wanderer",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Basri Ket",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Minas Tirith",
+      "synergy": 0.47,
+      "inclusion": 3,
+      "num_decks": 3,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Adventurer's Inn",
+      "synergy": 0.45,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Geier Reach Sanitarium",
+      "synergy": 0.47,
+      "inclusion": 2,
+      "num_decks": 2,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Eiganjo, Seat of the Empire",
+      "synergy": 0.02,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Nykthos, Shrine to Nyx",
+      "synergy": -0.07,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Monumental Henge",
+      "synergy": 0.11,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Gods' Eye, Gate to the Reikai",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Three Tree City",
+      "synergy": 0.14,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Idyllic Grange",
+      "synergy": 0.16,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Eiganjo Castle",
+      "synergy": 0.2,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Mikokoro, Center of the Sea",
+      "synergy": 0.23,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Arcane Signet",
+      "synergy": -0.33,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Dreamstone Hedron",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Mox Amber",
+      "synergy": 0.2,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Mox Opal",
+      "synergy": 0.21,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Patchwork Banner",
+      "synergy": 0.15,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Bonder's Ornament",
+      "synergy": 0.25,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "The Irencrag",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Pristine Talisman",
+      "synergy": 0.2,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Heraldic Banner",
+      "synergy": 0.14,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Sol Ring",
+      "synergy": -0.59,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Marble Diamond",
+      "synergy": 0.05,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Plains",
+      "synergy": 0.07,
+      "inclusion": 4,
+      "num_decks": 4,
+      "category": "Lands"
+    },
+    {
+      "name": "Abstergo Entertainment",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Lands"
+    },
+    {
+      "name": "The Grey Havens",
+      "synergy": 0.24,
+      "inclusion": 1,
+      "num_decks": 1,
+      "category": "Lands"
+    }
+  ],
+  "themes": [
+    {
+      "name": "+1/+1 Counters",
+      "slug": "plus-1-plus-1-counters",
+      "url": "https://edhrec.com/themes/plus-1-plus-1-counters"
+    },
+    {
+      "name": "Flying",
+      "slug": "flying",
+      "url": "https://edhrec.com/themes/flying"
+    },
+    {
+      "name": "Historic",
+      "slug": "historic",
+      "url": "https://edhrec.com/themes/historic"
+    },
+    {
+      "name": "Lifegain",
+      "slug": "lifegain",
+      "url": "https://edhrec.com/themes/lifegain"
+    }
+  ],
+  "meta": {
+    "rank": 5114,
+    "total_decks": 4,
+    "salt_score": 0
+  }
+}

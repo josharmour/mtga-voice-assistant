@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, List
+import datetime
+from typing import Dict, List, Optional
 
 from ..config.config_manager import UserPreferences
 from .llm.google_advisor import GeminiAdvisor
@@ -7,6 +8,7 @@ from .llm.openai_advisor import OpenAIAdvisor
 from .llm.anthropic_advisor import AnthropicAdvisor
 from .llm.ollama_advisor import OllamaAdvisor
 from .llm.llamacpp_advisor import LlamaCppAdvisor
+from .llm.planeswalker_advisor import PlaneswalkerAdvisor
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,8 @@ class AIAdvisor:
 
         self.card_db = card_db
         self.advisor = None
+        self.advice_count = 0
+        self.last_advice_time: Optional[datetime.datetime] = None
 
         provider = prefs.model_provider.lower()
         model = prefs.current_model
@@ -33,6 +37,7 @@ class AIAdvisor:
             "ollama": (OllamaAdvisor, {"max_tokens": prefs.max_prompt_tokens}),
             "llamacpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
             "llama.cpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
+            "planeswalker": (PlaneswalkerAdvisor, {}),
         }
 
         if provider in advisor_map:
@@ -67,6 +72,7 @@ class AIAdvisor:
             "ollama": (OllamaAdvisor, {}),
             "llamacpp": (LlamaCppAdvisor, {}),
             "llama.cpp": (LlamaCppAdvisor, {}),
+            "planeswalker": (PlaneswalkerAdvisor, {}),
         }
 
         if provider in advisor_map:
@@ -96,7 +102,14 @@ class AIAdvisor:
         """
         if not self.advisor:
             return "AI Advisor not initialized. Please configure a provider in the settings."
-        return self.advisor.get_tactical_advice(board_state)
+        
+        advice = self.advisor.get_tactical_advice(board_state)
+        
+        # Track usage stats
+        self.advice_count += 1
+        self.last_advice_time = datetime.datetime.now()
+        
+        return advice
 
     def get_tactical_advice_stream(self, board_state: Dict, user_query: str = ""):
         """
@@ -107,6 +120,10 @@ class AIAdvisor:
             yield "AI Advisor not initialized. Please configure a provider in the settings."
             return
         
+        # Track usage stats
+        self.advice_count += 1
+        self.last_advice_time = datetime.datetime.now()
+
         # Check if the underlying advisor supports streaming (it should via BaseMTGAdvisor)
         if hasattr(self.advisor, 'get_tactical_advice_stream'):
             yield from self.advisor.get_tactical_advice_stream(board_state)

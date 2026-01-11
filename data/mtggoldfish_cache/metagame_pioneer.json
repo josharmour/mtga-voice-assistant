@@ -1,0 +1,78 @@
+{
+  "decks": [
+    {
+      "name": "Izzet Prowess",
+      "meta_share": "38.0%\n\n(389)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-izzet-prowess#paper",
+      "colors": []
+    },
+    {
+      "name": "Selesnya Company",
+      "meta_share": "14.7%\n\n(151)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-selesnya-company#paper",
+      "colors": []
+    },
+    {
+      "name": "Orzhov Midrange",
+      "meta_share": "9.7%\n\n(99)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-orzhov-midrange#paper",
+      "colors": []
+    },
+    {
+      "name": "Azorius Control",
+      "meta_share": "6.7%\n\n(69)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-azorius-control#paper",
+      "colors": []
+    },
+    {
+      "name": "Rakdos Midrange",
+      "meta_share": "5.4%\n\n(55)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-rakdos-midrange#paper",
+      "colors": []
+    },
+    {
+      "name": "Nykthos Ramp",
+      "meta_share": "3.2%\n\n(33)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-nykthos-ramp#paper",
+      "colors": []
+    },
+    {
+      "name": "Izzet Phoenix",
+      "meta_share": "3.0%\n\n(31)",
+      "url": "https://www.mtggoldfish.com/archetype/izzet-phoenix-57eb17e3-2b71-4301-99a6-45002ffcfadb#paper",
+      "colors": []
+    },
+    {
+      "name": "Orzhov Greasefang",
+      "meta_share": "2.4%\n\n(25)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-orzhov-greasefang#paper",
+      "colors": []
+    },
+    {
+      "name": "4c Scapeshift",
+      "meta_share": "2.3%\n\n(24)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-4c-scapeshift-8e6a7042-80bc-4e8a-9c2b-e1bfa220a733#paper",
+      "colors": []
+    },
+    {
+      "name": "5c Enigmatic Incarnation",
+      "meta_share": "1.5%\n\n(15)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-5c-enigmatic-incarnation#paper",
+      "colors": []
+    },
+    {
+      "name": "Boros Convoke",
+      "meta_share": "1.1%\n\n(11)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-boros-convoke#paper",
+      "colors": []
+    },
+    {
+      "name": "Boros Heroic",
+      "meta_share": "1.1%\n\n(11)",
+      "url": "https://www.mtggoldfish.com/archetype/pioneer-boros-heroic#paper",
+      "colors": []
+    }
+  ],
+  "format": "pioneer",
+  "fetched_at": 1768114002.4971998
+}

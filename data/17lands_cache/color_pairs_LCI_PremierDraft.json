@@ -1,0 +1,77 @@
+{
+  "color_pairs": [
+    {
+      "colors": "WU",
+      "name": "Azorius",
+      "win_rate": 0.5792085447971606,
+      "wins": 87307,
+      "games": 150735
+    },
+    {
+      "colors": "UB",
+      "name": "Dimir",
+      "win_rate": 0.5418388853912901,
+      "wins": 39590,
+      "games": 73066
+    },
+    {
+      "colors": "BR",
+      "name": "Rakdos",
+      "win_rate": 0.5288935420443809,
+      "wins": 20712,
+      "games": 39161
+    },
+    {
+      "colors": "RG",
+      "name": "Gruul",
+      "win_rate": 0.5739769352412543,
+      "wins": 59526,
+      "games": 103708
+    },
+    {
+      "colors": "GW",
+      "name": "Selesnya",
+      "win_rate": 0.5590197620436845,
+      "wins": 22036,
+      "games": 39419
+    },
+    {
+      "colors": "WB",
+      "name": "Orzhov",
+      "win_rate": 0.5340597527108061,
+      "wins": 30192,
+      "games": 56533
+    },
+    {
+      "colors": "BG",
+      "name": "Golgari",
+      "win_rate": 0.5490991610507495,
+      "wins": 31940,
+      "games": 58168
+    },
+    {
+      "colors": "GU",
+      "name": "Simic",
+      "win_rate": 0.5391878098571012,
+      "wins": 14791,
+      "games": 27432
+    },
+    {
+      "colors": "UR",
+      "name": "Izzet",
+      "win_rate": 0.5797278781972847,
+      "wins": 79123,
+      "games": 136483
+    },
+    {
+      "colors": "RW",
+      "name": "Boros",
+      "win_rate": 0.5654890921885996,
+      "wins": 60267,
+      "games": 106575
+    }
+  ],
+  "expansion": "LCI",
+  "format": "PremierDraft",
+  "fetched_at": 1768114016.4963684
+}

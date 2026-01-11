@@ -79,3 +79,7 @@ notebooks/
 dist/
 build/
 *.spec
+data/oracle-cards.json
+data/synergy_graph.json
+data/synergy_graph.pkl
+data/chroma_db/

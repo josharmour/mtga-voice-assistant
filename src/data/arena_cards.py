@@ -117,6 +117,21 @@ class ArenaCardDatabase:
 
         return None
 
+    def get_card_by_name(self, card_name: str) -> Optional[Dict]:
+        """Get card data by name (exact match)."""
+        # Linear search through cache (usually small enough: 30k-100k cards)
+        # Search for exact name or the part before // for split cards
+        target_name = card_name.lower()
+        
+        # Performance: Pre-calculate the base name for split cards
+        base_target = target_name.split(" // ")[0] if " // " in target_name else target_name
+
+        for card in self._cache.values():
+            db_name = card.get("name", "").lower()
+            if db_name == target_name or db_name == base_target:
+                return card
+        return None
+
     def _track_unknown_card(self, grp_id: int):
         """Track an unknown card and trigger callback if threshold exceeded."""
         if not self._tracking_enabled:

@@ -182,6 +182,20 @@ class MTGPromptBuilder:
             # Build new prompt
             prompt = self._build_tactical_prompt_impl(board_state, game_history)
 
+            # DEBUG LOGGING: Show what prompt is being sent to AI
+            # Log first 1000 chars and last 500 chars to see context without overwhelming logs
+            prompt_preview_start = prompt[:1000] if len(prompt) > 1000 else prompt
+            prompt_preview_end = prompt[-500:] if len(prompt) > 500 else ""
+            logger.debug("=" * 60)
+            logger.debug(f"AI PROMPT PREVIEW (Total length: {len(prompt)} chars):")
+            logger.debug("--- START OF PROMPT ---")
+            logger.debug(prompt_preview_start)
+            if len(prompt) > 1000:
+                logger.debug("... [middle truncated] ...")
+                logger.debug("--- END OF PROMPT ---")
+                logger.debug(prompt_preview_end)
+            logger.debug("=" * 60)
+
             # Update cache
             self._last_tactical_hash = current_hash
             self._cached_tactical_prompt = prompt
@@ -607,6 +621,8 @@ Recent Events:
         """Format opponent resource information."""
         lines = ["**Opponent Resources:**"]
         lines.append(f"  Hand: {board_state.get('opponent_hand_count', 0)} cards")
+        
+        opp_mana = board_state.get('opponent_mana_pool', {})
         if opp_mana:
             mana_str = ", ".join([f"{k}:{v}" for k, v in opp_mana.items() if v > 0])
             lines.append(f"  Mana: {mana_str or 'No floating mana (lands may be open)'}")

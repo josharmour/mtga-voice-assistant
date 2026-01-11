@@ -122,7 +122,7 @@ class DraftAdvisor:
                             "name": local_data.get("name", f"Card {arena_id}"),
                             "colors": local_data.get("colors", ""),
                             "rarity": local_data.get("rarity", ""),
-                            "type_line": local_data.get("type", ""),
+                            "type_line": local_data.get("type_line", ""),
                         }
                         logger.debug(f"Resolved {arena_id} -> {card_data['name']} (local DB)")
 
@@ -335,6 +335,78 @@ class DraftAdvisor:
         self.current_pack_num = 0
         self.current_pick_num = 0
         logger.info("Draft advisor state reset for new draft")
+
+    def get_ai_explanation(self, pack_cards: List[DraftCard], recommendation: str) -> str:
+        """
+        Generate an AI-powered explanation for the pick recommendation.
+        
+        This method enriches the prompt with Planeswalker Agent context (synergy/metagame)
+        and then uses the main AI model to generate a conversational explanation.
+        
+        Args:
+            pack_cards: List of DraftCard objects (sorted by score)
+            recommendation: The simple recommendation string (e.g. "Pick Doom Blade (A)")
+            
+        Returns:
+            AI-generated explanation string, or empty string if AI unavailable
+        """
+        if not self.ai_advisor or not self.ai_advisor.advisor:
+            return ""
+        
+        # Get planeswalker context if available
+        planeswalker_context = ""
+        try:
+            from .llm.planeswalker_advisor import PlaneswalkerAdvisor
+            pw_advisor = PlaneswalkerAdvisor._agent_instance
+            if pw_advisor:
+                # Get just names for context
+                pack_names = [c.name for c in pack_cards[:5]]
+                planeswalker_context = PlaneswalkerAdvisor(card_db=self.arena_db).analyze_draft_pick(
+                    pack_names, 
+                    self.picked_cards,
+                    self.current_pack_num, 
+                    self.current_pick_num
+                )
+        except Exception as e:
+            logger.debug(f"Planeswalker context unavailable: {e}")
+        
+        # Build the prompt for the main AI
+        top_cards_str = "\n".join([
+            f"- {c.name}: Grade {c.grade}, GIH WR {c.gih_win_rate*100:.1f}%" 
+            for c in pack_cards[:5]
+        ])
+        
+        picked_str = ", ".join(self.picked_cards[-10:]) if self.picked_cards else "None yet"
+        colors_str = ", ".join([f"{c}: {n}" for c, n in sorted(self.picked_colors.items(), key=lambda x: -x[1])])
+        
+        prompt = f"""Draft Pick Analysis (Pack {self.current_pack_num}, Pick {self.current_pick_num}):
+
+Top Cards in Pack:
+{top_cards_str}
+
+Current Draft Pool: {picked_str}
+Color Commitment: {colors_str or "Open"}
+
+Statistical Recommendation: {recommendation}
+"""
+        
+        if planeswalker_context:
+            prompt += f"""
+Synergy/Metagame Analysis (from knowledge base):
+{planeswalker_context}
+"""
+        
+        prompt += """
+Based on ALL of the above, explain in 2-3 sentences why this pick is recommended. 
+Be specific about synergies or strategic reasons. Speak naturally like a helpful coach."""
+        
+        try:
+            # Use non-streaming for simplicity here
+            response = self.ai_advisor.get_tactical_advice({"user_query": prompt, "trigger_type": "DRAFT"})
+            return response.strip() if response else ""
+        except Exception as e:
+            logger.error(f"Error getting AI explanation: {e}")
+            return ""
 
 
 def display_draft_pack(cards: List[DraftCard], pack_num: int, pick_num: int, recommendation: str, show_count: int = 15):

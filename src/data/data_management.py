@@ -37,6 +37,8 @@ class CardStatsDB:
                 CREATE TABLE IF NOT EXISTS card_stats (
                     card_name TEXT,
                     set_code TEXT,
+                    color TEXT,
+                    rarity TEXT,
                     win_rate REAL,
                     gih_win_rate REAL,
                     avg_taken_at REAL,
@@ -66,12 +68,14 @@ class CardStatsDB:
             for stat in stats_list:
                 conn.execute("""
                     INSERT OR REPLACE INTO card_stats (
-                        card_name, set_code, win_rate, gih_win_rate,
+                        card_name, set_code, color, rarity, win_rate, gih_win_rate,
                         avg_taken_at, games_played, last_updated
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     stat.get("name"),
                     stat.get("set_code"),
+                    stat.get("color"),
+                    stat.get("rarity"),
                     stat.get("win_rate"),
                     stat.get("gih_win_rate"),
                     stat.get("avg_taken_at"),

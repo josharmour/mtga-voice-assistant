@@ -1,0 +1,78 @@
+{
+  "decks": [
+    {
+      "name": "Dimir Midrange",
+      "meta_share": "10.9%\n\n(185)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-dimir-midrange-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Izzet Lessons",
+      "meta_share": "10.9%\n\n(185)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-izzet-lessons-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Selesnya Landfall",
+      "meta_share": "9.9%\n\n(168)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-selesnya-landfall-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Jeskai Control",
+      "meta_share": "9.9%\n\n(167)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-jeskai-control-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Mono-Red Aggro",
+      "meta_share": "7.8%\n\n(132)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-mono-red-aggro-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Simic Ouroboroid",
+      "meta_share": "6.7%\n\n(113)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-simic-ouroboroid-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Izzet Looting",
+      "meta_share": "5.3%\n\n(90)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-izzet-looting-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Izzet Prowess",
+      "meta_share": "4.6%\n\n(77)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-izzet-prowess-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "4c Reanimator",
+      "meta_share": "4.1%\n\n(70)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-4c-reanimator-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Mono-Green Landfall",
+      "meta_share": "3.0%\n\n(51)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-mono-green-landfall-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Boros Aggro",
+      "meta_share": "2.1%\n\n(35)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-boros-aggro-woe#paper",
+      "colors": []
+    },
+    {
+      "name": "Temur Ouroboroid",
+      "meta_share": "1.8%\n\n(31)",
+      "url": "https://www.mtggoldfish.com/archetype/standard-temur-ouroboroid-woe#paper",
+      "colors": []
+    }
+  ],
+  "format": "standard",
+  "fetched_at": 1768114001.2230935
+}

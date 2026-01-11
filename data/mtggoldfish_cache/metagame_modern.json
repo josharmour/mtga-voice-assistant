@@ -1,0 +1,78 @@
+{
+  "decks": [
+    {
+      "name": "Boros Energy",
+      "meta_share": "15.8%\n\n(260)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-boros-energy#paper",
+      "colors": []
+    },
+    {
+      "name": "Ruby Storm",
+      "meta_share": "9.5%\n\n(157)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-ruby-storm#paper",
+      "colors": []
+    },
+    {
+      "name": "Affinity",
+      "meta_share": "8.3%\n\n(137)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-affinity#paper",
+      "colors": []
+    },
+    {
+      "name": "Eldrazi Tron",
+      "meta_share": "7.0%\n\n(115)",
+      "url": "https://www.mtggoldfish.com/archetype/eldrazi-tron#paper",
+      "colors": []
+    },
+    {
+      "name": "Jeskai Blink",
+      "meta_share": "6.7%\n\n(111)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-jeskai-blink#paper",
+      "colors": []
+    },
+    {
+      "name": "Amulet Titan",
+      "meta_share": "4.8%\n\n(80)",
+      "url": "https://www.mtggoldfish.com/archetype/amulet-titan#paper",
+      "colors": []
+    },
+    {
+      "name": "Domain Zoo",
+      "meta_share": "4.2%\n\n(70)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-domain-zoo#paper",
+      "colors": []
+    },
+    {
+      "name": "Neobrand",
+      "meta_share": "3.3%\n\n(54)",
+      "url": "https://www.mtggoldfish.com/archetype/neobrand#paper",
+      "colors": []
+    },
+    {
+      "name": "Esper GenericBlink",
+      "meta_share": "3.1%\n\n(51)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-esper-genericblink#paper",
+      "colors": []
+    },
+    {
+      "name": "Belcher",
+      "meta_share": "3.0%\n\n(50)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-belcher-e9e93d4f-ed4a-44f6-9173-f8bd560e3900#paper",
+      "colors": []
+    },
+    {
+      "name": "Eldrazi Ramp",
+      "meta_share": "2.8%\n\n(47)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-eldrazi-ramp#paper",
+      "colors": []
+    },
+    {
+      "name": "Yawgmoth",
+      "meta_share": "2.2%\n\n(36)",
+      "url": "https://www.mtggoldfish.com/archetype/modern-yawgmoth-9bd3dc9a-1da1-442e-9b88-6ef2a027e80b#paper",
+      "colors": []
+    }
+  ],
+  "format": "modern",
+  "fetched_at": 1768113999.8771062
+}

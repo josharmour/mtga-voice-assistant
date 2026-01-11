@@ -1,0 +1,2556 @@
+{
+  "commander": "The Ur-Dragon",
+  "url": "https://edhrec.com/commanders/the-ur-dragon",
+  "fetched_at": 1768113997.100225,
+  "cards": [
+    {
+      "name": "Miirym, Sentinel Wyrm",
+      "synergy": 0.7,
+      "inclusion": 33253,
+      "num_decks": 33253,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Dragon Tempest",
+      "synergy": 0.69,
+      "inclusion": 32312,
+      "num_decks": 32312,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Crux of Fate",
+      "synergy": 0.64,
+      "inclusion": 30240,
+      "num_decks": 30240,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Tiamat",
+      "synergy": 0.62,
+      "inclusion": 28609,
+      "num_decks": 28609,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Atarka, World Render",
+      "synergy": 0.59,
+      "inclusion": 28059,
+      "num_decks": 28059,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Lathliss, Dragon Queen",
+      "synergy": 0.57,
+      "inclusion": 26908,
+      "num_decks": 26908,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Dragonlord Dromoka",
+      "synergy": 0.53,
+      "inclusion": 25264,
+      "num_decks": 25264,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Terror of the Peaks",
+      "synergy": 0.53,
+      "inclusion": 24910,
+      "num_decks": 24910,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Dragonspeaker Shaman",
+      "synergy": 0.52,
+      "inclusion": 24675,
+      "num_decks": 24675,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Old Gnawbone",
+      "synergy": 0.5,
+      "inclusion": 23887,
+      "num_decks": 23887,
+      "category": "High Synergy Cards"
+    },
+    {
+      "name": "Farseek",
+      "synergy": 0.17,
+      "inclusion": 25288,
+      "num_decks": 25288,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Temur Ascendancy",
+      "synergy": 0.49,
+      "inclusion": 24347,
+      "num_decks": 24347,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Rivaz of the Claw",
+      "synergy": 0.48,
+      "inclusion": 22891,
+      "num_decks": 22891,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Morophon, the Boundless",
+      "synergy": 0.4,
+      "inclusion": 22647,
+      "num_decks": 22647,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Dragonlord's Servant",
+      "synergy": 0.48,
+      "inclusion": 22530,
+      "num_decks": 22530,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Goldspan Dragon",
+      "synergy": 0.48,
+      "inclusion": 22399,
+      "num_decks": 22399,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Utvara Hellkite",
+      "synergy": 0.48,
+      "inclusion": 22377,
+      "num_decks": 22377,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Hellkite Courser",
+      "synergy": 0.49,
+      "inclusion": 22298,
+      "num_decks": 22298,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Dracogenesis",
+      "synergy": 0.45,
+      "inclusion": 13697,
+      "num_decks": 13697,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Scourge of Valkas",
+      "synergy": 0.45,
+      "inclusion": 21156,
+      "num_decks": 21156,
+      "category": "Top Cards"
+    },
+    {
+      "name": "Smothering Tithe",
+      "synergy": 0.14,
+      "inclusion": 13859,
+      "num_decks": 13859,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Cyclonic Rift",
+      "synergy": 0.14,
+      "inclusion": 12778,
+      "num_decks": 12778,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Teferi's Protection",
+      "synergy": 0.15,
+      "inclusion": 12443,
+      "num_decks": 12443,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Rhystic Study",
+      "synergy": 0.06,
+      "inclusion": 11173,
+      "num_decks": 11173,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Demonic Tutor",
+      "synergy": 0.06,
+      "inclusion": 10167,
+      "num_decks": 10167,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Vampiric Tutor",
+      "synergy": 0.01,
+      "inclusion": 6292,
+      "num_decks": 6292,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Worldly Tutor",
+      "synergy": 0.04,
+      "inclusion": 5879,
+      "num_decks": 5879,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Ancient Tomb",
+      "synergy": 0.02,
+      "inclusion": 4800,
+      "num_decks": 4800,
+      "category": "Game Changers"
+    },
+    {
+      "name": "The One Ring",
+      "synergy": 0.02,
+      "inclusion": 4586,
+      "num_decks": 4586,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Enlightened Tutor",
+      "synergy": -0.04,
+      "inclusion": 4172,
+      "num_decks": 4172,
+      "category": "Game Changers"
+    },
+    {
+      "name": "Sarkhan, Soul Aflame",
+      "synergy": 0.45,
+      "inclusion": 21132,
+      "num_decks": 21132,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ancient Copper Dragon",
+      "synergy": 0.44,
+      "inclusion": 20755,
+      "num_decks": 20755,
+      "category": "Creatures"
+    },
+    {
+      "name": "Rith, Liberated Primeval",
+      "synergy": 0.4,
+      "inclusion": 18774,
+      "num_decks": 18774,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ureni of the Unwritten",
+      "synergy": 0.39,
+      "inclusion": 11560,
+      "num_decks": 11560,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ancient Silver Dragon",
+      "synergy": 0.38,
+      "inclusion": 18143,
+      "num_decks": 18143,
+      "category": "Creatures"
+    },
+    {
+      "name": "Klauth, Unrivaled Ancient",
+      "synergy": 0.35,
+      "inclusion": 16407,
+      "num_decks": 16407,
+      "category": "Creatures"
+    },
+    {
+      "name": "Balefire Dragon",
+      "synergy": 0.34,
+      "inclusion": 15969,
+      "num_decks": 15969,
+      "category": "Creatures"
+    },
+    {
+      "name": "Silumgar, the Drifting Death",
+      "synergy": 0.33,
+      "inclusion": 15428,
+      "num_decks": 15428,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ancient Gold Dragon",
+      "synergy": 0.33,
+      "inclusion": 15395,
+      "num_decks": 15395,
+      "category": "Creatures"
+    },
+    {
+      "name": "Bladewing the Risen",
+      "synergy": 0.32,
+      "inclusion": 15241,
+      "num_decks": 15241,
+      "category": "Creatures"
+    },
+    {
+      "name": "Twinflame Tyrant",
+      "synergy": 0.32,
+      "inclusion": 11825,
+      "num_decks": 11825,
+      "category": "Creatures"
+    },
+    {
+      "name": "Birds of Paradise",
+      "synergy": 0.11,
+      "inclusion": 15163,
+      "num_decks": 15163,
+      "category": "Creatures"
+    },
+    {
+      "name": "Savage Ventmaw",
+      "synergy": 0.32,
+      "inclusion": 15017,
+      "num_decks": 15017,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ramos, Dragon Engine",
+      "synergy": 0.28,
+      "inclusion": 14430,
+      "num_decks": 14430,
+      "category": "Creatures"
+    },
+    {
+      "name": "Scion of the Ur-Dragon",
+      "synergy": 0.31,
+      "inclusion": 14288,
+      "num_decks": 14288,
+      "category": "Creatures"
+    },
+    {
+      "name": "Two-Headed Hellkite",
+      "synergy": 0.27,
+      "inclusion": 13918,
+      "num_decks": 13918,
+      "category": "Creatures"
+    },
+    {
+      "name": "Scion of Draco",
+      "synergy": 0.28,
+      "inclusion": 13835,
+      "num_decks": 13835,
+      "category": "Creatures"
+    },
+    {
+      "name": "Scalelord Reckoner",
+      "synergy": 0.3,
+      "inclusion": 13814,
+      "num_decks": 13814,
+      "category": "Creatures"
+    },
+    {
+      "name": "Roaming Throne",
+      "synergy": 0.21,
+      "inclusion": 13172,
+      "num_decks": 13172,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ancient Brass Dragon",
+      "synergy": 0.26,
+      "inclusion": 12528,
+      "num_decks": 12528,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ganax, Astral Hunter",
+      "synergy": 0.25,
+      "inclusion": 11814,
+      "num_decks": 11814,
+      "category": "Creatures"
+    },
+    {
+      "name": "Thrakkus the Butcher",
+      "synergy": 0.24,
+      "inclusion": 11301,
+      "num_decks": 11301,
+      "category": "Creatures"
+    },
+    {
+      "name": "Korlessa, Scale Singer",
+      "synergy": 0.23,
+      "inclusion": 10956,
+      "num_decks": 10956,
+      "category": "Creatures"
+    },
+    {
+      "name": "Bloom Tender",
+      "synergy": 0.09,
+      "inclusion": 10823,
+      "num_decks": 10823,
+      "category": "Creatures"
+    },
+    {
+      "name": "Hellkite Tyrant",
+      "synergy": 0.22,
+      "inclusion": 10735,
+      "num_decks": 10735,
+      "category": "Creatures"
+    },
+    {
+      "name": "Hellkite Charger",
+      "synergy": 0.21,
+      "inclusion": 9669,
+      "num_decks": 9669,
+      "category": "Creatures"
+    },
+    {
+      "name": "Wrathful Red Dragon",
+      "synergy": 0.2,
+      "inclusion": 9200,
+      "num_decks": 9200,
+      "category": "Creatures"
+    },
+    {
+      "name": "Scourge of the Throne",
+      "synergy": 0.19,
+      "inclusion": 8718,
+      "num_decks": 8718,
+      "category": "Creatures"
+    },
+    {
+      "name": "Zurgo and Ojutai",
+      "synergy": 0.18,
+      "inclusion": 8198,
+      "num_decks": 8198,
+      "category": "Creatures"
+    },
+    {
+      "name": "Betor, Kin to All",
+      "synergy": 0.17,
+      "inclusion": 5104,
+      "num_decks": 5104,
+      "category": "Creatures"
+    },
+    {
+      "name": "Scavenger Regent",
+      "synergy": 0.17,
+      "inclusion": 4886,
+      "num_decks": 4886,
+      "category": "Creatures"
+    },
+    {
+      "name": "Teneb, the Harvester",
+      "synergy": 0.16,
+      "inclusion": 7643,
+      "num_decks": 7643,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ojutai, Soul of Winter",
+      "synergy": 0.16,
+      "inclusion": 7413,
+      "num_decks": 7413,
+      "category": "Creatures"
+    },
+    {
+      "name": "Scaled Nurturer",
+      "synergy": 0.15,
+      "inclusion": 7228,
+      "num_decks": 7228,
+      "category": "Creatures"
+    },
+    {
+      "name": "Kolaghan, the Storm's Fury",
+      "synergy": 0.15,
+      "inclusion": 7223,
+      "num_decks": 7223,
+      "category": "Creatures"
+    },
+    {
+      "name": "Karrthus, Tyrant of Jund",
+      "synergy": 0.14,
+      "inclusion": 7011,
+      "num_decks": 7011,
+      "category": "Creatures"
+    },
+    {
+      "name": "Steel Hellkite",
+      "synergy": 0.14,
+      "inclusion": 6820,
+      "num_decks": 6820,
+      "category": "Creatures"
+    },
+    {
+      "name": "Dromoka, the Eternal",
+      "synergy": 0.14,
+      "inclusion": 6796,
+      "num_decks": 6796,
+      "category": "Creatures"
+    },
+    {
+      "name": "Ancient Bronze Dragon",
+      "synergy": 0.14,
+      "inclusion": 6758,
+      "num_decks": 6758,
+      "category": "Creatures"
+    },
+    {
+      "name": "Decadent Dragon",
+      "synergy": 0.14,
+      "inclusion": 6675,
+      "num_decks": 6675,
+      "category": "Creatures"
+    },
+    {
+      "name": "Dragonlord Kolaghan",
+      "synergy": 0.14,
+      "inclusion": 6647,
+      "num_decks": 6647,
+      "category": "Creatures"
+    },
+    {
+      "name": "Lozhan, Dragons' Legacy",
+      "synergy": 0.14,
+      "inclusion": 6610,
+      "num_decks": 6610,
+      "category": "Creatures"
+    },
+    {
+      "name": "Dragonlord Ojutai",
+      "synergy": 0.14,
+      "inclusion": 6609,
+      "num_decks": 6609,
+      "category": "Creatures"
+    },
+    {
+      "name": "Dragonlord Silumgar",
+      "synergy": 0.14,
+      "inclusion": 6589,
+      "num_decks": 6589,
+      "category": "Creatures"
+    },
+    {
+      "name": "Earthquake Dragon",
+      "synergy": 0.14,
+      "inclusion": 6571,
+      "num_decks": 6571,
+      "category": "Creatures"
+    },
+    {
+      "name": "Broodcaller Scourge",
+      "synergy": 0.13,
+      "inclusion": 3775,
+      "num_decks": 3775,
+      "category": "Creatures"
+    },
+    {
+      "name": "Nicol Bolas, the Ravager",
+      "synergy": 0.12,
+      "inclusion": 6021,
+      "num_decks": 6021,
+      "category": "Creatures"
+    },
+    {
+      "name": "Cavern-Hoard Dragon",
+      "synergy": 0.13,
+      "inclusion": 5891,
+      "num_decks": 5891,
+      "category": "Creatures"
+    },
+    {
+      "name": "Dragonmaster Outcast",
+      "synergy": 0.12,
+      "inclusion": 5842,
+      "num_decks": 5842,
+      "category": "Creatures"
+    },
+    {
+      "name": "Drakuseth, Maw of Flames",
+      "synergy": 0.12,
+      "inclusion": 5814,
+      "num_decks": 5814,
+      "category": "Creatures"
+    },
+    {
+      "name": "Swords to Plowshares",
+      "synergy": 0.03,
+      "inclusion": 17756,
+      "num_decks": 17756,
+      "category": "Instants"
+    },
+    {
+      "name": "Heroic Intervention",
+      "synergy": 0.16,
+      "inclusion": 15951,
+      "num_decks": 15951,
+      "category": "Instants"
+    },
+    {
+      "name": "Path to Exile",
+      "synergy": -0.02,
+      "inclusion": 10667,
+      "num_decks": 10667,
+      "category": "Instants"
+    },
+    {
+      "name": "Counterspell",
+      "synergy": 0.01,
+      "inclusion": 9890,
+      "num_decks": 9890,
+      "category": "Instants"
+    },
+    {
+      "name": "Sarkhan's Triumph",
+      "synergy": 0.19,
+      "inclusion": 9055,
+      "num_decks": 9055,
+      "category": "Instants"
+    },
+    {
+      "name": "Mana Drain",
+      "synergy": 0.1,
+      "inclusion": 8258,
+      "num_decks": 8258,
+      "category": "Instants"
+    },
+    {
+      "name": "Assassin's Trophy",
+      "synergy": 0.05,
+      "inclusion": 7516,
+      "num_decks": 7516,
+      "category": "Instants"
+    },
+    {
+      "name": "Stubborn Denial",
+      "synergy": 0.11,
+      "inclusion": 5389,
+      "num_decks": 5389,
+      "category": "Instants"
+    },
+    {
+      "name": "Anguished Unmaking",
+      "synergy": 0.05,
+      "inclusion": 5261,
+      "num_decks": 5261,
+      "category": "Instants"
+    },
+    {
+      "name": "Beast Within",
+      "synergy": 0,
+      "inclusion": 5019,
+      "num_decks": 5019,
+      "category": "Instants"
+    },
+    {
+      "name": "Swan Song",
+      "synergy": 0.01,
+      "inclusion": 4705,
+      "num_decks": 4705,
+      "category": "Instants"
+    },
+    {
+      "name": "Smuggler's Surprise",
+      "synergy": 0.09,
+      "inclusion": 4204,
+      "num_decks": 4204,
+      "category": "Instants"
+    },
+    {
+      "name": "An Offer You Can't Refuse",
+      "synergy": -0.02,
+      "inclusion": 3790,
+      "num_decks": 3790,
+      "category": "Instants"
+    },
+    {
+      "name": "Return of the Wildspeaker",
+      "synergy": 0.04,
+      "inclusion": 3583,
+      "num_decks": 3583,
+      "category": "Instants"
+    },
+    {
+      "name": "Chaos Warp",
+      "synergy": 0.03,
+      "inclusion": 3393,
+      "num_decks": 3393,
+      "category": "Instants"
+    },
+    {
+      "name": "Boros Charm",
+      "synergy": 0.03,
+      "inclusion": 3385,
+      "num_decks": 3385,
+      "category": "Instants"
+    },
+    {
+      "name": "Negate",
+      "synergy": -0.02,
+      "inclusion": 2979,
+      "num_decks": 2979,
+      "category": "Instants"
+    },
+    {
+      "name": "Deflecting Swat",
+      "synergy": -0.03,
+      "inclusion": 2894,
+      "num_decks": 2894,
+      "category": "Instants"
+    },
+    {
+      "name": "Growth Spiral",
+      "synergy": -0.03,
+      "inclusion": 2875,
+      "num_decks": 2875,
+      "category": "Instants"
+    },
+    {
+      "name": "Eladamri's Call",
+      "synergy": 0,
+      "inclusion": 2697,
+      "num_decks": 2697,
+      "category": "Instants"
+    },
+    {
+      "name": "Fierce Guardianship",
+      "synergy": -0.06,
+      "inclusion": 2640,
+      "num_decks": 2640,
+      "category": "Instants"
+    },
+    {
+      "name": "Spit Flame",
+      "synergy": 0.05,
+      "inclusion": 2539,
+      "num_decks": 2539,
+      "category": "Instants"
+    },
+    {
+      "name": "Klauth's Will",
+      "synergy": 0.05,
+      "inclusion": 2521,
+      "num_decks": 2521,
+      "category": "Instants"
+    },
+    {
+      "name": "Dragon's Fire",
+      "synergy": 0.05,
+      "inclusion": 2471,
+      "num_decks": 2471,
+      "category": "Instants"
+    },
+    {
+      "name": "Generous Gift",
+      "synergy": -0.02,
+      "inclusion": 2164,
+      "num_decks": 2164,
+      "category": "Instants"
+    },
+    {
+      "name": "Cultivate",
+      "synergy": 0.09,
+      "inclusion": 17745,
+      "num_decks": 17745,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Nature's Lore",
+      "synergy": 0.16,
+      "inclusion": 17683,
+      "num_decks": 17683,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Three Visits",
+      "synergy": 0.14,
+      "inclusion": 15276,
+      "num_decks": 15276,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Kodama's Reach",
+      "synergy": 0.12,
+      "inclusion": 13876,
+      "num_decks": 13876,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Rampant Growth",
+      "synergy": 0.03,
+      "inclusion": 9974,
+      "num_decks": 9974,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Skyshroud Claim",
+      "synergy": 0.13,
+      "inclusion": 8981,
+      "num_decks": 8981,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Majestic Genesis",
+      "synergy": 0.12,
+      "inclusion": 5613,
+      "num_decks": 5613,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Blasphemous Act",
+      "synergy": 0.02,
+      "inclusion": 4897,
+      "num_decks": 4897,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Last March of the Ents",
+      "synergy": 0.09,
+      "inclusion": 4691,
+      "num_decks": 4691,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Eerie Ultimatum",
+      "synergy": 0.03,
+      "inclusion": 4618,
+      "num_decks": 4618,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Patriarch's Bidding",
+      "synergy": 0.06,
+      "inclusion": 4290,
+      "num_decks": 4290,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Kindred Dominance",
+      "synergy": 0.04,
+      "inclusion": 3793,
+      "num_decks": 3793,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Earthquake",
+      "synergy": 0.08,
+      "inclusion": 3634,
+      "num_decks": 3634,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Ruinous Ultimatum",
+      "synergy": 0.01,
+      "inclusion": 3489,
+      "num_decks": 3489,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Farewell",
+      "synergy": 0,
+      "inclusion": 3021,
+      "num_decks": 3021,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Explore",
+      "synergy": 0.01,
+      "inclusion": 2789,
+      "num_decks": 2789,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Rishkar's Expertise",
+      "synergy": 0.02,
+      "inclusion": 2230,
+      "num_decks": 2230,
+      "category": "Sorceries"
+    },
+    {
+      "name": "Urza's Incubator",
+      "synergy": 0.32,
+      "inclusion": 19414,
+      "num_decks": 19414,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Herald's Horn",
+      "synergy": 0.28,
+      "inclusion": 18919,
+      "num_decks": 18919,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Lightning Greaves",
+      "synergy": 0.15,
+      "inclusion": 13359,
+      "num_decks": 13359,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "The Great Henge",
+      "synergy": 0.17,
+      "inclusion": 9506,
+      "num_decks": 9506,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Fist of Suns",
+      "synergy": 0.12,
+      "inclusion": 7590,
+      "num_decks": 7590,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Swiftfoot Boots",
+      "synergy": -0.01,
+      "inclusion": 4820,
+      "num_decks": 4820,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Monster Manual",
+      "synergy": 0.09,
+      "inclusion": 4686,
+      "num_decks": 4686,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Dragon Arch",
+      "synergy": 0.09,
+      "inclusion": 4444,
+      "num_decks": 4444,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Maskwood Nexus",
+      "synergy": 0.01,
+      "inclusion": 2993,
+      "num_decks": 2993,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Vanquisher's Banner",
+      "synergy": -0.02,
+      "inclusion": 2240,
+      "num_decks": 2240,
+      "category": "Utility Artifacts"
+    },
+    {
+      "name": "Call the Spirit Dragons",
+      "synergy": 0.43,
+      "inclusion": 12720,
+      "num_decks": 12720,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Garruk's Uprising",
+      "synergy": 0.35,
+      "inclusion": 19233,
+      "num_decks": 19233,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Rhythm of the Wild",
+      "synergy": 0.32,
+      "inclusion": 17944,
+      "num_decks": 17944,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Kindred Discovery",
+      "synergy": 0.14,
+      "inclusion": 10675,
+      "num_decks": 10675,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Crucible of Fire",
+      "synergy": 0.18,
+      "inclusion": 8325,
+      "num_decks": 8325,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Up the Beanstalk",
+      "synergy": 0.13,
+      "inclusion": 7149,
+      "num_decks": 7149,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Mirari's Wake",
+      "synergy": 0.07,
+      "inclusion": 6873,
+      "num_decks": 6873,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Encroaching Dragonstorm",
+      "synergy": 0.13,
+      "inclusion": 4169,
+      "num_decks": 4169,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Elemental Bond",
+      "synergy": 0.13,
+      "inclusion": 6226,
+      "num_decks": 6226,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Leyline of the Guildpact",
+      "synergy": -0.03,
+      "inclusion": 5206,
+      "num_decks": 5206,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Frontier Siege",
+      "synergy": 0.1,
+      "inclusion": 4950,
+      "num_decks": 4950,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Breaching Dragonstorm",
+      "synergy": 0.1,
+      "inclusion": 3052,
+      "num_decks": 3052,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Aggravated Assault",
+      "synergy": 0.09,
+      "inclusion": 4590,
+      "num_decks": 4590,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Frostcliff Siege",
+      "synergy": 0.08,
+      "inclusion": 2724,
+      "num_decks": 2724,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Roiling Dragonstorm",
+      "synergy": 0.08,
+      "inclusion": 2504,
+      "num_decks": 2504,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Sylvan Library",
+      "synergy": 0.03,
+      "inclusion": 3580,
+      "num_decks": 3580,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Defense of the Heart",
+      "synergy": 0.05,
+      "inclusion": 3367,
+      "num_decks": 3367,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Steely Resolve",
+      "synergy": 0.06,
+      "inclusion": 2999,
+      "num_decks": 2999,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Dragonback Assault",
+      "synergy": 0.05,
+      "inclusion": 1736,
+      "num_decks": 1736,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Monstrous Vortex",
+      "synergy": 0.05,
+      "inclusion": 2464,
+      "num_decks": 2464,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Mystic Remora",
+      "synergy": -0.05,
+      "inclusion": 2696,
+      "num_decks": 2696,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Sneak Attack",
+      "synergy": 0.05,
+      "inclusion": 2596,
+      "num_decks": 2596,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Black Market Connections",
+      "synergy": 0.01,
+      "inclusion": 2444,
+      "num_decks": 2444,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Leyline of Mutation",
+      "synergy": 0.02,
+      "inclusion": 1992,
+      "num_decks": 1992,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Lurking Predators",
+      "synergy": 0.04,
+      "inclusion": 2122,
+      "num_decks": 2122,
+      "category": "Enchantments"
+    },
+    {
+      "name": "Invasion of Tarkir",
+      "synergy": 0.07,
+      "inclusion": 3074,
+      "num_decks": 3074,
+      "category": "Battles"
+    },
+    {
+      "name": "Sarkhan Unbroken",
+      "synergy": 0.22,
+      "inclusion": 10122,
+      "num_decks": 10122,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Sarkhan, Fireblood",
+      "synergy": 0.11,
+      "inclusion": 4949,
+      "num_decks": 4949,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Sivitri, Dragon Master",
+      "synergy": 0.09,
+      "inclusion": 4569,
+      "num_decks": 4569,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Sarkhan the Masterless",
+      "synergy": 0.05,
+      "inclusion": 2423,
+      "num_decks": 2423,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Kiora, Behemoth Beckoner",
+      "synergy": 0.04,
+      "inclusion": 2364,
+      "num_decks": 2364,
+      "category": "Planeswalkers"
+    },
+    {
+      "name": "Crucible of the Spirit Dragon",
+      "synergy": 0.21,
+      "inclusion": 10041,
+      "num_decks": 10041,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Reliquary Tower",
+      "synergy": -0.04,
+      "inclusion": 9170,
+      "num_decks": 9170,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Three Tree City",
+      "synergy": 0.05,
+      "inclusion": 4723,
+      "num_decks": 4723,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Boseiju, Who Endures",
+      "synergy": 0,
+      "inclusion": 4864,
+      "num_decks": 4864,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Mistrise Village",
+      "synergy": 0.07,
+      "inclusion": 2862,
+      "num_decks": 2862,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Cascading Cataracts",
+      "synergy": -0.08,
+      "inclusion": 3578,
+      "num_decks": 3578,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Yavimaya, Cradle of Growth",
+      "synergy": -0.02,
+      "inclusion": 3389,
+      "num_decks": 3389,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Arena of Glory",
+      "synergy": 0.07,
+      "inclusion": 2931,
+      "num_decks": 2931,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Temple of the False God",
+      "synergy": 0.01,
+      "inclusion": 2954,
+      "num_decks": 2954,
+      "category": "Utility Lands"
+    },
+    {
+      "name": "Sol Ring",
+      "synergy": 0.11,
+      "inclusion": 37304,
+      "num_decks": 37304,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Arcane Signet",
+      "synergy": 0.06,
+      "inclusion": 33483,
+      "num_decks": 33483,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Dragon's Hoard",
+      "synergy": 0.48,
+      "inclusion": 22673,
+      "num_decks": 22673,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Chromatic Lantern",
+      "synergy": 0.04,
+      "inclusion": 22616,
+      "num_decks": 22616,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Mox Jasper",
+      "synergy": 0.34,
+      "inclusion": 10766,
+      "num_decks": 10766,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Fellwar Stone",
+      "synergy": 0.02,
+      "inclusion": 13482,
+      "num_decks": 13482,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Orb of Dragonkind",
+      "synergy": 0.22,
+      "inclusion": 10319,
+      "num_decks": 10319,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Carnelian Orb of Dragonkind",
+      "synergy": 0.2,
+      "inclusion": 9401,
+      "num_decks": 9401,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Dragonstorm Globe",
+      "synergy": 0.19,
+      "inclusion": 5759,
+      "num_decks": 5759,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Commander's Sphere",
+      "synergy": 0.04,
+      "inclusion": 8692,
+      "num_decks": 8692,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Jade Orb of Dragonkind",
+      "synergy": 0.1,
+      "inclusion": 4947,
+      "num_decks": 4947,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Herd Heirloom",
+      "synergy": 0.09,
+      "inclusion": 2830,
+      "num_decks": 2830,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Timeless Lotus",
+      "synergy": -0.01,
+      "inclusion": 3914,
+      "num_decks": 3914,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Chromatic Orrery",
+      "synergy": -0.02,
+      "inclusion": 3354,
+      "num_decks": 3354,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Patchwork Banner",
+      "synergy": 0.01,
+      "inclusion": 2711,
+      "num_decks": 2711,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Mana Vault",
+      "synergy": 0.01,
+      "inclusion": 3059,
+      "num_decks": 3059,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Lapis Orb of Dragonkind",
+      "synergy": 0.06,
+      "inclusion": 2883,
+      "num_decks": 2883,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Thought Vessel",
+      "synergy": -0.02,
+      "inclusion": 2336,
+      "num_decks": 2336,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Chrome Mox",
+      "synergy": -0.02,
+      "inclusion": 2202,
+      "num_decks": 2202,
+      "category": "Mana Artifacts"
+    },
+    {
+      "name": "Command Tower",
+      "synergy": 0.05,
+      "inclusion": 38733,
+      "num_decks": 38733,
+      "category": "Lands"
+    },
+    {
+      "name": "Mountain",
+      "synergy": 0.08,
+      "inclusion": 34989,
+      "num_decks": 34989,
+      "category": "Lands"
+    },
+    {
+      "name": "Forest",
+      "synergy": 0.03,
+      "inclusion": 34424,
+      "num_decks": 34424,
+      "category": "Lands"
+    },
+    {
+      "name": "Island",
+      "synergy": -0.01,
+      "inclusion": 32067,
+      "num_decks": 32067,
+      "category": "Lands"
+    },
+    {
+      "name": "Swamp",
+      "synergy": 0.01,
+      "inclusion": 31386,
+      "num_decks": 31386,
+      "category": "Lands"
+    },
+    {
+      "name": "Plains",
+      "synergy": -0.02,
+      "inclusion": 31242,
+      "num_decks": 31242,
+      "category": "Lands"
+    },
+    {
+      "name": "Haven of the Spirit Dragon",
+      "synergy": 0.59,
+      "inclusion": 27715,
+      "num_decks": 27715,
+      "category": "Lands"
+    },
+    {
+      "name": "Path of Ancestry",
+      "synergy": 0.18,
+      "inclusion": 24976,
+      "num_decks": 24976,
+      "category": "Lands"
+    },
+    {
+      "name": "Exotic Orchard",
+      "synergy": -0.02,
+      "inclusion": 24964,
+      "num_decks": 24964,
+      "category": "Lands"
+    },
+    {
+      "name": "Maelstrom of the Spirit Dragon",
+      "synergy": 0.44,
+      "inclusion": 13249,
+      "num_decks": 13249,
+      "category": "Lands"
+    },
+    {
+      "name": "Cavern of Souls",
+      "synergy": 0.32,
+      "inclusion": 20125,
+      "num_decks": 20125,
+      "category": "Lands"
+    },
+    {
+      "name": "Stomping Ground",
+      "synergy": 0.18,
+      "inclusion": 19706,
+      "num_decks": 19706,
+      "category": "Lands"
+    },
+    {
+      "name": "Ketria Triome",
+      "synergy": 0.16,
+      "inclusion": 16956,
+      "num_decks": 16956,
+      "category": "Lands"
+    },
+    {
+      "name": "Breeding Pool",
+      "synergy": 0.09,
+      "inclusion": 16331,
+      "num_decks": 16331,
+      "category": "Lands"
+    },
+    {
+      "name": "Wooded Foothills",
+      "synergy": 0.13,
+      "inclusion": 16320,
+      "num_decks": 16320,
+      "category": "Lands"
+    },
+    {
+      "name": "Steam Vents",
+      "synergy": 0.16,
+      "inclusion": 16170,
+      "num_decks": 16170,
+      "category": "Lands"
+    },
+    {
+      "name": "Overgrown Tomb",
+      "synergy": 0.11,
+      "inclusion": 16088,
+      "num_decks": 16088,
+      "category": "Lands"
+    },
+    {
+      "name": "Blood Crypt",
+      "synergy": 0.16,
+      "inclusion": 15380,
+      "num_decks": 15380,
+      "category": "Lands"
+    },
+    {
+      "name": "Temple Garden",
+      "synergy": 0.08,
+      "inclusion": 15325,
+      "num_decks": 15325,
+      "category": "Lands"
+    },
+    {
+      "name": "Sacred Foundry",
+      "synergy": 0.12,
+      "inclusion": 14861,
+      "num_decks": 14861,
+      "category": "Lands"
+    },
+    {
+      "name": "Arid Mesa",
+      "synergy": 0.12,
+      "inclusion": 14368,
+      "num_decks": 14368,
+      "category": "Lands"
+    },
+    {
+      "name": "Windswept Heath",
+      "synergy": 0.07,
+      "inclusion": 14350,
+      "num_decks": 14350,
+      "category": "Lands"
+    },
+    {
+      "name": "Bloodstained Mire",
+      "synergy": 0.12,
+      "inclusion": 14289,
+      "num_decks": 14289,
+      "category": "Lands"
+    },
+    {
+      "name": "Misty Rainforest",
+      "synergy": 0.07,
+      "inclusion": 14233,
+      "num_decks": 14233,
+      "category": "Lands"
+    },
+    {
+      "name": "Verdant Catacombs",
+      "synergy": 0.08,
+      "inclusion": 14009,
+      "num_decks": 14009,
+      "category": "Lands"
+    },
+    {
+      "name": "Scalding Tarn",
+      "synergy": 0.1,
+      "inclusion": 13880,
+      "num_decks": 13880,
+      "category": "Lands"
+    },
+    {
+      "name": "The World Tree",
+      "synergy": 0.03,
+      "inclusion": 13329,
+      "num_decks": 13329,
+      "category": "Lands"
+    },
+    {
+      "name": "Ziatora's Proving Ground",
+      "synergy": 0.12,
+      "inclusion": 12668,
+      "num_decks": 12668,
+      "category": "Lands"
+    },
+    {
+      "name": "Unclaimed Territory",
+      "synergy": 0.13,
+      "inclusion": 12607,
+      "num_decks": 12607,
+      "category": "Lands"
+    },
+    {
+      "name": "Reflecting Pool",
+      "synergy": 0.14,
+      "inclusion": 12368,
+      "num_decks": 12368,
+      "category": "Lands"
+    },
+    {
+      "name": "Flooded Strand",
+      "synergy": 0.04,
+      "inclusion": 12066,
+      "num_decks": 12066,
+      "category": "Lands"
+    },
+    {
+      "name": "Watery Grave",
+      "synergy": 0.05,
+      "inclusion": 11961,
+      "num_decks": 11961,
+      "category": "Lands"
+    },
+    {
+      "name": "Jetmir's Garden",
+      "synergy": 0.08,
+      "inclusion": 11910,
+      "num_decks": 11910,
+      "category": "Lands"
+    },
+    {
+      "name": "Polluted Delta",
+      "synergy": 0.05,
+      "inclusion": 11770,
+      "num_decks": 11770,
+      "category": "Lands"
+    },
+    {
+      "name": "Secluded Courtyard",
+      "synergy": 0.11,
+      "inclusion": 11735,
+      "num_decks": 11735,
+      "category": "Lands"
+    },
+    {
+      "name": "Hallowed Fountain",
+      "synergy": 0.03,
+      "inclusion": 11689,
+      "num_decks": 11689,
+      "category": "Lands"
+    },
+    {
+      "name": "Marsh Flats",
+      "synergy": 0.04,
+      "inclusion": 11507,
+      "num_decks": 11507,
+      "category": "Lands"
+    },
+    {
+      "name": "Godless Shrine",
+      "synergy": 0.02,
+      "inclusion": 11076,
+      "num_decks": 11076,
+      "category": "Lands"
+    },
+    {
+      "name": "Zagoth Triome",
+      "synergy": 0.04,
+      "inclusion": 10831,
+      "num_decks": 10831,
+      "category": "Lands"
+    },
+    {
+      "name": "Savai Triome",
+      "synergy": 0.09,
+      "inclusion": 10457,
+      "num_decks": 10457,
+      "category": "Lands"
+    },
+    {
+      "name": "Indatha Triome",
+      "synergy": 0.02,
+      "inclusion": 10117,
+      "num_decks": 10117,
+      "category": "Lands"
+    },
+    {
+      "name": "Raugrin Triome",
+      "synergy": 0.06,
+      "inclusion": 9721,
+      "num_decks": 9721,
+      "category": "Lands"
+    },
+    {
+      "name": "City of Brass",
+      "synergy": 0.04,
+      "inclusion": 9540,
+      "num_decks": 9540,
+      "category": "Lands"
+    },
+    {
+      "name": "Frontier Bivouac",
+      "synergy": 0.06,
+      "inclusion": 9516,
+      "num_decks": 9516,
+      "category": "Lands"
+    },
+    {
+      "name": "Temple of the Dragon Queen",
+      "synergy": 0.19,
+      "inclusion": 9341,
+      "num_decks": 9341,
+      "category": "Lands"
+    },
+    {
+      "name": "Mana Confluence",
+      "synergy": 0.04,
+      "inclusion": 9308,
+      "num_decks": 9308,
+      "category": "Lands"
+    },
+    {
+      "name": "Jungle Shrine",
+      "synergy": 0.02,
+      "inclusion": 7852,
+      "num_decks": 7852,
+      "category": "Lands"
+    },
+    {
+      "name": "Mystic Monastery",
+      "synergy": 0.04,
+      "inclusion": 7502,
+      "num_decks": 7502,
+      "category": "Lands"
+    },
+    {
+      "name": "Spara's Headquarters",
+      "synergy": -0.03,
+      "inclusion": 7340,
+      "num_decks": 7340,
+      "category": "Lands"
+    },
+    {
+      "name": "Evolving Wilds",
+      "synergy": -0.02,
+      "inclusion": 7304,
+      "num_decks": 7304,
+      "category": "Lands"
+    }
+  ],
+  "themes": [
+    {
+      "name": "Dragons",
+      "slug": "dragons",
+      "url": "https://edhrec.com/themes/dragons"
+    },
+    {
+      "name": "Flying",
+      "slug": "flying",
+      "url": "https://edhrec.com/themes/flying"
+    },
+    {
+      "name": "Shapeshifters",
+      "slug": "shapeshifters",
+      "url": "https://edhrec.com/themes/shapeshifters"
+    },
+    {
+      "name": "Treasure",
+      "slug": "treasure",
+      "url": "https://edhrec.com/themes/treasure"
+    },
+    {
+      "name": "Aggro",
+      "slug": "aggro",
+      "url": "https://edhrec.com/themes/aggro"
+    },
+    {
+      "name": "Ramp",
+      "slug": "ramp",
+      "url": "https://edhrec.com/themes/ramp"
+    },
+    {
+      "name": "Legends",
+      "slug": "legends",
+      "url": "https://edhrec.com/themes/legends"
+    },
+    {
+      "name": "Big Mana",
+      "slug": "big-mana",
+      "url": "https://edhrec.com/themes/big-mana"
+    },
+    {
+      "name": "Combo",
+      "slug": "combo",
+      "url": "https://edhrec.com/themes/combo"
+    },
+    {
+      "name": "Midrange",
+      "slug": "midrange",
+      "url": "https://edhrec.com/themes/midrange"
+    },
+    {
+      "name": "Good Stuff",
+      "slug": "good-stuff",
+      "url": "https://edhrec.com/themes/good-stuff"
+    },
+    {
+      "name": "Tokens",
+      "slug": "tokens",
+      "url": "https://edhrec.com/themes/tokens"
+    },
+    {
+      "name": "Extra Combats",
+      "slug": "extra-combats",
+      "url": "https://edhrec.com/themes/extra-combats"
+    },
+    {
+      "name": "Burn",
+      "slug": "burn",
+      "url": "https://edhrec.com/themes/burn"
+    },
+    {
+      "name": "Attack Triggers",
+      "slug": "attack-triggers",
+      "url": "https://edhrec.com/themes/attack-triggers"
+    },
+    {
+      "name": "Dragon's Approach",
+      "slug": "dragons-approach",
+      "url": "https://edhrec.com/themes/dragons-approach"
+    },
+    {
+      "name": "Artifacts",
+      "slug": "artifacts",
+      "url": "https://edhrec.com/themes/artifacts"
+    },
+    {
+      "name": "Historic",
+      "slug": "historic",
+      "url": "https://edhrec.com/themes/historic"
+    },
+    {
+      "name": "Stompy",
+      "slug": "stompy",
+      "url": "https://edhrec.com/themes/stompy"
+    },
+    {
+      "name": "+1/+1 Counters",
+      "slug": "plus-1-plus-1-counters",
+      "url": "https://edhrec.com/themes/plus-1-plus-1-counters"
+    },
+    {
+      "name": "ETB",
+      "slug": "etb",
+      "url": "https://edhrec.com/themes/etb"
+    },
+    {
+      "name": "Birthing Pod",
+      "slug": "birthing-pod",
+      "url": "https://edhrec.com/themes/birthing-pod"
+    },
+    {
+      "name": "Card Draw",
+      "slug": "card-draw",
+      "url": "https://edhrec.com/themes/card-draw"
+    },
+    {
+      "name": "Enchantress",
+      "slug": "enchantress",
+      "url": "https://edhrec.com/themes/enchantress"
+    },
+    {
+      "name": "Reanimator",
+      "slug": "reanimator",
+      "url": "https://edhrec.com/themes/reanimator"
+    },
+    {
+      "name": "Toolbox",
+      "slug": "toolbox",
+      "url": "https://edhrec.com/themes/toolbox"
+    },
+    {
+      "name": "Clones",
+      "slug": "clones",
+      "url": "https://edhrec.com/themes/clones"
+    },
+    {
+      "name": "Multicolor Matters",
+      "slug": "multicolor-matters",
+      "url": "https://edhrec.com/themes/multicolor-matters"
+    },
+    {
+      "name": "Commander Matters",
+      "slug": "commander-matters",
+      "url": "https://edhrec.com/themes/commander-matters"
+    },
+    {
+      "name": "Control",
+      "slug": "control",
+      "url": "https://edhrec.com/themes/control"
+    },
+    {
+      "name": "Tempo",
+      "slug": "tempo",
+      "url": "https://edhrec.com/themes/tempo"
+    },
+    {
+      "name": "Power",
+      "slug": "power",
+      "url": "https://edhrec.com/themes/power"
+    },
+    {
+      "name": "Triggered Abilities",
+      "slug": "triggered-abilities",
+      "url": "https://edhrec.com/themes/triggered-abilities"
+    },
+    {
+      "name": "Lands Matter",
+      "slug": "lands-matter",
+      "url": "https://edhrec.com/themes/lands-matter"
+    },
+    {
+      "name": "Snow",
+      "slug": "snow",
+      "url": "https://edhrec.com/themes/snow"
+    },
+    {
+      "name": "Zoo",
+      "slug": "zoo",
+      "url": "https://edhrec.com/themes/zoo"
+    },
+    {
+      "name": "Anthems",
+      "slug": "anthems",
+      "url": "https://edhrec.com/themes/anthems"
+    },
+    {
+      "name": "Unnatural",
+      "slug": "unnatural",
+      "url": "https://edhrec.com/themes/unnatural"
+    },
+    {
+      "name": "Storm",
+      "slug": "storm",
+      "url": "https://edhrec.com/themes/storm"
+    },
+    {
+      "name": "Chaos",
+      "slug": "chaos",
+      "url": "https://edhrec.com/themes/chaos"
+    },
+    {
+      "name": "Haste",
+      "slug": "haste",
+      "url": "https://edhrec.com/themes/haste"
+    },
+    {
+      "name": "Extra Turns",
+      "slug": "extra-turns",
+      "url": "https://edhrec.com/themes/extra-turns"
+    },
+    {
+      "name": "Guildgates",
+      "slug": "guildgates",
+      "url": "https://edhrec.com/themes/guildgates"
+    },
+    {
+      "name": "Activated Abilities",
+      "slug": "activated-abilities",
+      "url": "https://edhrec.com/themes/activated-abilities"
+    },
+    {
+      "name": "Infect",
+      "slug": "infect",
+      "url": "https://edhrec.com/themes/infect"
+    },
+    {
+      "name": "Affinity",
+      "slug": "affinity",
+      "url": "https://edhrec.com/themes/affinity"
+    },
+    {
+      "name": "Planeswalkers",
+      "slug": "planeswalkers",
+      "url": "https://edhrec.com/themes/planeswalkers"
+    },
+    {
+      "name": "Aristocrats",
+      "slug": "aristocrats",
+      "url": "https://edhrec.com/themes/aristocrats"
+    },
+    {
+      "name": "Cascade",
+      "slug": "cascade",
+      "url": "https://edhrec.com/themes/cascade"
+    },
+    {
+      "name": "Voltron",
+      "slug": "voltron",
+      "url": "https://edhrec.com/themes/voltron"
+    },
+    {
+      "name": "Wheels",
+      "slug": "wheels",
+      "url": "https://edhrec.com/themes/wheels"
+    },
+    {
+      "name": "Dredge",
+      "slug": "dredge",
+      "url": "https://edhrec.com/themes/dredge"
+    },
+    {
+      "name": "Land Destruction",
+      "slug": "land-destruction",
+      "url": "https://edhrec.com/themes/land-destruction"
+    },
+    {
+      "name": "Blink",
+      "slug": "blink",
+      "url": "https://edhrec.com/themes/blink"
+    },
+    {
+      "name": "Dungeon",
+      "slug": "dungeon",
+      "url": "https://edhrec.com/themes/dungeon"
+    },
+    {
+      "name": "Group Slug",
+      "slug": "group-slug",
+      "url": "https://edhrec.com/themes/group-slug"
+    },
+    {
+      "name": "Lifegain",
+      "slug": "lifegain",
+      "url": "https://edhrec.com/themes/lifegain"
+    },
+    {
+      "name": "Stax",
+      "slug": "stax",
+      "url": "https://edhrec.com/themes/stax"
+    },
+    {
+      "name": "Ad Nauseam",
+      "slug": "ad-nauseam",
+      "url": "https://edhrec.com/themes/ad-nauseam"
+    },
+    {
+      "name": "Exile",
+      "slug": "exile",
+      "url": "https://edhrec.com/themes/exile"
+    },
+    {
+      "name": "Hatebears",
+      "slug": "hatebears",
+      "url": "https://edhrec.com/themes/hatebears"
+    },
+    {
+      "name": "Jegantha Companion",
+      "slug": "jegantha-companion",
+      "url": "https://edhrec.com/themes/jegantha-companion"
+    },
+    {
+      "name": "Primal Surge",
+      "slug": "primal-surge",
+      "url": "https://edhrec.com/themes/primal-surge"
+    },
+    {
+      "name": "Slivers",
+      "slug": "slivers",
+      "url": "https://edhrec.com/themes/slivers"
+    },
+    {
+      "name": "Sneak Attack",
+      "slug": "sneak-attack",
+      "url": "https://edhrec.com/themes/sneak-attack"
+    },
+    {
+      "name": "-1/-1 Counters",
+      "slug": "minus-1-minus-1-counters",
+      "url": "https://edhrec.com/themes/minus-1-minus-1-counters"
+    },
+    {
+      "name": "Cycling",
+      "slug": "cycling",
+      "url": "https://edhrec.com/themes/cycling"
+    },
+    {
+      "name": "Graveyard",
+      "slug": "graveyard",
+      "url": "https://edhrec.com/themes/graveyard"
+    },
+    {
+      "name": "Mill",
+      "slug": "mill",
+      "url": "https://edhrec.com/themes/mill"
+    },
+    {
+      "name": "Rock",
+      "slug": "rock",
+      "url": "https://edhrec.com/themes/rock"
+    },
+    {
+      "name": "Spellslinger",
+      "slug": "spellslinger",
+      "url": "https://edhrec.com/themes/spellslinger"
+    },
+    {
+      "name": "Auras",
+      "slug": "auras",
+      "url": "https://edhrec.com/themes/auras"
+    },
+    {
+      "name": "Counterspells",
+      "slug": "counterspells",
+      "url": "https://edhrec.com/themes/counterspells"
+    },
+    {
+      "name": "Die Roll",
+      "slug": "die-roll",
+      "url": "https://edhrec.com/themes/die-roll"
+    },
+    {
+      "name": "Discard",
+      "slug": "discard",
+      "url": "https://edhrec.com/themes/discard"
+    },
+    {
+      "name": "Equipment",
+      "slug": "equipment",
+      "url": "https://edhrec.com/themes/equipment"
+    },
+    {
+      "name": "Monarch",
+      "slug": "monarch",
+      "url": "https://edhrec.com/themes/monarch"
+    },
+    {
+      "name": "Type Hack",
+      "slug": "type-hack",
+      "url": "https://edhrec.com/themes/type-hack"
+    },
+    {
+      "name": "Battles",
+      "slug": "battles",
+      "url": "https://edhrec.com/themes/battles"
+    },
+    {
+      "name": "Cheerios",
+      "slug": "cheerios",
+      "url": "https://edhrec.com/themes/cheerios"
+    },
+    {
+      "name": "Clues",
+      "slug": "clues",
+      "url": "https://edhrec.com/themes/clues"
+    },
+    {
+      "name": "Discover",
+      "slug": "discover",
+      "url": "https://edhrec.com/themes/discover"
+    },
+    {
+      "name": "Elders",
+      "slug": "elders",
+      "url": "https://edhrec.com/themes/elders"
+    },
+    {
+      "name": "Pillow Fort",
+      "slug": "pillow-fort",
+      "url": "https://edhrec.com/themes/pillow-fort"
+    },
+    {
+      "name": "Attractions",
+      "slug": "attractions",
+      "url": "https://edhrec.com/themes/attractions"
+    },
+    {
+      "name": "Cantrips",
+      "slug": "cantrips",
+      "url": "https://edhrec.com/themes/cantrips"
+    },
+    {
+      "name": "Defenders",
+      "slug": "defenders",
+      "url": "https://edhrec.com/themes/defenders"
+    },
+    {
+      "name": "Devotion",
+      "slug": "devotion",
+      "url": "https://edhrec.com/themes/devotion"
+    },
+    {
+      "name": "Keruga Companion",
+      "slug": "keruga-companion",
+      "url": "https://edhrec.com/themes/keruga-companion"
+    },
+    {
+      "name": "Modular",
+      "slug": "modular",
+      "url": "https://edhrec.com/themes/modular"
+    },
+    {
+      "name": "Party",
+      "slug": "party",
+      "url": "https://edhrec.com/themes/party"
+    },
+    {
+      "name": "Persistent Petitioners",
+      "slug": "persistent-petitioners",
+      "url": "https://edhrec.com/themes/persistent-petitioners"
+    },
+    {
+      "name": "Pingers",
+      "slug": "pingers",
+      "url": "https://edhrec.com/themes/pingers"
+    },
+    {
+      "name": "Self-Mill",
+      "slug": "self-mill",
+      "url": "https://edhrec.com/themes/self-mill"
+    },
+    {
+      "name": "Spirits",
+      "slug": "spirits",
+      "url": "https://edhrec.com/themes/spirits"
+    },
+    {
+      "name": "Toughness Matters",
+      "slug": "toughness-matters",
+      "url": "https://edhrec.com/themes/toughness-matters"
+    },
+    {
+      "name": "Adventures",
+      "slug": "adventures",
+      "url": "https://edhrec.com/themes/adventures"
+    },
+    {
+      "name": "Aikido",
+      "slug": "aikido",
+      "url": "https://edhrec.com/themes/aikido"
+    },
+    {
+      "name": "Blue Moon",
+      "slug": "blue-moon",
+      "url": "https://edhrec.com/themes/blue-moon"
+    },
+    {
+      "name": "Color Hack",
+      "slug": "color-hack",
+      "url": "https://edhrec.com/themes/color-hack"
+    },
+    {
+      "name": "Delver",
+      "slug": "delver",
+      "url": "https://edhrec.com/themes/delver"
+    },
+    {
+      "name": "Donate",
+      "slug": "donate",
+      "url": "https://edhrec.com/themes/donate"
+    },
+    {
+      "name": "Eggs",
+      "slug": "eggs",
+      "url": "https://edhrec.com/themes/eggs"
+    },
+    {
+      "name": "Elves",
+      "slug": "elves",
+      "url": "https://edhrec.com/themes/elves"
+    },
+    {
+      "name": "Energy",
+      "slug": "energy",
+      "url": "https://edhrec.com/themes/energy"
+    },
+    {
+      "name": "Flash",
+      "slug": "flash",
+      "url": "https://edhrec.com/themes/flash"
+    },
+    {
+      "name": "Forced Combat",
+      "slug": "forced-combat",
+      "url": "https://edhrec.com/themes/forced-combat"
+    },
+    {
+      "name": "Glass Cannon",
+      "slug": "glass-cannon",
+      "url": "https://edhrec.com/themes/glass-cannon"
+    },
+    {
+      "name": "Gods",
+      "slug": "gods",
+      "url": "https://edhrec.com/themes/gods"
+    },
+    {
+      "name": "Group Hug",
+      "slug": "group-hug",
+      "url": "https://edhrec.com/themes/group-hug"
+    },
+    {
+      "name": "Knights",
+      "slug": "knights",
+      "url": "https://edhrec.com/themes/knights"
+    },
+    {
+      "name": "Morph",
+      "slug": "morph",
+      "url": "https://edhrec.com/themes/morph"
+    },
+    {
+      "name": "Mutate",
+      "slug": "mutate",
+      "url": "https://edhrec.com/themes/mutate"
+    },
+    {
+      "name": "Obosh Companion",
+      "slug": "obosh-companion",
+      "url": "https://edhrec.com/themes/obosh-companion"
+    },
+    {
+      "name": "Rat Colony",
+      "slug": "rat-colony",
+      "url": "https://edhrec.com/themes/rat-colony"
+    },
+    {
+      "name": "Spell Copy",
+      "slug": "spell-copy",
+      "url": "https://edhrec.com/themes/spell-copy"
+    },
+    {
+      "name": "Unblockable",
+      "slug": "unblockable",
+      "url": "https://edhrec.com/themes/unblockable"
+    },
+    {
+      "name": "X Spells",
+      "slug": "x-spells",
+      "url": "https://edhrec.com/themes/x-spells"
+    },
+    {
+      "name": "Amass",
+      "slug": "amass",
+      "url": "https://edhrec.com/themes/amass"
+    },
+    {
+      "name": "Avatars",
+      "slug": "avatars",
+      "url": "https://edhrec.com/themes/avatars"
+    },
+    {
+      "name": "Bounce",
+      "slug": "bounce",
+      "url": "https://edhrec.com/themes/bounce"
+    },
+    {
+      "name": "Cats",
+      "slug": "cats",
+      "url": "https://edhrec.com/themes/cats"
+    },
+    {
+      "name": "Coin Flip",
+      "slug": "coin-flip",
+      "url": "https://edhrec.com/themes/coin-flip"
+    },
+    {
+      "name": "Deathtouch",
+      "slug": "deathtouch",
+      "url": "https://edhrec.com/themes/deathtouch"
+    },
+    {
+      "name": "Dinosaurs",
+      "slug": "dinosaurs",
+      "url": "https://edhrec.com/themes/dinosaurs"
+    },
+    {
+      "name": "Dogs",
+      "slug": "dogs",
+      "url": "https://edhrec.com/themes/dogs"
+    },
+    {
+      "name": "Drakes",
+      "slug": "drakes",
+      "url": "https://edhrec.com/themes/drakes"
+    },
+    {
+      "name": "Druids",
+      "slug": "druids",
+      "url": "https://edhrec.com/themes/druids"
+    },
+    {
+      "name": "Dwarves",
+      "slug": "dwarves",
+      "url": "https://edhrec.com/themes/dwarves"
+    },
+    {
+      "name": "Eldrazi",
+      "slug": "eldrazi",
+      "url": "https://edhrec.com/themes/eldrazi"
+    },
+    {
+      "name": "Extra Upkeeps",
+      "slug": "extra-upkeeps",
+      "url": "https://edhrec.com/themes/extra-upkeeps"
+    },
+    {
+      "name": "Fight",
+      "slug": "fight",
+      "url": "https://edhrec.com/themes/fight"
+    },
+    {
+      "name": "Frogs",
+      "slug": "frogs",
+      "url": "https://edhrec.com/themes/frogs"
+    },
+    {
+      "name": "Goats",
+      "slug": "goats",
+      "url": "https://edhrec.com/themes/goats"
+    },
+    {
+      "name": "Goblins",
+      "slug": "goblins",
+      "url": "https://edhrec.com/themes/goblins"
+    },
+    {
+      "name": "Humans",
+      "slug": "humans",
+      "url": "https://edhrec.com/themes/humans"
+    },
+    {
+      "name": "Impulse Draw",
+      "slug": "impulse-draw",
+      "url": "https://edhrec.com/themes/impulse-draw"
+    },
+    {
+      "name": "Indestructible",
+      "slug": "indestructible",
+      "url": "https://edhrec.com/themes/indestructible"
+    },
+    {
+      "name": "Keywords",
+      "slug": "keywords",
+      "url": "https://edhrec.com/themes/keywords"
+    },
+    {
+      "name": "Landfall",
+      "slug": "landfall",
+      "url": "https://edhrec.com/themes/landfall"
+    },
+    {
+      "name": "Lizards",
+      "slug": "lizards",
+      "url": "https://edhrec.com/themes/lizards"
+    },
+    {
+      "name": "Looting",
+      "slug": "looting",
+      "url": "https://edhrec.com/themes/looting"
+    },
+    {
+      "name": "Merfolk",
+      "slug": "merfolk",
+      "url": "https://edhrec.com/themes/merfolk"
+    },
+    {
+      "name": "Myr",
+      "slug": "myr",
+      "url": "https://edhrec.com/themes/myr"
+    },
+    {
+      "name": "Ninjas",
+      "slug": "ninjas",
+      "url": "https://edhrec.com/themes/ninjas"
+    },
+    {
+      "name": "Old School",
+      "slug": "old-school",
+      "url": "https://edhrec.com/themes/old-school"
+    },
+    {
+      "name": "Peasants",
+      "slug": "peasants",
+      "url": "https://edhrec.com/themes/peasants"
+    },
+    {
+      "name": "Praetors",
+      "slug": "praetors",
+      "url": "https://edhrec.com/themes/praetors"
+    },
+    {
+      "name": "Prison",
+      "slug": "prison",
+      "url": "https://edhrec.com/themes/prison"
+    },
+    {
+      "name": "Proliferate",
+      "slug": "proliferate",
+      "url": "https://edhrec.com/themes/proliferate"
+    },
+    {
+      "name": "Relentless Rats",
+      "slug": "relentless-rats",
+      "url": "https://edhrec.com/themes/relentless-rats"
+    },
+    {
+      "name": "Sacrifice",
+      "slug": "sacrifice",
+      "url": "https://edhrec.com/themes/sacrifice"
+    },
+    {
+      "name": "Sagas",
+      "slug": "sagas",
+      "url": "https://edhrec.com/themes/sagas"
+    },
+    {
+      "name": "Scarecrows",
+      "slug": "scarecrows",
+      "url": "https://edhrec.com/themes/scarecrows"
+    },
+    {
+      "name": "Self-Damage",
+      "slug": "self-damage",
+      "url": "https://edhrec.com/themes/self-damage"
+    },
+    {
+      "name": "Self-Destruct",
+      "slug": "self-destruct",
+      "url": "https://edhrec.com/themes/self-destruct"
+    },
+    {
+      "name": "Self-Discard",
+      "slug": "self-discard",
+      "url": "https://edhrec.com/themes/self-discard"
+    },
+    {
+      "name": "Shamans",
+      "slug": "shamans",
+      "url": "https://edhrec.com/themes/shamans"
+    },
+    {
+      "name": "Shrines",
+      "slug": "shrines",
+      "url": "https://edhrec.com/themes/shrines"
+    },
+    {
+      "name": "Soldiers",
+      "slug": "soldiers",
+      "url": "https://edhrec.com/themes/soldiers"
+    },
+    {
+      "name": "Sphinxes",
+      "slug": "sphinxes",
+      "url": "https://edhrec.com/themes/sphinxes"
+    },
+    {
+      "name": "Squirrels",
+      "slug": "squirrels",
+      "url": "https://edhrec.com/themes/squirrels"
+    },
+    {
+      "name": "Stoneblade",
+      "slug": "stoneblade",
+      "url": "https://edhrec.com/themes/stoneblade"
+    },
+    {
+      "name": "Tap / Untap",
+      "slug": "tap-untap",
+      "url": "https://edhrec.com/themes/tap-untap"
+    },
+    {
+      "name": "Theft",
+      "slug": "theft",
+      "url": "https://edhrec.com/themes/theft"
+    },
+    {
+      "name": "Topdeck",
+      "slug": "topdeck",
+      "url": "https://edhrec.com/themes/topdeck"
+    },
+    {
+      "name": "Tron",
+      "slug": "tron",
+      "url": "https://edhrec.com/themes/tron"
+    },
+    {
+      "name": "Vehicles",
+      "slug": "vehicles",
+      "url": "https://edhrec.com/themes/vehicles"
+    },
+    {
+      "name": "Weenies",
+      "slug": "weenies",
+      "url": "https://edhrec.com/themes/weenies"
+    },
+    {
+      "name": "Wizards",
+      "slug": "wizards",
+      "url": "https://edhrec.com/themes/wizards"
+    },
+    {
+      "name": "Wraiths",
+      "slug": "wraiths",
+      "url": "https://edhrec.com/themes/wraiths"
+    }
+  ],
+  "meta": {
+    "rank": 1,
+    "total_decks": 41529,
+    "salt_score": 1.9667221297836939
+  }
+}
