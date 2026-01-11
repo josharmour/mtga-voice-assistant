@@ -45,10 +45,11 @@ class LogFollower:
     def _find_current_session_start(self) -> int:
         """
         Find the byte offset where the current/most recent MTGA session begins.
-        
-        Strategy: Scan backward from EOF to find session or draft markers.
-        Returns an offset that ensures we capture recent events without
-        replaying the entire log.
+
+        Strategy:
+        1. Look for the last match end marker
+        2. If found recently, seek past it to avoid replaying completed matches
+        3. If no match end, check timestamp freshness for mid-match recovery
         """
         import datetime
         import re
@@ -61,49 +62,72 @@ class LogFollower:
                     return 0
 
                 # Patterns to look for
-                session_start_pattern = re.compile(rb'Client\.Connected|Connecting to matchmaker|\"authenticateResponse\"')
-                match_start_pattern = re.compile(rb'MatchGameRoomStateChangedEvent|GREMessageType_ConnectResp|Draft\.Notify|BotDraft|DraftStatus|\"draftId\"')
+                match_end_pattern = re.compile(rb'EventMatchEnd|MatchGameRoomStateType_MatchCompleted|DuelScene_GameStop|Event_Match.*Ending|ResultSpec.*matchId')
+                match_start_pattern = re.compile(rb'Event_Match.*Starting|MatchGameRoomStateChangedEvent.*Playing|GREMessageType_ConnectResp|Draft\.Notify')
                 timestamp_pattern = re.compile(rb'\[UnityCrossThreadLogger\](\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)')
 
                 # Read the last 500KB of the file
                 scan_size = min(500000, file_size)
                 scan_start = max(0, file_size - scan_size)
-                
+
                 f.seek(scan_start)
                 chunk = f.read(scan_size)
-                
-                # Find all timestamps and their offsets to determine freshness context
+
                 current_time = datetime.datetime.now()
                 max_age_hours = 0.5  # 30 minutes - for mid-match restarts
-                
-                # Find the latest match/session/draft marker in this chunk
-                # Search backward (from end of chunk)
+
                 lines = chunk.split(b'\n')
-                
-                # Track the most recent timestamp we've seen (for context)
-                last_seen_timestamp_fresh = None
-                
-                # First pass: Scan forward to find timestamps and track freshness
-                for line in lines:
+
+                # Find the LAST match end and match start markers
+                last_match_end_idx = None
+                last_match_start_idx = None
+                last_timestamp_fresh = None
+
+                for idx, line in enumerate(lines):
+                    # Track timestamps
                     ts_match = timestamp_pattern.search(line)
                     if ts_match:
                         try:
                             ts_str = ts_match.group(1).decode('utf-8', errors='ignore')
                             log_time = datetime.datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
                             age_hours = (current_time - log_time).total_seconds() / 3600
-                            last_seen_timestamp_fresh = age_hours <= max_age_hours
+                            last_timestamp_fresh = age_hours <= max_age_hours
                         except ValueError:
                             pass
-                
-                # If the most recent timestamp is fresh, start from scan_start
-                # This is a simple heuristic: if recent logs are fresh, process them
-                if last_seen_timestamp_fresh:
-                    logging.info(f"Recent logs are fresh (< 30 min old), starting from offset {scan_start}")
+
+                    # Track match boundaries
+                    if match_end_pattern.search(line):
+                        last_match_end_idx = idx
+                    if match_start_pattern.search(line):
+                        last_match_start_idx = idx
+
+                # CASE 1: Match ended after last match start (completed match in logs)
+                if last_match_end_idx is not None and (last_match_start_idx is None or last_match_end_idx > last_match_start_idx):
+                    # Match ended - seek past the end to avoid replaying it
+                    # Calculate byte offset of the line after match end
+                    lines_before_end = lines[:last_match_end_idx + 1]
+                    bytes_before_end = sum(len(l) + 1 for l in lines_before_end)  # +1 for newline
+                    offset = scan_start + bytes_before_end
+                    logging.info(f"Found completed match in logs. Seeking past match end to offset {offset}")
+                    return min(offset, file_size)
+
+                # CASE 2: Match started but no end yet (mid-match)
+                if last_match_start_idx is not None and last_timestamp_fresh:
+                    # Mid-match recovery - process from start of match
+                    lines_before_start = lines[:last_match_start_idx]
+                    bytes_before_start = sum(len(l) + 1 for l in lines_before_start)
+                    offset = scan_start + bytes_before_start
+                    logging.info(f"Found active match in logs. Starting from match start at offset {offset}")
+                    return max(0, offset)
+
+                # CASE 3: No match markers, check timestamp freshness
+                if last_timestamp_fresh:
+                    # Logs are fresh but no clear match markers - be conservative
+                    logging.info(f"Recent logs are fresh but no match markers found. Starting from offset {scan_start}")
                     return scan_start
 
-                # If log is stale, skip to EOF to avoid processing old matches
-                # Wait for new events rather than replaying old match data
-                logging.info(f"Log appears stale (> 30 min old), skipping to EOF (offset {file_size})")
+                # CASE 4: Everything is stale
+                logging.info(f"Logs appear stale. Seeking to EOF (offset {file_size})")
                 return file_size
 
         except Exception as e:
