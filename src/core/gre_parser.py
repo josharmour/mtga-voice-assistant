@@ -3,11 +3,15 @@ Decoupled GRE message parser.
 """
 import logging
 import json
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 from src.core.zone_manager import ZoneManager
-from src.core.mtga import MatchScanner, GameObject, PlayerState, GameHistory, get_zone_type, ZoneType
+from src.core.legacy_models import GameObject, PlayerState, GameHistory
+from src.core.domain.game_state import ZoneType, get_zone_type
 from src.core.monitoring import get_monitor
+
+if TYPE_CHECKING:
+    from src.core.mtga import MatchScanner
 
 class GREParser:
     """

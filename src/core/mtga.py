@@ -8,41 +8,10 @@ from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional
 
 from .monitoring import get_monitor
-from src.core.domain.game_state import GameState
+from src.core.domain.game_state import GameState, ZoneType, get_zone_type
 from src.core.domain.adapters import BoardStateAdapter
 from .zone_manager import ZoneManager
 from .gre_parser import GREParser
-
-# Zone Type Enum for fast comparisons
-class ZoneType(Enum):
-    """Enum representing different zone types in MTG Arena."""
-    UNKNOWN = auto()
-    HAND = auto()
-    BATTLEFIELD = auto()
-    GRAVEYARD = auto()
-    EXILE = auto()
-    LIBRARY = auto()
-    STACK = auto()
-    COMMAND = auto()
-    LIMBO = auto()  # For cards in transition
-    REVEALED = auto()  # For revealed cards
-
-# Map Arena zone type strings to our enum
-ZONE_TYPE_MAP = {
-    "ZoneType_Hand": ZoneType.HAND,
-    "ZoneType_Battlefield": ZoneType.BATTLEFIELD,
-    "ZoneType_Graveyard": ZoneType.GRAVEYARD,
-    "ZoneType_Exile": ZoneType.EXILE,
-    "ZoneType_Library": ZoneType.LIBRARY,
-    "ZoneType_Stack": ZoneType.STACK,
-    "ZoneType_Command": ZoneType.COMMAND,
-    "ZoneType_Limbo": ZoneType.LIMBO,
-    "ZoneType_Revealed": ZoneType.REVEALED,
-}
-
-def get_zone_type(zone_type_str: str) -> ZoneType:
-    """Convert Arena zone type string to ZoneType enum."""
-    return ZONE_TYPE_MAP.get(zone_type_str, ZoneType.UNKNOWN)
 
 # Content of src/log_parser.py
 class LogFollower:
@@ -845,6 +814,130 @@ class MatchScanner:
                     game_obj.color_identity = card_data.get("color_identity", "")
             except Exception as e:
                 logging.debug(f"Could not fetch color for {game_obj.grp_id}: {e}")
+
+
+class JsonStreamParser:
+    """
+    Robust JSON stream parser that correctly handles braces within strings.
+
+    Uses a simple state machine to track:
+    - Whether we're inside a string
+    - Escape sequences within strings
+    - Actual JSON depth (ignoring braces in strings)
+    """
+
+    def __init__(self):
+        self.buffer: str = ""
+        self.depth: int = 0
+
+    def feed(self, line: str) -> Optional[str]:
+        """
+        Feed a line of text to the parser.
+
+        Returns:
+            Complete JSON string if a full object was detected, None otherwise.
+        """
+        # If we're not in a JSON object, look for the start
+        if self.depth == 0:
+            json_start = line.find('{')
+            if json_start == -1:
+                return None
+            line = line[json_start:]
+            self.buffer = ""
+
+        # Add line to buffer
+        self.buffer += line
+
+        # Update depth by parsing character by character
+        self.depth = self._calculate_depth(self.buffer)
+
+        # Detect corruption (more closing than opening)
+        if self.depth < 0:
+            logging.warning(f"JSON depth corruption detected (depth={self.depth}). Resetting parser.")
+            self.reset()
+            return None
+
+        # If we have a complete object, return it
+        if self.depth == 0 and self.buffer:
+            result = self.buffer
+            self.reset()
+            return result
+
+        return None
+
+    def _calculate_depth(self, text: str) -> int:
+        """
+        Calculate JSON depth while properly handling strings.
+
+        This state machine tracks:
+        - in_string: Whether we're inside a quoted string
+        - escaped: Whether the previous character was a backslash
+        - depth: Current brace nesting level
+
+        Args:
+            text: The text to analyze
+
+        Returns:
+            Current JSON depth (0 = complete object)
+        """
+        depth = 0
+        in_string = False
+        escaped = False
+
+        for char in text:
+            if escaped:
+                # Previous char was backslash, this char is escaped
+                escaped = False
+                continue
+
+            if char == '\\' and in_string:
+                # Start escape sequence
+                escaped = True
+                continue
+
+            if char == '"':
+                # Toggle string state
+                in_string = not in_string
+                continue
+
+            # Only count braces outside of strings
+            if not in_string:
+                if char == '{':
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+
+        return depth
+
+    def reset(self):
+        """Reset parser state."""
+        self.buffer = ""
+        self.depth = 0
+
+    def is_valid_json(self, text: str) -> bool:
+        """
+        Quick validation to check if text looks like valid JSON.
+
+        This provides early validation before attempting to parse.
+
+        Args:
+            text: Text to validate
+
+        Returns:
+            True if text appears to be valid JSON structure
+        """
+        if not text or not text.strip():
+            return False
+
+        trimmed = text.strip()
+
+        # Must start with { and end with }
+        if not (trimmed.startswith('{') and trimmed.endswith('}')):
+            return False
+
+        # Depth should be exactly 0 for complete object
+        return self._calculate_depth(trimmed) == 0
+
 
 class GameStateManager:
     def __init__(self, card_lookup: "ArenaCardDatabase"):

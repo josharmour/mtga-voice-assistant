@@ -96,6 +96,39 @@ class Phase(Enum):
         return self in {Phase.MAIN_1, Phase.MAIN_2}
 
 
+class ZoneType(Enum):
+    """Enum representing different zone types in MTG Arena."""
+    UNKNOWN = auto()
+    HAND = auto()
+    BATTLEFIELD = auto()
+    GRAVEYARD = auto()
+    EXILE = auto()
+    LIBRARY = auto()
+    STACK = auto()
+    COMMAND = auto()
+    LIMBO = auto()  # For cards in transition
+    REVEALED = auto()  # For revealed cards
+
+
+# Map Arena zone type strings to ZoneType enum
+ZONE_TYPE_MAP = {
+    "ZoneType_Hand": ZoneType.HAND,
+    "ZoneType_Battlefield": ZoneType.BATTLEFIELD,
+    "ZoneType_Graveyard": ZoneType.GRAVEYARD,
+    "ZoneType_Exile": ZoneType.EXILE,
+    "ZoneType_Library": ZoneType.LIBRARY,
+    "ZoneType_Stack": ZoneType.STACK,
+    "ZoneType_Command": ZoneType.COMMAND,
+    "ZoneType_Limbo": ZoneType.LIMBO,
+    "ZoneType_Revealed": ZoneType.REVEALED,
+}
+
+
+def get_zone_type(zone_type_str: str) -> ZoneType:
+    """Convert Arena zone type string to ZoneType enum."""
+    return ZONE_TYPE_MAP.get(zone_type_str, ZoneType.UNKNOWN)
+
+
 @dataclass(frozen=True)
 class CardIdentity:
     """

@@ -4,7 +4,7 @@ Centralized zone management for MTG game state.
 import logging
 from typing import Dict, Set, Optional
 
-from src.core.domain.game_state import ZoneType
+from src.core.domain.game_state import ZoneType, get_zone_type
 
 class ZoneManager:
     """
@@ -34,7 +34,6 @@ class ZoneManager:
         """
         Update metadata for a given zone (type, owner).
         """
-        from src.core.mtga import get_zone_type # Lazy import to avoid circular dependency
         self.zone_id_to_type[zone_id] = zone_type_str
         self.zone_id_to_enum[zone_id] = get_zone_type(zone_type_str)
         if owner_seat_id:
@@ -55,7 +54,6 @@ class ZoneManager:
         if new_zone_id not in self._zone_objects:
             self._zone_objects[new_zone_id] = set()
         self._zone_objects[new_zone_id].add(instance_id)
-        logging.debug(f"Transferred card {instance_id} to zone {new_zone_id}")
 
     def get_zone_contents(self, zone_id: int) -> Set[int]:
         """Get the set of instance IDs in a given zone."""

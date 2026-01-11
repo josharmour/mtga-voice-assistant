@@ -1,6 +1,7 @@
 """
 Adapters to convert between legacy and domain models.
 """
+from typing import Optional
 from src.core.domain.game_state import GameState, PlayerGameState, CardIdentity, Permanent, Phase, ZoneCollection
 from src.core.legacy_models import BoardState, GameObject
 
@@ -10,9 +11,15 @@ class BoardStateAdapter:
     """
 
     @staticmethod
-    def to_game_state(board_state: BoardState) -> GameState:
+    def to_game_state(board_state: BoardState) -> Optional[GameState]:
         """
         Convert a legacy BoardState object to a new GameState domain model.
+
+        Args:
+            board_state: The legacy BoardState to convert
+
+        Returns:
+            A GameState domain model, or None if board_state is None/empty
         """
         if not board_state:
             return None
