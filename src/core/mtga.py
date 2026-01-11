@@ -98,17 +98,23 @@ class LogFollower:
                 # If the most recent timestamp is fresh, start from scan_start
                 # This is a simple heuristic: if recent logs are fresh, process them
                 if last_seen_timestamp_fresh:
-                    logging.info(f"Recent logs are fresh, starting from offset {scan_start}")
+                    logging.info(f"Recent logs are fresh (< 30 min old), starting from offset {scan_start}")
                     return scan_start
-                
-                # If log is stale, skip most of it but keep last 50KB for safety
-                skip_to = max(0, file_size - 50000)
-                logging.info(f"Log appears stale, skipping to offset {skip_to}")
-                return skip_to
+
+                # If log is stale, skip to EOF to avoid processing old matches
+                # Wait for new events rather than replaying old match data
+                logging.info(f"Log appears stale (> 30 min old), skipping to EOF (offset {file_size})")
+                return file_size
 
         except Exception as e:
-            logging.error(f"Error finding session start: {e}")
-            return 0
+            logging.error(f"Error finding session start: {e}. Defaulting to EOF to avoid processing old data.")
+            # On error, seek to EOF to avoid replaying potentially old matches
+            try:
+                with open(self.log_path, 'rb') as f:
+                    f.seek(0, 2)
+                    return f.tell()
+            except:
+                return 0
 
     def _log_draft_context_near_offset(self, offset: int):
         pass
@@ -168,17 +174,13 @@ class LogFollower:
                             start_offset = self.resume_offset
                             logging.info(f"📍 Resuming from saved match offset: {start_offset}")
                         else:
-                            # SMART STARTUP: Start 500KB before EOF to capture current match context
+                            # SMART STARTUP: Use timestamp-aware session detection
                             # This balances two needs:
                             # 1. Don't replay entire old matches (stale advice problem)
                             # 2. Recover current game state if app restarts mid-match
-                            # MTGA uses diff updates, so we need enough history to reconstruct full state
-
-                            # Start 500KB before EOF (or from start if file is smaller)
-                            # 500KB is typically enough for ~1-2 games worth of state
-                            context_size = 500000  # 500KB of context for mid-game recovery
-                            start_offset = max(0, file_size - context_size)
-                            logging.info(f"Log file opened - starting at offset {start_offset} ({context_size/1000:.0f}KB from EOF). Processing recent context...")
+                            # The _find_current_session_start() method checks timestamps to skip stale logs
+                            start_offset = self._find_current_session_start()
+                            logging.info(f"Log file opened - starting at offset {start_offset}. Processing recent context...")
 
                         self.offset = start_offset
                         self.first_open = False
