@@ -868,7 +868,11 @@ class AdvisorGUI:
         self.save_key_btn.pack(side=tk.RIGHT, padx=(2, 0))
 
         self.ollama_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
-        self.check_ollama_btn = tk.Button(self.ollama_frame, text="Check Ollama & Refresh Models", command=self._check_ollama, bg='#3a3a3a', fg='white', relief=tk.FLAT)
+        tk.Label(self.ollama_frame, text="No API key needed - Ollama runs locally.",
+                 bg=self.bg_color, fg='#888888', font=('Consolas', 8)).pack(anchor=tk.W)
+        tk.Label(self.ollama_frame, text="API keys for cloud providers (Google, OpenAI,\nAnthropic) appear when those are selected.",
+                 bg=self.bg_color, fg='#666666', font=('Consolas', 8), justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 4))
+        self.check_ollama_btn = tk.Button(self.ollama_frame, text="Refresh Ollama Models", command=self._check_ollama, bg='#3a3a3a', fg='white', relief=tk.FLAT)
         self.check_ollama_btn.pack(pady=2, fill=tk.X)
 
         self.llamacpp_frame = tk.Frame(self.settings_frame, bg=self.bg_color)
@@ -1188,8 +1192,10 @@ class AdvisorGUI:
 
         if provider == "Ollama":
             self.ollama_frame.pack(pady=2, fill=tk.X)
-            self.model_dropdown['values'] = model_lists[provider]
-            if not skip_model_reset and self.model_var.get() not in model_lists[provider]:
+            # Auto-fetch available Ollama models instead of showing blank dropdown
+            self._check_ollama()
+            # Keep current model while fetching, or clear if none set
+            if not skip_model_reset and not self.model_var.get():
                  self.model_var.set("")
         elif provider == "Llama.cpp":
             if hasattr(self, 'llamacpp_frame'):

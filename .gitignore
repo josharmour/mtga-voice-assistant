@@ -38,6 +38,9 @@ models/
 bug_reports/*
 !bug_reports/.gitkeep
 
+# Windows artifacts
+nul
+
 # IDE and Editor configs
 .vscode/
 .idea/
