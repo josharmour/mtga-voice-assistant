@@ -58,9 +58,31 @@ def _tts_worker_process(queue: multiprocessing.Queue, voice: str, volume: float,
             np = numpy
 
             from pathlib import Path as P
-            models_dir = P.home() / '.local' / 'share' / 'kokoro'
-            model_path = str(models_dir / 'kokoro-v1.0.onnx')
-            voices_path = str(models_dir / 'voices-v1.0.bin')
+            import os
+
+            # Search paths for Kokoro models
+            search_paths = [
+                P.home() / '.local' / 'share' / 'kokoro',
+                P.home() / '.cache' / 'kokoro',
+                P.cwd(),
+                P.cwd() / 'models',
+            ]
+
+            model_path = None
+            voices_path = None
+
+            for path in search_paths:
+                m = path / 'kokoro-v1.0.onnx'
+                v = path / 'voices-v1.0.bin'
+                if m.exists() and v.exists():
+                    model_path = str(m)
+                    voices_path = str(v)
+                    logging.info(f"Found Kokoro models at: {path}")
+                    break
+
+            if not model_path:
+                logging.debug("Kokoro models not found in common locations.")
+                return False
 
             tts = Kokoro(model_path=model_path, voices_path=voices_path)
             tts_engine = "kokoro"
@@ -845,7 +867,7 @@ class AdvisorGUI:
         # --- AI Provider and Model Selection ---
         tk.Label(self.settings_frame, text="AI Provider:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
         self.provider_var = tk.StringVar()
-        self.provider_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama", "Llama.cpp", "Planeswalker"], width=25)
+        self.provider_dropdown = ttk.Combobox(self.settings_frame, textvariable=self.provider_var, values=["Google", "OpenAI", "Anthropic", "Ollama", "Llama.cpp", "CLI Proxy", "Planeswalker"], width=25)
         self.provider_dropdown.pack(pady=(0, 5), fill=tk.X)
         self.provider_dropdown.bind('<<ComboboxSelected>>', self._on_provider_change)
 
@@ -1189,6 +1211,13 @@ class AdvisorGUI:
             ],
             "Ollama": [],
             "Llama.cpp": ["default"],
+            "CLI Proxy": [
+                "claude-3-7-sonnet-20250219",
+                "claude-3-5-sonnet-20241022",
+                "claude-3-5-haiku-20241022",
+                "gpt-4o",
+                "o1-preview"
+            ],
             "Planeswalker": ["Planeswalker Agent"]
         }
 
@@ -1205,6 +1234,10 @@ class AdvisorGUI:
             self.model_dropdown['values'] = model_lists[provider]
             if not skip_model_reset:
                  self.model_var.set("default")
+        elif provider == "CLI Proxy":
+            self.model_dropdown['values'] = model_lists[provider]
+            if not skip_model_reset:
+                 self.model_var.set(model_lists[provider][0])
         else:
             self.api_key_frame.pack(pady=2, fill=tk.X)
             self.model_dropdown['values'] = model_lists[provider]

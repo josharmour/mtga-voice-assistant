@@ -8,6 +8,7 @@ from .llm.openai_advisor import OpenAIAdvisor
 from .llm.anthropic_advisor import AnthropicAdvisor
 from .llm.ollama_advisor import OllamaAdvisor
 from .llm.llamacpp_advisor import LlamaCppAdvisor
+from .llm.proxy_advisor import CLIProxyAdvisor
 from .llm.planeswalker_advisor import PlaneswalkerAdvisor
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class AIAdvisor:
             "ollama": (OllamaAdvisor, {"max_tokens": prefs.max_prompt_tokens}),
             "llamacpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
             "llama.cpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
+            "cli proxy": (CLIProxyAdvisor, {"max_tokens": prefs.max_prompt_tokens}),
             "planeswalker": (PlaneswalkerAdvisor, {}),
         }
 
@@ -72,6 +74,7 @@ class AIAdvisor:
             "ollama": (OllamaAdvisor, {}),
             "llamacpp": (LlamaCppAdvisor, {}),
             "llama.cpp": (LlamaCppAdvisor, {}),
+            "cli proxy": (CLIProxyAdvisor, {}),
             "planeswalker": (PlaneswalkerAdvisor, {}),
         }
 

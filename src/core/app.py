@@ -612,6 +612,8 @@ class CLIVoiceAdvisor:
                 api_key = self.prefs.openai_api_key
             elif provider.lower() == "anthropic":
                 api_key = self.prefs.anthropic_api_key
+            elif provider.lower() == "cli proxy":
+                api_key = "proxy"
             elif provider.lower() == "llama.cpp":
                 extra_config["server_url"] = self.prefs.llamacpp_server_url
 
