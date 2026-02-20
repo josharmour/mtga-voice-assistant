@@ -2,7 +2,6 @@
 
 from pathlib import Path
 from typing import List, Dict, Any, Set, Tuple, Optional
-import networkx as nx
 import json
 import re
 import pickle
@@ -35,6 +34,7 @@ class SynergyGraph:
 
     def __init__(self):
         """Initialize the synergy graph."""
+        import networkx as nx
         self.graph = nx.Graph()
         self.card_index: Dict[str, Dict[str, Any]] = {}
         # Inverted index for faster synergy lookups
@@ -517,6 +517,7 @@ class SynergyGraph:
                 data = json.load(f)
 
             # Rebuild graph
+            import networkx as nx
             self.graph = nx.Graph()
 
             # Add nodes
@@ -567,6 +568,7 @@ class SynergyGraph:
 
     def stats(self) -> Dict[str, Any]:
         """Get statistics about the synergy graph."""
+        import networkx as nx
         return {
             "num_cards": len(self.graph.nodes),
             "num_synergies": len(self.graph.edges),

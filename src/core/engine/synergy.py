@@ -11,8 +11,6 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-import networkx as nx
-
 logger = logging.getLogger(__name__)
 
 # Cache paths
@@ -59,6 +57,7 @@ class SynergyGraph:
 
     def __init__(self) -> None:
         """Initialize the synergy graph."""
+        import networkx as nx
         self.graph = nx.Graph()
         self.card_index: dict[str, dict[str, Any]] = {}
         # Inverted index: "category:value" -> set of card names
@@ -419,6 +418,7 @@ class SynergyGraph:
             with open(GRAPH_JSON_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
+            import networkx as nx
             self.graph = nx.Graph()
             for node_name, node_data in data.get("nodes", []):
                 self.graph.add_node(node_name, **node_data)
@@ -459,7 +459,7 @@ class SynergyGraph:
             "avg_synergies_per_card": (
                 2 * num_edges / num_nodes if num_nodes > 0 else 0
             ),
-            "density": nx.density(self.graph),
+            "density": __import__("networkx").density(self.graph),
         }
 
 

@@ -12,20 +12,9 @@ import time
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
-from src.cognitive import get_synergy_graph
-
 import requests
 
 from .mtga import LogFollower, GameStateManager
-from .engine import (
-    LogParser,
-    MTGALogWatcher,
-    GameState,
-    create_game_state_handler,
-    CoachEngine,
-    RulesEngine,
-    get_synergy_graph
-)
 from .ai import AIAdvisor
 from .ui import TextToSpeech, AdvisorGUI
 from .formatters import BoardStateFormatter
@@ -42,23 +31,9 @@ except ImportError:
     CONFIG_MANAGER_AVAILABLE = False
     logging.warning("Config manager not available. User preferences will not persist.")
 
-# Import draft advisor
-try:
-    from .draft_advisor import DraftAdvisor, display_draft_pack, format_draft_pack_for_gui
-    from .deck_builder_v2 import DeckBuilderV2
-    DRAFT_ADVISOR_AVAILABLE = True
-except ImportError as e:
-    DRAFT_ADVISOR_AVAILABLE = False
-    logging.warning(f"Draft advisor not available: {e}. Install with: pip install tabulate termcolor scipy")
-
-# Import Tkinter (optional - for GUI mode)
-try:
-    import tkinter as tk
-    from tkinter import ttk, scrolledtext
-    TKINTER_AVAILABLE = True
-except ImportError:
-    TKINTER_AVAILABLE = False
-    logging.warning("Tkinter not available. GUI mode disabled.")
+# Lazy loading flags
+DRAFT_ADVISOR_AVAILABLE = True
+TKINTER_AVAILABLE = True
 
 # Ensure the logs directory exists
 log_dir = Path("logs")
@@ -260,7 +235,10 @@ class CLIVoiceAdvisor:
 
     def _warmup_synergy_graph(self):
         """Load synergy graph in background to prevent UI freeze on first query."""
+        # Small sleep to let GUI finish opening first
+        time.sleep(2.0)
         try:
+            from src.cognitive import get_synergy_graph
             get_synergy_graph()
             logging.info("Synergy graph warmup complete")
         except Exception as e:
@@ -409,6 +387,8 @@ class CLIVoiceAdvisor:
         self.deck_builder = None
         if DRAFT_ADVISOR_AVAILABLE:
             try:
+                from .draft_advisor import DraftAdvisor
+                from .deck_builder_v2 import DeckBuilderV2
                 # Pass CardStatsDB and ArenaCardDatabase to DraftAdvisor
                 self.draft_advisor = DraftAdvisor(self.card_stats, self.ai_advisor, self.arena_db)
                 self.deck_builder = DeckBuilderV2(arena_db=self.arena_db)
@@ -937,6 +917,7 @@ class CLIVoiceAdvisor:
     def run(self):
         """Main application loop"""
         if self.use_gui:
+            import tkinter as tk
             self.tk_root = tk.Tk()
             self.gui = AdvisorGUI(self.tk_root, self, version=self.version)
 
