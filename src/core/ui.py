@@ -1235,9 +1235,10 @@ class AdvisorGUI:
             if not skip_model_reset:
                  self.model_var.set("default")
         elif provider == "CLI Proxy":
-            self.model_dropdown['values'] = model_lists[provider]
-            if not skip_model_reset:
-                 self.model_var.set(model_lists[provider][0])
+            # Dynamic fetching similar to Ollama
+            self._check_proxy()
+            if not skip_model_reset and not self.model_var.get():
+                 self.model_var.set("")
         else:
             self.api_key_frame.pack(pady=2, fill=tk.X)
             self.model_dropdown['values'] = model_lists[provider]
@@ -1287,6 +1288,45 @@ class AdvisorGUI:
         self.add_message("Checking for Ollama installation...", "cyan")
         threading.Thread(target=self._check_ollama_thread, daemon=True).start()
 
+    def _check_proxy(self):
+        """Fetch models from the CLI Proxy API."""
+        self.add_message("Fetching models from CLI Proxy...", "cyan")
+        threading.Thread(target=self._check_proxy_thread, daemon=True).start()
+
+    def _check_proxy_thread(self):
+        """Background thread to fetch proxy models."""
+        try:
+            from .engine.coach import fetch_proxy_models
+            results = fetch_proxy_models() # Returns list of (display, value)
+            
+            # Extract just the values/names for the dropdown
+            # Note: value is "proxy/model-id"
+            model_names = [r[0] for r in results]
+            
+            # Store mapping for later use in change_ai_model
+            self._proxy_mapping = {r[0]: r[1] for r in results}
+
+            def update_ui():
+                if model_names:
+                    self.add_message(f"✓ Proxy models loaded! {len(model_names)} available.", "green")
+                    self.model_dropdown['values'] = model_names
+                    
+                    # Try to find current model in the list
+                    current = self.prefs.current_model if self.prefs else ""
+                    if current in model_names:
+                        self.model_var.set(current)
+                    elif model_names:
+                        self.model_var.set(model_names[0])
+                        self._on_model_change()
+                else:
+                    self.add_message("Could not fetch models from proxy. Ensure it is running.", "yellow")
+
+            if self.root and self.root.winfo_exists():
+                self.root.after(0, update_ui)
+        except Exception as e:
+            logging.error(f"Error fetching proxy models: {e}")
+            self.add_message("Failed to connect to CLI Proxy.", "red")
+
     def _check_ollama_thread(self):
         """Background thread to check for Ollama."""
         try:
@@ -1335,6 +1375,11 @@ class AdvisorGUI:
         """Handle model selection change."""
         model = self.model_var.get()
         provider = self.provider_var.get()
+        
+        # Translate display name to internal ID for Proxy/Ollama if needed
+        if provider == "CLI Proxy" and hasattr(self, '_proxy_mapping'):
+            model = self._proxy_mapping.get(model, model)
+        
         if model and self.prefs:
             self.prefs.set_model(model, provider=provider)
             

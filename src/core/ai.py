@@ -38,7 +38,11 @@ class AIAdvisor:
             "ollama": (OllamaAdvisor, {"max_tokens": prefs.max_prompt_tokens}),
             "llamacpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
             "llama.cpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
-            "cli proxy": (CLIProxyAdvisor, {"max_tokens": prefs.max_prompt_tokens}),
+            "cli proxy": (CLIProxyAdvisor, {
+                "api_key": prefs.proxy_api_key,
+                "base_url": prefs.proxy_url,
+                "max_tokens": prefs.max_prompt_tokens
+            }),
             "planeswalker": (PlaneswalkerAdvisor, {}),
         }
 
@@ -57,7 +61,7 @@ class AIAdvisor:
         else:
             logger.error(f"Unknown model provider: {prefs.model_provider}. AI Advisor not initialized.")
 
-    def set_model(self, provider: str, model_name: str, api_key: str = None):
+    def set_model(self, provider: str, model_name: str, api_key: str = None, **extra_config):
         """
         Hot-swap the AI model/provider.
         """
@@ -74,12 +78,15 @@ class AIAdvisor:
             "ollama": (OllamaAdvisor, {}),
             "llamacpp": (LlamaCppAdvisor, {}),
             "llama.cpp": (LlamaCppAdvisor, {}),
-            "cli proxy": (CLIProxyAdvisor, {}),
+            "cli proxy": (CLIProxyAdvisor, {"api_key": api_key}),
             "planeswalker": (PlaneswalkerAdvisor, {}),
         }
 
         if provider in advisor_map:
             AdvisorClass, kwargs = advisor_map[provider]
+            
+            # Merge with extra config
+            kwargs.update(extra_config)
             
             # Clean kwargs (remove None values)
             kwargs = {k: v for k, v in kwargs.items() if v is not None}

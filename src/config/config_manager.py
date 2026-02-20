@@ -94,6 +94,10 @@ class UserPreferences:
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     
+    # Proxy settings
+    proxy_url: str = "http://127.0.0.1:8080/v1"
+    proxy_api_key: str = "your-api-key-1"
+    
     # Local AI settings
     llamacpp_server_url: str = "http://localhost:8080"
     max_prompt_tokens: int = 4000  # Maximum tokens for advice prompt

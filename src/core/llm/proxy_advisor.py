@@ -10,6 +10,10 @@ class CLIProxyAdvisor(BaseMTGAdvisor):
     """Advisor powered by a local CLI Proxy (OpenAI-compatible)."""
 
     def __init__(self, model_name: str = "claude-3-7-sonnet-20250219", api_key: str = "proxy", card_db=None, **kwargs):
+        # Strip internal prefix if present (e.g. "proxy/claude-3" -> "claude-3")
+        if model_name.startswith("proxy/"):
+            model_name = model_name.split("/", 1)[1]
+            
         super().__init__(model_name, card_db, **kwargs)
         
         # Use provided URL or default to local proxy
