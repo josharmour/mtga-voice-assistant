@@ -1,16 +1,22 @@
-# MTGA Voice Advisor
+# MTGA Voice Assistant (Unified) - Revision 0.3.0
 
 ![MTGA Voice Advisor Screenshot](https://github.com/josharmour/mtga-voice-assistant/raw/main/mtga-voice-assistant.png)
 
-A real-time tactical advisor for Magic: The Gathering Arena (MTGA) that analyzes game logs and provides strategic recommendations via voice (Text-to-Speech).
+**MTGA Voice Assistant** is a professional-grade, real-time tactical advisor for *Magic: The Gathering Arena* (MTGA). It combines a high-fidelity rules-based logic engine (from the ArenaMCP project) with a polished, interactive GUI and high-quality local Text-to-Speech (TTS).
 
-## Features
+The "Unified Project" (Major Revision 0.3.0) represents a "Brain Transplant" where the logic of `ArenaMCP` was merged into the `mtga-voice-assistant` to provide pro-level strategic coaching without sacrificing user experience.
 
-*   **Real-time Advice:** Monitors `Player.log` to understand the board state and suggests optimal plays using local or cloud AI models.
-*   **Draft Assistance:** Provides draft pick recommendations overlaid on the screen.
-*   **Voice Output:** Speaks advice using Kokoro (local, high quality) or other TTS engines.
-*   **Modular AI:** Supports Google Gemini, OpenAI GPT-4, Anthropic Claude, and local Ollama models.
-*   **Local & Secure:** Designed to run locally. Your logs and game data stay on your machine (unless you choose a cloud AI provider).
+## Key Features
+
+*   **🧠 High-Fidelity Logic Engine:** Powered by the `ArenaMCP` core, providing deterministic game state tracking, a full rules engine, and advanced strategic analysis.
+*   **🎙️ Professional TTS:** Speaks advice using **Kokoro (local, ONNX)** for near-human quality, with support for multiple voices (e.g., Bella, Adam, Sarah).
+*   **🧩 Modular AI Backends:**
+    *   **Cloud:** Google Gemini 3.1, OpenAI GPT-4o, Anthropic Claude 3.5.
+    *   **Subscription:** **Claude Code CLI** support (uses your existing Claude subscription, **no API key required**).
+    *   **Local:** Ollama (Llama 3.2, etc.) and Llama.cpp.
+*   **📡 MCP Server Integration:** Acts as a **Model Context Protocol (MCP)** server, allowing you to connect external AI agents (like Claude Desktop) directly to your live MTGA game state.
+*   **📊 Draft & Sealed Assistance:** Real-time pick recommendations with 17Lands win-rate statistics and AI-generated reasoning.
+*   **🛠️ Proactive Triggers:** Automatically detects key decision points (Combat, End of Turn, Complex Stacks) and provides advice without being asked.
 
 ## Installation
 
@@ -18,72 +24,66 @@ A real-time tactical advisor for Magic: The Gathering Arena (MTGA) that analyzes
     *   Python 3.10+ installed.
     *   MTG Arena installed with **Detailed Logs** enabled (`Options` -> `Account` -> check `Detailed Logs`).
 
-2.  **Install Ollama (Required for Local AI):**
-    *   Download and install [Ollama](https://ollama.com/).
-    *   Run the following command in your terminal to pull a model (e.g., Llama 3.2):
-        ```bash
-        ollama pull llama3.2
-        ```
-    *   *Note: If you have a slow computer, we recommend using Google Gemini (Flash) or OpenAI instead of local models for better performance.*
-
-3.  **Clone the Repository:**
+2.  **Clone & Set up:**
     ```bash
-    git clone https://github.com/yourusername/mtga-voice-advisor.git
-    cd mtga-voice-advisor
-    ```
-
-3.  **Set up Virtual Environment:**
-    ```bash
+    git clone https://github.com/josharmour/mtga-voice-assistant.git
+    cd mtga-voice-assistant
     python -m venv venv
+    
     # Windows
     .\venv\Scripts\activate
     # Linux/Mac
     source venv/bin/activate
-    ```
 
-4.  **Install Dependencies:**
-    ```bash
     pip install -r requirements.txt
     ```
-    *Note: You may need to install additional system dependencies for audio (e.g., `espeak` or `ffmpeg`) depending on your OS.*
+
+3.  **Optional: Claude Code (Recommended):**
+    If you have a Claude Pro subscription, install the `claude` CLI:
+    ```bash
+    npm install -g @anthropic-ai/claude-code
+    claude auth
+    ```
+    The advisor will automatically detect and use the `claude` CLI for "Free" (subscription-based) pro-level advice.
 
 ## Usage
 
-1.  **Start the Advisor:**
-    *   **Windows:** Double-click `start_advisor.bat`.
-    *   **Command Line:**
-        ```bash
-        python main.py
-        ```
+1.  **Launch:**
+    *   **Windows:** Run `start_advisor.bat` or `python main.py`.
+    *   **Linux:** `python main.py`.
 
 2.  **Configuration:**
-    *   The application will launch a GUI.
-    *   Select your **AI Provider** (e.g., Google, OpenAI, Ollama).
-    *   Enter your **API Key** (if using cloud providers).
-    *   Configure **Voice** and **Volume**.
-    *   Ensure MTGA is running. The advisor will automatically detect the log file.
+    *   Select your **AI Provider** in the settings.
+    *   Choose a **Voice** (Kokoro is recommended for local quality).
+    *   Enable **Proactive Coaching** for hands-free advice.
 
-## Troubleshooting & Performance
+3.  **MCP Integration (Advanced):**
+    To connect Claude Desktop to your game:
+    Add the following to your `claude_desktop_config.json`:
+    ```json
+    {
+      "mcpServers": {
+        "mtga": {
+          "command": "python",
+          "args": ["-m", "src.core.engine.server"]
+        }
+      }
+    }
+    ```
 
-*   **"Advisor is slow / appears late":**
-    *   If you are running a local model (Ollama) on an older PC, it may be too slow to provide advice in real-time.
-    *   **Solution:** Switch to **Google Gemini (Flash)** in the settings. It has a free tier, is extremely fast, and provides high-quality advice without using your PC's resources.
+## Project Structure (Unified)
 
-*   **"Ollama found, but no models installed":**
-    *   Open your terminal (cmd/powershell) and run `ollama pull llama3.2` to download the default model.
-
-## Project Structure
-
-*   `main.py`: Entry point.
-*   `src/core/`: Core application logic (App, UI, AI integration).
-*   `src/data/`: Data management (Card databases, Scryfall cache).
-*   `logs/`: Application logs.
-*   `bug_reports/`: Generated bug reports (screenshots/logs).
+*   `main.py`: Unified entry point.
+*   `src/core/engine/`: **The Brain** — Game state tracking, rules engine, and Coach logic (from `ArenaMCP`).
+*   `src/core/ui.py`: **The Interface** — Polished Tkinter dashboard and voice controls.
+*   `src/core/mtga.py`: **The Eyes** — Log following and legacy state management.
+*   `src/data/`: **The Memory** — Card databases (Scryfall, Arena SQLite) and 17Lands stats.
+*   `logs/`: Application and advisor logs.
 
 ## Development
 
-*   **Tests:** Run `pytest` in the root directory.
-*   **Linting:** Use `flake8` or `black`.
+*   **Tests:** Run `pytest` to verify engine logic and log parsing.
+*   **Engine:** The core logic is maintained in `src/core/engine/`, designed for portability.
 
 ## License
 
