@@ -226,7 +226,7 @@ class CLIVoiceAdvisor:
         # Small sleep to let GUI finish opening first
         time.sleep(2.0)
         try:
-            from src.cognitive import get_synergy_graph
+            from ..cognitive import get_synergy_graph
             get_synergy_graph()
             logging.info("Synergy graph warmup complete")
         except Exception as e:
@@ -238,6 +238,7 @@ class CLIVoiceAdvisor:
         # by pre-loading the massive synergy graph (2.2M edges)
         threading.Thread(target=self._warmup_synergy_graph, daemon=True).start()
 
+        from .version import get_version
         self.version = get_version()
         print(f"MTGA Voice Advisor v{self.version} - Initializing...")
         self.start_time = datetime.datetime.now()  # Capture startup time
@@ -304,7 +305,7 @@ class CLIVoiceAdvisor:
 
         # Initialize data structures (empty wrappers, loaded in background)
         self.card_stats = None
-        from .data.arena_cards import ArenaCardDatabase
+        from ..data.arena_cards import ArenaCardDatabase
         self.arena_db = ArenaCardDatabase(autoload=False)
         from .formatters import BoardStateFormatter
         self.formatter = BoardStateFormatter(card_db=self.arena_db)
