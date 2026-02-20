@@ -14,9 +14,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Callable
 import requests
 
-from .mtga import LogFollower, GameStateManager
-from .ai import AIAdvisor
-from .ui import TextToSpeech, AdvisorGUI
 from .formatters import BoardStateFormatter
 from .advice_triggers import AdviceTriggerManager, TriggerType, TriggerEvent
 from ..data.data_management import CardStatsDB
@@ -312,6 +309,10 @@ class CLIVoiceAdvisor:
 
         # Initialize board state formatter with card database
         self.formatter = BoardStateFormatter(card_db=self.arena_db)
+
+        # Lazy load MTGA core components
+        from .mtga import GameStateManager, LogFollower
+        from .ai import AIAdvisor
 
         # Initialize GameStateManager with Arena card database
         self.game_state_mgr = GameStateManager(self.arena_db)
@@ -888,6 +889,7 @@ class CLIVoiceAdvisor:
             saved_voice = self.prefs.current_voice if self.prefs else "am_adam"
             saved_volume = (self.prefs.volume if self.prefs else 100) / 100.0
             print(f"Initializing TTS engine (background)...")
+            from .ui import TextToSpeech
             self.tts = TextToSpeech(voice=saved_voice, volume=saved_volume)
             self.tts_loading = False
             print(f"[OK] TTS engine ready")
@@ -918,6 +920,7 @@ class CLIVoiceAdvisor:
         """Main application loop"""
         if self.use_gui:
             import tkinter as tk
+            from .ui import AdvisorGUI
             self.tk_root = tk.Tk()
             self.gui = AdvisorGUI(self.tk_root, self, version=self.version)
 

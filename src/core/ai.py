@@ -3,13 +3,6 @@ import datetime
 from typing import Dict, List, Optional
 
 from ..config.config_manager import UserPreferences
-from .llm.google_advisor import GeminiAdvisor
-from .llm.openai_advisor import OpenAIAdvisor
-from .llm.anthropic_advisor import AnthropicAdvisor
-from .llm.ollama_advisor import OllamaAdvisor
-from .llm.llamacpp_advisor import LlamaCppAdvisor
-from .llm.proxy_advisor import CLIProxyAdvisor
-from .llm.planeswalker_advisor import PlaneswalkerAdvisor
 
 logger = logging.getLogger(__name__)
 
@@ -31,35 +24,47 @@ class AIAdvisor:
         provider = prefs.model_provider.lower()
         model = prefs.current_model
 
-        advisor_map = {
-            "google": (GeminiAdvisor, {"api_key": prefs.google_api_key, "max_tokens": prefs.max_prompt_tokens}),
-            "openai": (OpenAIAdvisor, {"api_key": prefs.openai_api_key, "max_tokens": prefs.max_prompt_tokens}),
-            "anthropic": (AnthropicAdvisor, {"api_key": prefs.anthropic_api_key, "max_tokens": prefs.max_prompt_tokens}),
-            "ollama": (OllamaAdvisor, {"max_tokens": prefs.max_prompt_tokens}),
-            "llamacpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
-            "llama.cpp": (LlamaCppAdvisor, {"server_url": prefs.llamacpp_server_url, "max_tokens": prefs.max_prompt_tokens}),
-            "cli proxy": (CLIProxyAdvisor, {
-                "api_key": prefs.proxy_api_key,
-                "base_url": prefs.proxy_url,
-                "max_tokens": prefs.max_prompt_tokens
-            }),
-            "planeswalker": (PlaneswalkerAdvisor, {}),
-        }
+        self._init_advisor(provider, model, prefs)
 
-        if provider in advisor_map:
-            AdvisorClass, kwargs = advisor_map[provider]
-            try:
-                self.advisor = AdvisorClass(
-                    model_name=model,
-                    card_db=card_db,
-                    **kwargs
+    def _init_advisor(self, provider: str, model: str, prefs: UserPreferences):
+        """Lazy load and initialize the specific advisor class."""
+        try:
+            if provider == "google":
+                from .llm.google_advisor import GeminiAdvisor
+                self.advisor = GeminiAdvisor(model_name=model, card_db=self.card_db, api_key=prefs.google_api_key, max_tokens=prefs.max_prompt_tokens)
+            elif provider == "openai":
+                from .llm.openai_advisor import OpenAIAdvisor
+                self.advisor = OpenAIAdvisor(model_name=model, card_db=self.card_db, api_key=prefs.openai_api_key, max_tokens=prefs.max_prompt_tokens)
+            elif provider == "anthropic":
+                from .llm.anthropic_advisor import AnthropicAdvisor
+                self.advisor = AnthropicAdvisor(model_name=model, card_db=self.card_db, api_key=prefs.anthropic_api_key, max_tokens=prefs.max_prompt_tokens)
+            elif provider == "ollama":
+                from .llm.ollama_advisor import OllamaAdvisor
+                self.advisor = OllamaAdvisor(model_name=model, card_db=self.card_db, max_tokens=prefs.max_prompt_tokens)
+            elif provider in ("llamacpp", "llama.cpp"):
+                from .llm.llamacpp_advisor import LlamaCppAdvisor
+                self.advisor = LlamaCppAdvisor(model_name=model, card_db=self.card_db, server_url=prefs.llamacpp_server_url, max_tokens=prefs.max_prompt_tokens)
+            elif provider == "cli proxy":
+                from .llm.proxy_advisor import CLIProxyAdvisor
+                self.advisor = CLIProxyAdvisor(
+                    model_name=model, 
+                    card_db=self.card_db,
+                    api_key=prefs.proxy_api_key,
+                    base_url=prefs.proxy_url,
+                    max_tokens=prefs.max_prompt_tokens
                 )
-                logger.info(f"{provider.capitalize()} Advisor initialized with model: {model}")
-            except Exception as e:
-                logger.error(f"Failed to initialize {provider.capitalize()} Advisor: {e}")
+            elif provider == "planeswalker":
+                from .llm.planeswalker_advisor import PlaneswalkerAdvisor
+                self.advisor = PlaneswalkerAdvisor(model_name=model, card_db=self.card_db)
+            else:
+                logger.error(f"Unknown model provider: {provider}")
                 self.advisor = None
-        else:
-            logger.error(f"Unknown model provider: {prefs.model_provider}. AI Advisor not initialized.")
+                
+            if self.advisor:
+                logger.info(f"{provider.capitalize()} Advisor initialized with model: {model}")
+        except Exception as e:
+            logger.error(f"Failed to initialize {provider.capitalize()} Advisor: {e}")
+            self.advisor = None
 
     def set_model(self, provider: str, model_name: str, api_key: str = None, **extra_config):
         """
@@ -67,43 +72,39 @@ class AIAdvisor:
         """
         provider = provider.lower()
         
-        # Pass empty card_db if we don't have one stored (TODO: Store card_db in __init__)
-        # Ideally, we should store card_db in self to pass it here
+        # Pass empty card_db if we don't have one stored
         card_db = getattr(self, 'card_db', None)
 
-        advisor_map = {
-            "google": (GeminiAdvisor, {"api_key": api_key}),
-            "openai": (OpenAIAdvisor, {"api_key": api_key}),
-            "anthropic": (AnthropicAdvisor, {"api_key": api_key}),
-            "ollama": (OllamaAdvisor, {}),
-            "llamacpp": (LlamaCppAdvisor, {}),
-            "llama.cpp": (LlamaCppAdvisor, {}),
-            "cli proxy": (CLIProxyAdvisor, {"api_key": api_key}),
-            "planeswalker": (PlaneswalkerAdvisor, {}),
-        }
-
-        if provider in advisor_map:
-            AdvisorClass, kwargs = advisor_map[provider]
-            
-            # Merge with extra config
-            kwargs.update(extra_config)
-            
-            # Clean kwargs (remove None values)
-            kwargs = {k: v for k, v in kwargs.items() if v is not None}
-            
-            try:
-                self.advisor = AdvisorClass(
-                    model_name=model_name,
-                    card_db=card_db,
-                    **kwargs
-                )
-                logger.info(f"Hot-swapped to {provider.capitalize()} Advisor with model: {model_name}")
-                return True
-            except Exception as e:
-                logger.error(f"Failed to hot-swap to {provider.capitalize()} Advisor: {e}")
+        try:
+            if provider == "google":
+                from .llm.google_advisor import GeminiAdvisor
+                self.advisor = GeminiAdvisor(model_name=model_name, card_db=card_db, api_key=api_key, **extra_config)
+            elif provider == "openai":
+                from .llm.openai_advisor import OpenAIAdvisor
+                self.advisor = OpenAIAdvisor(model_name=model_name, card_db=card_db, api_key=api_key, **extra_config)
+            elif provider == "anthropic":
+                from .llm.anthropic_advisor import AnthropicAdvisor
+                self.advisor = AnthropicAdvisor(model_name=model_name, card_db=card_db, api_key=api_key, **extra_config)
+            elif provider == "ollama":
+                from .llm.ollama_advisor import OllamaAdvisor
+                self.advisor = OllamaAdvisor(model_name=model_name, card_db=card_db, **extra_config)
+            elif provider in ("llamacpp", "llama.cpp"):
+                from .llm.llamacpp_advisor import LlamaCppAdvisor
+                self.advisor = LlamaCppAdvisor(model_name=model_name, card_db=card_db, **extra_config)
+            elif provider == "cli proxy":
+                from .llm.proxy_advisor import CLIProxyAdvisor
+                self.advisor = CLIProxyAdvisor(model_name=model_name, card_db=card_db, api_key=api_key, **extra_config)
+            elif provider == "planeswalker":
+                from .llm.planeswalker_advisor import PlaneswalkerAdvisor
+                self.advisor = PlaneswalkerAdvisor(model_name=model_name, card_db=card_db, **extra_config)
+            else:
+                logger.error(f"Unknown model provider: {provider}")
                 return False
-        else:
-            logger.error(f"Unknown model provider: {provider}")
+                
+            logger.info(f"Hot-swapped to {provider.capitalize()} Advisor with model: {model_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to hot-swap to {provider.capitalize()} Advisor: {e}")
             return False
 
     def get_tactical_advice(self, board_state: Dict, user_query: str = "") -> str:
