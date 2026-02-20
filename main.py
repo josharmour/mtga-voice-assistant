@@ -22,15 +22,20 @@ if os.name == 'nt':
     except Exception:
         pass  # Ignore errors, icon will just show default
 
+print("DEBUG: main.py top-level executing...")
+
 # Load environment variables from .env file
 load_dotenv()
 
 # Add src directory to Python path
 src_path = Path(__file__).parent / "src"
+print(f"DEBUG: main.py setting up path: {src_path}")
 sys.path.insert(0, str(src_path))
 
 # Import and run the main application
+print("DEBUG: main.py importing app...")
 from src.core.app import main
 
 if __name__ == "__main__":
+    print("DEBUG: main.py calling app.main()...")
     main()

@@ -1,24 +1,17 @@
 
-import dataclasses
+print("DEBUG: app.py top-level code executing...")
 import datetime
-import json
 import logging
 import os
-import re
-import subprocess
 import sys
 import threading
 import time
+import re
+import json
+import dataclasses
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
-import requests
-
-from .formatters import BoardStateFormatter
-from .advice_triggers import AdviceTriggerManager, TriggerType, TriggerEvent
-from ..data.data_management import CardStatsDB
-from ..data.arena_cards import ArenaCardDatabase
-from .version import get_version
 
 # Import configuration manager for user preferences
 try:
@@ -120,7 +113,6 @@ def remove_emojis(text: str) -> str:
         result = result.replace(emoji, replacement)
 
     # Remove any remaining emojis (Unicode range for emojis)
-    import re
     emoji_pattern = re.compile(
         "["
         u"\U0001F600-\U0001F64F"  # emoticons
@@ -247,6 +239,8 @@ class CLIVoiceAdvisor:
         # by pre-loading the massive synergy graph (2.2M edges)
         threading.Thread(target=self._warmup_synergy_graph, daemon=True).start()
 
+        self.version = get_version()
+        print(f"MTGA Voice Advisor v{self.version} - Initializing...")
         self.start_time = datetime.datetime.now()  # Capture startup time
         self.use_gui = use_gui
         self.gui = None
@@ -282,8 +276,10 @@ class CLIVoiceAdvisor:
         ]
 
         # Load user preferences
+        print("Loading user preferences...")
         self.prefs = None
         if CONFIG_MANAGER_AVAILABLE:
+            from ..config.config_manager import UserPreferences
             self.prefs = UserPreferences.load()
 
         self.continuous_monitoring = self.prefs.opponent_turn_alerts if self.prefs else True
@@ -299,46 +295,38 @@ class CLIVoiceAdvisor:
             print("ERROR: Could not find Arena Player.log.")
             exit(1)
 
-        # Initialize card stats database for 17lands data
-        self.card_stats = CardStatsDB()
+        # Initialize basic engine containers synchronously so log parsing can begin
+        # but don't do any heavy loading here
+        print("Initializing strategic engine containers...")
+        from .engine import get_game_state, get_log_parser, get_rules_engine
+        self.engine_game_state = get_game_state()()
+        self.engine_parser = get_log_parser()()
+        self.engine_rules = get_rules_engine()()
 
-        # Initialize Arena Card Database (empty initially, loaded in background)
-        # Uses unified_cards.db built from MTGA's Raw_CardDatabase
-        logging.info("Initializing Arena card database wrapper...")
-        self.arena_db = ArenaCardDatabase()
-
-        # Initialize board state formatter with card database
+        # Initialize data structures (empty wrappers, loaded in background)
+        self.card_stats = None
+        from .data.arena_cards import ArenaCardDatabase
+        self.arena_db = ArenaCardDatabase(autoload=False)
+        from .formatters import BoardStateFormatter
         self.formatter = BoardStateFormatter(card_db=self.arena_db)
-
-        # Lazy load MTGA core components
-        from .mtga import GameStateManager, LogFollower
-        from .ai import AIAdvisor
-
-        # Initialize GameStateManager with Arena card database
-        self.game_state_mgr = GameStateManager(self.arena_db)
-
-        # Initialize AI advisor first so it can be used by the engine bridge
-        self.ai_advisor = AIAdvisor(card_db=self.arena_db, prefs=self.prefs)
-
-        # ----------------------------------------------------------------------
-        # BRAIN TRANSPLANT: Initialize ArenaMCP Engine components
-        # ----------------------------------------------------------------------
-        logging.info("Initializing ArenaMCP Engine (The Brain)...")
-        from .engine import (
-            LogParser, GameState, create_game_state_handler,
-            RulesEngine
-        )
+        self.game_state_mgr = None
+        self.ai_advisor = None
         
+        self.engine_scryfall = None
+        self.engine_mtgadb = None
+        self.engine_coach = None
+        self.engine_bridge = None
+        self.engine_ready = False
+        self.db_ready = False
+        
+        # Start background heavy data loading immediately
+        threading.Thread(target=self._init_heavy_data_async, daemon=True).start()
+
         try:
-            # Initialize basic components synchronously so log parsing can begin
-            self.engine_game_state = GameState()
-            self.engine_parser = LogParser()
-            self.engine_rules = RulesEngine()
-            
             # BRAIN TRANSPLANT: Initialize Draft State
-            from .engine import DraftState, create_draft_handler
-            self.engine_draft_state = DraftState()
-            self.engine_draft_handler = create_draft_handler(self.engine_draft_state)
+            from .engine import get_draft_state, get_create_draft_handler
+            self.engine_draft_state = get_draft_state()()
+            self.engine_draft_handler = get_create_draft_handler()(self.engine_draft_state)
             
             # Register draft handlers in the engine parser
             self.engine_parser.register_handler('Draft.Notify', self.engine_draft_handler)
@@ -347,24 +335,14 @@ class CLIVoiceAdvisor:
             self.engine_parser.register_handler('BotDraft_DraftPick', self.engine_draft_handler)
             
             # Bind handler to parser
-            self.engine_handler = create_game_state_handler(self.engine_game_state)
-            self.engine_parser.register_handler('GreToClientEvent', self.engine_handler)
-            
-            # Initialize heavy data components and CoachEngine in background
-            self.engine_scryfall = None
-            self.engine_mtgadb = None
-            self.engine_coach = None
-            self.engine_bridge = None
-            self.engine_ready = False
-            self.db_ready = False
-            
-            # Start background heavy data loading
-            threading.Thread(target=self._init_heavy_data_async, daemon=True).start()
+            # (Note: engine_handler is already defined in _init_heavy_data_async once it completes)
             
             logging.info("ArenaMCP Engine basic components initialized.")
         except Exception as e:
             logging.error(f"Failed to initialize ArenaMCP Engine basics: {e}")
             self.engine_game_state = None
+
+        print("Core components loaded. Preparing GUI...")
 
         # Initialize TTS asynchronously to prevent blocking startup
         self.tts = None
@@ -377,11 +355,15 @@ class CLIVoiceAdvisor:
             import os
             if os.path.exists(self.log_path):
                 file_size = os.path.getsize(self.log_path)
-                resume_offset = self.game_state_mgr.get_resume_offset(file_size)
+                # Note: game_state_mgr not ready yet, will be checked in _follow_log
         except Exception as e:
             logging.warning(f"Failed to check for saved match state: {e}")
 
+        # Initialize LogFollower
+        from .mtga import LogFollower
         self.log_follower = LogFollower(self.log_path, resume_offset=resume_offset)
+
+        print("Launching MTGA Voice Advisor...")
 
         # Initialize draft advisor
         self.draft_advisor = None
@@ -851,27 +833,42 @@ class CLIVoiceAdvisor:
     def _init_heavy_data_async(self):
         """Initialize heavy data components in a background thread."""
         try:
-            # 1. Load Legacy Arena Card Database
+            # 1. Load Card Stats Database
+            logging.info("Data Background: Initializing card stats database...")
+            from ..data.data_management import CardStatsDB
+            self.card_stats = CardStatsDB()
+
+            # 2. Load Legacy Arena Card Database
             if self.arena_db:
                 logging.info("Data Background: Loading legacy card database...")
                 self.arena_db.load()
                 self.db_ready = True
                 logging.info(f"Data Background: Legacy database loaded ({len(self.arena_db._cache)} cards).")
 
-            # 2. Load new ArenaMCP Engine components
-            from .engine import ScryfallCache, MTGADatabase, CoachEngine
+            # 3. Initialize GameStateManager and AIAdvisor
+            from .mtga import GameStateManager
+            from .ai import AIAdvisor
+            self.game_state_mgr = GameStateManager(self.arena_db)
+            self.ai_advisor = AIAdvisor(card_db=self.arena_db, prefs=self.prefs)
+
+            # 4. Load new ArenaMCP Engine components
+            from .engine import get_scryfall_cache, get_mtga_database, get_coach_engine, get_create_game_state_handler
             
             logging.info("Engine Background: Loading Scryfall Cache (this may take time if downloading)...")
-            self.engine_scryfall = ScryfallCache()
+            self.engine_scryfall = get_scryfall_cache()()
             
             logging.info("Engine Background: Opening MTGA CardDatabase...")
-            self.engine_mtgadb = MTGADatabase()
+            self.engine_mtgadb = get_mtga_database()()
             
             logging.info("Engine Background: Initializing CoachEngine...")
             self.engine_bridge = EngineAIBridge(self.ai_advisor)
-            self.engine_coach = CoachEngine(
+            self.engine_coach = get_coach_engine()(
                 backend=self.engine_bridge
             )
+            
+            # Bind handler to parser (now that engine is ready)
+            self.engine_handler = get_create_game_state_handler()(self.engine_game_state)
+            self.engine_parser.register_handler('GreToClientEvent', self.engine_handler)
             
             self.engine_ready = True
             logging.info("ArenaMCP Engine (The Brain) is now FULLY READY.")
@@ -1023,7 +1020,6 @@ class CLIVoiceAdvisor:
 
     def _clean_for_tts(self, text: str) -> str:
         """Clean text for TTS pronunciation."""
-        import re
         clean_advice = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
         clean_advice = re.sub(r'\*([^*]+)\*', r'\1', clean_advice)
         clean_advice = re.sub(r'`([^`]+)`', r'\1', clean_advice)
@@ -1032,7 +1028,7 @@ class CLIVoiceAdvisor:
         clean_advice = re.sub(r'#+\s', '', clean_advice)
         return clean_advice.strip()
 
-    def _get_advice_for_trigger(self, board_state, trigger_event: TriggerEvent):
+    def _get_advice_for_trigger(self, board_state, trigger_event):
         """Get and output advice for a trigger event using streaming."""
         def get_advice():
             try:
@@ -1107,6 +1103,7 @@ class CLIVoiceAdvisor:
                         return
 
                 # Add trigger context to help AI understand the situation
+                from .advice_triggers import TriggerType
                 if trigger_event.user_query:
                     board_state_dict['user_query'] = trigger_event.user_query
                 board_state_dict['trigger_type'] = trigger_event.trigger_type.name
@@ -1122,8 +1119,6 @@ class CLIVoiceAdvisor:
                 
                 # Start the stream
                 stream = self.ai_advisor.get_tactical_advice_stream(board_state_dict)
-                
-                import re
                 
                 for chunk in stream:
                     advice_full_text += chunk

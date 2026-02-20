@@ -48,6 +48,7 @@ echo.
 
 REM Run the application
 echo Launching...
+set SKIP_GIT_VERSION=1
 .\venv\Scripts\python.exe main.py %*
 
 REM Pause only if there was an error (exit code not 0)
