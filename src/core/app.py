@@ -879,10 +879,6 @@ class CLIVoiceAdvisor:
             logging.info("Engine Background: Initializing CoachEngine...")
             self.engine_bridge = EngineAIBridge(self.ai_advisor)
             self.engine_coach = CoachEngine(
-                self.engine_game_state,
-                scryfall=self.engine_scryfall,
-                mtgadb=self.engine_mtgadb,
-                rules=self.engine_rules,
                 backend=self.engine_bridge
             )
             
