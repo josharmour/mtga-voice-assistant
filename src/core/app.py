@@ -347,12 +347,11 @@ class CLIVoiceAdvisor:
         logging.info("Initializing ArenaMCP Engine (The Brain)...")
         from .engine import (
             LogParser, GameState, create_game_state_handler,
-            CoachEngine, RulesEngine, ScryfallCache, MTGADatabase
+            RulesEngine
         )
         
         try:
-            self.engine_scryfall = ScryfallCache()
-            self.engine_mtgadb = MTGADatabase()
+            # Initialize basic components synchronously so log parsing can begin
             self.engine_game_state = GameState()
             self.engine_parser = LogParser()
             self.engine_rules = RulesEngine()
@@ -368,23 +367,22 @@ class CLIVoiceAdvisor:
             self.engine_parser.register_handler('Event_PlayerDraftMakePick', self.engine_draft_handler)
             self.engine_parser.register_handler('BotDraft_DraftPick', self.engine_draft_handler)
             
-            # Wire up engine with bridge to existing AI advisor
-            self.engine_bridge = EngineAIBridge(self.ai_advisor)
-            self.engine_coach = CoachEngine(
-                self.engine_game_state,
-                scryfall=self.engine_scryfall,
-                mtgadb=self.engine_mtgadb,
-                rules=self.engine_rules,
-                backend=self.engine_bridge
-            )
-            
             # Bind handler to parser
             self.engine_handler = create_game_state_handler(self.engine_game_state)
             self.engine_parser.register_handler('GreToClientEvent', self.engine_handler)
             
-            logging.info("ArenaMCP Engine initialized successfully.")
+            # Initialize heavy data components and CoachEngine in background
+            self.engine_scryfall = None
+            self.engine_mtgadb = None
+            self.engine_coach = None
+            self.engine_bridge = None
+            self.engine_ready = False
+            
+            threading.Thread(target=self._init_engine_heavy_async, daemon=True).start()
+            
+            logging.info("ArenaMCP Engine basic components initialized.")
         except Exception as e:
-            logging.error(f"Failed to initialize ArenaMCP Engine: {e}")
+            logging.error(f"Failed to initialize ArenaMCP Engine basics: {e}")
             self.engine_game_state = None
 
         # Initialize TTS asynchronously to prevent blocking startup
@@ -526,7 +524,7 @@ class CLIVoiceAdvisor:
             self.gui.set_status(status_text)
             
             # PREFER ENGINE FOR BOARD STATE DISPLAY
-            if engine_snapshot:
+            if engine_snapshot and self.engine_coach:
                 # Use CoachEngine's formatter for a dense, high-fidelity display
                 context_str = self.engine_coach._format_game_context(engine_snapshot)
                 engine_lines = context_str.split("\n")
@@ -865,6 +863,37 @@ class CLIVoiceAdvisor:
             if current_pick != self._last_announced_pick:
                 self._last_announced_pick = current_pick
                 self.tts.speak(f"Pick {pack_cards[0].name}")
+
+    def _init_engine_heavy_async(self):
+        """Initialize heavy ArenaMCP engine components in a background thread."""
+        try:
+            from .engine import ScryfallCache, MTGADatabase, CoachEngine
+            
+            logging.info("Engine Background: Loading Scryfall Cache (this may take time if downloading)...")
+            self.engine_scryfall = ScryfallCache()
+            
+            logging.info("Engine Background: Opening MTGA CardDatabase...")
+            self.engine_mtgadb = MTGADatabase()
+            
+            logging.info("Engine Background: Initializing CoachEngine...")
+            self.engine_bridge = EngineAIBridge(self.ai_advisor)
+            self.engine_coach = CoachEngine(
+                self.engine_game_state,
+                scryfall=self.engine_scryfall,
+                mtgadb=self.engine_mtgadb,
+                rules=self.engine_rules,
+                backend=self.engine_bridge
+            )
+            
+            self.engine_ready = True
+            logging.info("ArenaMCP Engine (The Brain) is now FULLY READY.")
+            
+            # Refresh GUI if it's already visible
+            if self.use_gui and self.gui:
+                self._update_status()
+                
+        except Exception as e:
+            logging.error(f"Failed to initialize heavy ArenaMCP Engine components: {e}")
 
     def _init_tts_async(self):
         """Initialize TTS in a background thread."""
