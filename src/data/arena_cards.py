@@ -28,7 +28,7 @@ class ArenaCardDatabase:
     # IDs above 110000 are typically abilities, tokens, or special game objects
     MAX_VALID_CARD_GRPID = 200000
 
-    def __init__(self, db_path: str = "data/unified_cards.db"):
+    def __init__(self, db_path: str = "data/unified_cards.db", autoload: bool = True):
         self.db_path = Path(db_path)
         self._cache = {}  # In-memory cache: grpId -> dict
         self._unknown_cards = set()  # Track unique unknown grpIds
@@ -38,6 +38,11 @@ class ArenaCardDatabase:
         if not self.db_path.exists():
             logger.warning(f"Arena card database not found at {db_path}. Run 'python tools/build_unified_card_database.py' to create it.")
 
+        if autoload:
+            self._load_database()
+
+    def load(self):
+        """Manually trigger database loading."""
         self._load_database()
 
     def set_unknown_card_callback(self, callback):

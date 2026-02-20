@@ -327,9 +327,9 @@ class CLIVoiceAdvisor:
         # Initialize card stats database for 17lands data
         self.card_stats = CardStatsDB()
 
-        # Initialize Arena Card Database (for local card name lookups)
+        # Initialize Arena Card Database (empty initially, loaded in background)
         # Uses unified_cards.db built from MTGA's Raw_CardDatabase
-        print("Initializing Arena card database...")
+        logging.info("Initializing Arena card database wrapper...")
         self.arena_db = ArenaCardDatabase()
 
         # Initialize board state formatter with card database
@@ -377,8 +377,10 @@ class CLIVoiceAdvisor:
             self.engine_coach = None
             self.engine_bridge = None
             self.engine_ready = False
+            self.db_ready = False
             
-            threading.Thread(target=self._init_engine_heavy_async, daemon=True).start()
+            # Start background heavy data loading
+            threading.Thread(target=self._init_heavy_data_async, daemon=True).start()
             
             logging.info("ArenaMCP Engine basic components initialized.")
         except Exception as e:
@@ -865,9 +867,17 @@ class CLIVoiceAdvisor:
                 self._last_announced_pick = current_pick
                 self.tts.speak(f"Pick {pack_cards[0].name}")
 
-    def _init_engine_heavy_async(self):
-        """Initialize heavy ArenaMCP engine components in a background thread."""
+    def _init_heavy_data_async(self):
+        """Initialize heavy data components in a background thread."""
         try:
+            # 1. Load Legacy Arena Card Database
+            if self.arena_db:
+                logging.info("Data Background: Loading legacy card database...")
+                self.arena_db.load()
+                self.db_ready = True
+                logging.info(f"Data Background: Legacy database loaded ({len(self.arena_db._cache)} cards).")
+
+            # 2. Load new ArenaMCP Engine components
             from .engine import ScryfallCache, MTGADatabase, CoachEngine
             
             logging.info("Engine Background: Loading Scryfall Cache (this may take time if downloading)...")
@@ -890,7 +900,7 @@ class CLIVoiceAdvisor:
                 self._update_status()
                 
         except Exception as e:
-            logging.error(f"Failed to initialize heavy ArenaMCP Engine components: {e}")
+            logging.error(f"Failed to initialize heavy data components: {e}")
 
     def _init_tts_async(self):
         """Initialize TTS in a background thread."""
