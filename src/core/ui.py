@@ -1296,8 +1296,7 @@ class AdvisorGUI:
     def _check_proxy_thread(self):
         """Background thread to fetch proxy models."""
         try:
-            from .engine import get_fetch_proxy_models
-            fetch_proxy_models = get_fetch_proxy_models()
+            from .engine import fetch_proxy_models
             results = fetch_proxy_models() # Returns list of (display, value)
             
             # Extract just the values/names for the dropdown

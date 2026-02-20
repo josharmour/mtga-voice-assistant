@@ -1,5 +1,4 @@
 
-print("DEBUG: app.py top-level code executing...")
 import datetime
 import logging
 import os
@@ -298,10 +297,10 @@ class CLIVoiceAdvisor:
         # Initialize basic engine containers synchronously so log parsing can begin
         # but don't do any heavy loading here
         print("Initializing strategic engine containers...")
-        from .engine import get_game_state, get_log_parser, get_rules_engine
-        self.engine_game_state = get_game_state()()
-        self.engine_parser = get_log_parser()()
-        self.engine_rules = get_rules_engine()()
+        from .engine import GameState, LogParser, RulesEngine
+        self.engine_game_state = GameState()
+        self.engine_parser = LogParser()
+        self.engine_rules = RulesEngine()
 
         # Initialize data structures (empty wrappers, loaded in background)
         self.card_stats = None
@@ -324,9 +323,9 @@ class CLIVoiceAdvisor:
 
         try:
             # BRAIN TRANSPLANT: Initialize Draft State
-            from .engine import get_draft_state, get_create_draft_handler
-            self.engine_draft_state = get_draft_state()()
-            self.engine_draft_handler = get_create_draft_handler()(self.engine_draft_state)
+            from .engine import DraftState, create_draft_handler
+            self.engine_draft_state = DraftState()
+            self.engine_draft_handler = create_draft_handler(self.engine_draft_state)
             
             # Register draft handlers in the engine parser
             self.engine_parser.register_handler('Draft.Notify', self.engine_draft_handler)
@@ -852,22 +851,22 @@ class CLIVoiceAdvisor:
             self.ai_advisor = AIAdvisor(card_db=self.arena_db, prefs=self.prefs)
 
             # 4. Load new ArenaMCP Engine components
-            from .engine import get_scryfall_cache, get_mtga_database, get_coach_engine, get_create_game_state_handler
+            from .engine import ScryfallCache, MTGADatabase, CoachEngine, create_game_state_handler
             
             logging.info("Engine Background: Loading Scryfall Cache (this may take time if downloading)...")
-            self.engine_scryfall = get_scryfall_cache()()
+            self.engine_scryfall = ScryfallCache()
             
             logging.info("Engine Background: Opening MTGA CardDatabase...")
-            self.engine_mtgadb = get_mtga_database()()
+            self.engine_mtgadb = MTGADatabase()
             
             logging.info("Engine Background: Initializing CoachEngine...")
             self.engine_bridge = EngineAIBridge(self.ai_advisor)
-            self.engine_coach = get_coach_engine()(
+            self.engine_coach = CoachEngine(
                 backend=self.engine_bridge
             )
             
             # Bind handler to parser (now that engine is ready)
-            self.engine_handler = get_create_game_state_handler()(self.engine_game_state)
+            self.engine_handler = create_game_state_handler(self.engine_game_state)
             self.engine_parser.register_handler('GreToClientEvent', self.engine_handler)
             
             self.engine_ready = True
