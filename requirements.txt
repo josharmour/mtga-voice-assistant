@@ -58,3 +58,7 @@ fastapi
 uvicorn
 pytest>=7.0.0
 pytest-timeout>=2.1.0
+mcp>=1.0.0
+watchdog>=3.0.0
+textual>=0.47.0
+pydirectinput-rgx>=1.0.0
