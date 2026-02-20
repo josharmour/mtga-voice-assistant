@@ -17,6 +17,15 @@ from src.cognitive import get_synergy_graph
 import requests
 
 from .mtga import LogFollower, GameStateManager
+from .engine import (
+    LogParser,
+    MTGALogWatcher,
+    GameState,
+    create_game_state_handler,
+    CoachEngine,
+    RulesEngine,
+    get_synergy_graph
+)
 from .ai import AIAdvisor
 from .ui import TextToSpeech, AdvisorGUI
 from .formatters import BoardStateFormatter
@@ -190,6 +199,20 @@ def detect_player_log_path():
     return None
 
 
+class EngineAIBridge:
+    """Bridge between ArenaMCP CoachEngine and Voice Assistant AIAdvisor."""
+    def __init__(self, ai_advisor):
+        self.ai_advisor = ai_advisor
+        self.model_name = ai_advisor.advisor.model_name if ai_advisor.advisor else "unknown"
+
+    def complete(self, system_prompt: str, user_message: str) -> str:
+        if not self.ai_advisor or not self.ai_advisor.advisor:
+            return "AI Advisor not initialized."
+        return self.ai_advisor.advisor._call_api(system_prompt, user_message)
+
+    def list_models(self) -> list[str]:
+        return []
+
 class CLIVoiceAdvisor:
     # Available voices in Kokoro v1.0 (American and British only)
     # Voice ID -> Display Name mapping
@@ -312,11 +335,56 @@ class CLIVoiceAdvisor:
         self.formatter = BoardStateFormatter(card_db=self.arena_db)
 
         # Initialize GameStateManager with Arena card database
-        # ArenaCardDatabase has get_card_name and get_card_data methods
         self.game_state_mgr = GameStateManager(self.arena_db)
 
-        # Initialize AI advisor with card database for land detection
+        # Initialize AI advisor first so it can be used by the engine bridge
         self.ai_advisor = AIAdvisor(card_db=self.arena_db, prefs=self.prefs)
+
+        # ----------------------------------------------------------------------
+        # BRAIN TRANSPLANT: Initialize ArenaMCP Engine components
+        # ----------------------------------------------------------------------
+        logging.info("Initializing ArenaMCP Engine (The Brain)...")
+        from .engine import (
+            LogParser, GameState, create_game_state_handler,
+            CoachEngine, RulesEngine, ScryfallCache, MTGADatabase
+        )
+        
+        try:
+            self.engine_scryfall = ScryfallCache()
+            self.engine_mtgadb = MTGADatabase()
+            self.engine_game_state = GameState()
+            self.engine_parser = LogParser()
+            self.engine_rules = RulesEngine()
+            
+            # BRAIN TRANSPLANT: Initialize Draft State
+            from .engine import DraftState, create_draft_handler
+            self.engine_draft_state = DraftState()
+            self.engine_draft_handler = create_draft_handler(self.engine_draft_state)
+            
+            # Register draft handlers in the engine parser
+            self.engine_parser.register_handler('Draft.Notify', self.engine_draft_handler)
+            self.engine_parser.register_handler('Draft.MakeHumanDraftPick', self.engine_draft_handler)
+            self.engine_parser.register_handler('Event_PlayerDraftMakePick', self.engine_draft_handler)
+            self.engine_parser.register_handler('BotDraft_DraftPick', self.engine_draft_handler)
+            
+            # Wire up engine with bridge to existing AI advisor
+            self.engine_bridge = EngineAIBridge(self.ai_advisor)
+            self.engine_coach = CoachEngine(
+                self.engine_game_state,
+                scryfall=self.engine_scryfall,
+                mtgadb=self.engine_mtgadb,
+                rules=self.engine_rules,
+                backend=self.engine_bridge
+            )
+            
+            # Bind handler to parser
+            self.engine_handler = create_game_state_handler(self.engine_game_state)
+            self.engine_parser.register_handler('GreToClientEvent', self.engine_handler)
+            
+            logging.info("ArenaMCP Engine initialized successfully.")
+        except Exception as e:
+            logging.error(f"Failed to initialize ArenaMCP Engine: {e}")
+            self.engine_game_state = None
 
         # Initialize TTS asynchronously to prevent blocking startup
         self.tts = None
@@ -424,7 +492,24 @@ class CLIVoiceAdvisor:
         """Update status display (GUI)"""
         model_name = self.ai_advisor.advisor.model_name if self.ai_advisor.advisor else 'N/A'
         
-        if board_state:
+        # BRAIN TRANSPLANT: Check if ArenaMCP engine has valid game data
+        engine_snapshot = None
+        if self.engine_game_state and self.engine_game_state.turn_info.turn_number > 0:
+            engine_snapshot = self.engine_game_state.get_snapshot()
+            
+            # Extract basic info for the status bar
+            turn_num = engine_snapshot.get("turn", {}).get("turn_number", 0)
+            phase = engine_snapshot.get("turn", {}).get("phase", "Unknown").replace("Phase_", "")
+            players = engine_snapshot.get("players", [])
+            local_player = next((p for p in players if p.get("is_local")), {})
+            opp_player = next((p for p in players if not p.get("is_local")), {})
+            
+            status_text = (
+                f"Turn {turn_num} | Phase: {phase} | "
+                f"Life: {local_player.get('life', 20)}/{opp_player.get('life', 20)} | "
+                f"Model: {model_name} (Brain: ArenaMCP)"
+            )
+        elif board_state:
             status_text = (
                 f"Turn {board_state.current_turn} | "
                 f"Phase: {board_state.current_phase} | "
@@ -438,8 +523,31 @@ class CLIVoiceAdvisor:
 
         if self.use_gui and self.gui:
             self.gui.set_status(status_text)
-            if board_state:
-                # Format and update board state in GUI
+            
+            # PREFER ENGINE FOR BOARD STATE DISPLAY
+            if engine_snapshot:
+                # Use CoachEngine's formatter for a dense, high-fidelity display
+                context_str = self.engine_coach._format_game_context(engine_snapshot)
+                engine_lines = context_str.split("\n")
+                self.gui.set_board_state(engine_lines)
+                
+                # Update Library/Deck Window using engine data
+                deck_cards = engine_snapshot.get("deck_cards", [])
+                if deck_cards:
+                    # Group and count cards
+                    deck_counts = {}
+                    for card in deck_cards:
+                        name = card.get("name", "Unknown")
+                        deck_counts[name] = deck_counts.get(name, 0) + 1
+                    
+                    deck_lines = [f"LIBRARY (Engine Data): {len(deck_cards)} cards"]
+                    deck_lines.append("=" * 40)
+                    for name, count in sorted(deck_counts.items()):
+                        deck_lines.append(f"{count}x {name}")
+                    self.gui.set_deck_content(deck_lines)
+            
+            elif board_state:
+                # Format and update board state in GUI (Legacy)
                 lines = self._format_board_state_for_display(board_state)
                 self.gui.set_board_state(lines)
                 
@@ -944,6 +1052,37 @@ class CLIVoiceAdvisor:
 
                 logging.info("=" * 60)
 
+                # --------------------------------------------------------------
+                # BRAIN TRANSPLANT: Use ArenaMCP engine if it has valid data
+                # --------------------------------------------------------------
+                if self.engine_game_state and self.engine_game_state.turn_info.turn_number > 0:
+                    logging.info("Using ArenaMCP Engine (The Brain) for advice generation.")
+                    
+                    # Use the CoachEngine to get advice using its high-fidelity context
+                    # The engine uses the bridge we set up to call our AIAdvisor
+                    engine_advice = self.engine_coach.get_advice(
+                        self.engine_game_state.get_snapshot(),
+                        question=trigger_event.user_query,
+                        trigger=trigger_event.trigger_type.name
+                    )
+                    
+                    if engine_advice:
+                        # Output full text to GUI
+                        if self.use_gui and self.gui:
+                            self.gui.add_message(f"🤖 Advisor (Engine): {engine_advice}", "green")
+                        elif not self.use_gui:
+                            print(f"\nAdvisor (Engine): {engine_advice}\n")
+                            
+                        # Speak advice
+                        if self.tts:
+                            clean_advice = self._clean_for_tts(engine_advice)
+                            self.tts.speak(clean_advice)
+                        
+                        # Stop further processing (skip legacy AI call)
+                        if self.use_gui and self.gui:
+                            self.gui.hide_thinking()
+                        return
+
                 # Add trigger context to help AI understand the situation
                 if trigger_event.user_query:
                     board_state_dict['user_query'] = trigger_event.user_query
@@ -1067,6 +1206,13 @@ class CLIVoiceAdvisor:
 
             # Process with GameStateManager
             self.game_state_mgr.parse_log_line(line)
+
+            # Process with ArenaMCP Engine (Brain Transplant)
+            # This populates the engine_game_state with high-fidelity data
+            try:
+                self.engine_parser.process_chunk(line + "\n")
+            except Exception as e:
+                logging.debug(f"Engine parser error (non-fatal): {e}")
 
             # Save match state periodically (every 10 turns) for efficient resume
             if hasattr(self.game_state_mgr.scanner, 'current_turn'):
