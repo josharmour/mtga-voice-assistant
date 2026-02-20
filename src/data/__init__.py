@@ -1,13 +1,24 @@
 """Data layer for The Planeswalker Agent."""
 
-from src.data.scryfall import ScryfallLoader
-from src.data.chroma import VectorStore
-from src.data.edhrec import EDHRECClient
-from src.data.seventeenlands import SeventeenLandsClient
+def get_scryfall_loader():
+    from .scryfall import ScryfallLoader
+    return ScryfallLoader
+
+def get_vector_store():
+    from .chroma import VectorStore
+    return VectorStore
+
+def get_edhrec_client():
+    from .edhrec import EDHRECClient
+    return EDHRECClient
+
+def get_seventeenlands_client():
+    from .seventeenlands import SeventeenLandsClient
+    return SeventeenLandsClient
 
 __all__ = [
-    "ScryfallLoader",
-    "VectorStore",
-    "EDHRECClient",
-    "SeventeenLandsClient",
+    "get_scryfall_loader",
+    "get_vector_store",
+    "get_edhrec_client",
+    "get_seventeenlands_client",
 ]

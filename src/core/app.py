@@ -28,6 +28,11 @@ TKINTER_AVAILABLE = True
 log_dir = Path("logs")
 log_dir.mkdir(exist_ok=True)
 
+from .ui import TextToSpeech, AdvisorGUI
+from .formatters import BoardStateFormatter
+from .advice_triggers import AdviceTriggerManager, TriggerType, TriggerEvent
+from .version import get_version
+
 # Configure logging
 log_file_path = log_dir / "advisor.log"
 
@@ -238,7 +243,6 @@ class CLIVoiceAdvisor:
         # by pre-loading the massive synergy graph (2.2M edges)
         threading.Thread(target=self._warmup_synergy_graph, daemon=True).start()
 
-        from .version import get_version
         self.version = get_version()
         print(f"MTGA Voice Advisor v{self.version} - Initializing...")
         self.start_time = datetime.datetime.now()  # Capture startup time
@@ -307,7 +311,6 @@ class CLIVoiceAdvisor:
         self.card_stats = None
         from ..data.arena_cards import ArenaCardDatabase
         self.arena_db = ArenaCardDatabase(autoload=False)
-        from .formatters import BoardStateFormatter
         self.formatter = BoardStateFormatter(card_db=self.arena_db)
         self.game_state_mgr = None
         self.ai_advisor = None
@@ -413,10 +416,6 @@ class CLIVoiceAdvisor:
         self._last_announced_pick = None
         self._current_board_state = None  # Cache for manual advice requests
         self.last_advice_packet = None   # Cache for feedback mechanism
-        
-        self.version = get_version()
-        print(f"MTGA Voice Advisor v{self.version}")
-
 
 
     def _output(self, message: str, color: str = "white"):
@@ -886,7 +885,6 @@ class CLIVoiceAdvisor:
             saved_voice = self.prefs.current_voice if self.prefs else "am_adam"
             saved_volume = (self.prefs.volume if self.prefs else 100) / 100.0
             print(f"Initializing TTS engine (background)...")
-            from .ui import TextToSpeech
             self.tts = TextToSpeech(voice=saved_voice, volume=saved_volume)
             self.tts_loading = False
             print(f"[OK] TTS engine ready")
@@ -917,7 +915,6 @@ class CLIVoiceAdvisor:
         """Main application loop"""
         if self.use_gui:
             import tkinter as tk
-            from .ui import AdvisorGUI
             self.tk_root = tk.Tk()
             self.gui = AdvisorGUI(self.tk_root, self, version=self.version)
 
@@ -1103,7 +1100,6 @@ class CLIVoiceAdvisor:
                         return
 
                 # Add trigger context to help AI understand the situation
-                from .advice_triggers import TriggerType
                 if trigger_event.user_query:
                     board_state_dict['user_query'] = trigger_event.user_query
                 board_state_dict['trigger_type'] = trigger_event.trigger_type.name
