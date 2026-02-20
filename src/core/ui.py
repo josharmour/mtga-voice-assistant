@@ -888,6 +888,7 @@ class AdvisorGUI:
         self.model_dropdown.pack(pady=(0, 10), fill=tk.X)
         self.model_dropdown.bind('<<ComboboxSelected>>', self._on_model_change)
         self.model_dropdown.bind('<Return>', self._on_model_change)
+        self.model_dropdown.bind('<FocusOut>', self._on_model_change) # Save manual entry on blur
 
         # Voice selection
         tk.Label(self.settings_frame, text="Voice:", bg=self.bg_color, fg=self.fg_color).pack(anchor=tk.W)
@@ -1180,8 +1181,9 @@ class AdvisorGUI:
             ],
             "OpenAI": ["gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"],
             "Anthropic": [
-                "claude-sonnet-4-20250514",
+                "claude-3-7-sonnet-20250219",
                 "claude-3-5-sonnet-20241022",
+                "claude-3-5-haiku-20241022",
                 "claude-3-opus-20240229",
                 "claude-3-haiku-20240307",
             ],
